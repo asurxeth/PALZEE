@@ -29,7 +29,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -5226,7 +5226,7 @@ fun GroupMemberCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Reply,
+                        imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = "Reply",
                         tint = Color.White,
                         modifier = Modifier
