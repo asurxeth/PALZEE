@@ -179,6 +179,20 @@ tasks.register("copySmileyAvatar") {
         } else {
             println("Source flash off icon PNG not found at: ${srcFile4.absolutePath}")
         }
+
+        val logoSrc = file("/Users/pratham/.gemini/antigravity-ide/brain/43c694e0-5643-4328-b7d2-4e82f551337e/media__1781903965903.jpg")
+        val logoDest = file("${projectDir}/src/main/res/drawable/ic_launcher_custom.jpg")
+        val logoOldDest = file("${projectDir}/src/main/res/drawable/ic_launcher_custom.png")
+        if (logoSrc.exists()) {
+            logoSrc.copyTo(logoDest, overwrite = true)
+            println("Successfully copied custom launcher logo JPG!")
+            if (logoOldDest.exists()) {
+                logoOldDest.delete()
+                println("Deleted old custom launcher logo PNG.")
+            }
+        } else {
+            println("Source launcher logo JPG not found at: ${logoSrc.absolutePath}")
+        }
     }
 }
 
@@ -213,6 +227,21 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         freeCompilerArgs.add("-Xcontext-receivers")
+    }
+}
+
+tasks.register("readCrash") {
+    doLast {
+        val destFile = file("${projectDir}/../crash_log_real.txt")
+        try {
+            val process = ProcessBuilder("adb", "logcat", "-d", "-b", "crash")
+                .redirectOutput(ProcessBuilder.Redirect.to(destFile))
+                .start()
+            process.waitFor()
+            println("Successfully read crash log and wrote to: ${destFile.absolutePath}")
+        } catch (e: Exception) {
+            println("Error reading crash log: ${e.message}")
+        }
     }
 }
 

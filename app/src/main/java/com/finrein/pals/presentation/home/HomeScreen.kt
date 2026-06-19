@@ -4917,6 +4917,1037 @@ data class VlogScreenContentParams(
     val currentUserId: String = ""
 )
 
+@Composable
+fun GroupMemberCard(
+    index: Int,
+    isGrid: Boolean,
+    cardHeightDp: Dp,
+    groupMembers: List<String>,
+    userFirstName: String,
+    filteredSubmissions: List<SubmissionDbItem>,
+    currentUserId: String,
+    currentDisplayName: String,
+    accentColor: Color,
+    isDark: Boolean,
+    textColor: Color,
+    customAvatarUriString: String?,
+    shufflingColors: List<Color>,
+    selectedMemberIndex: Int,
+    onSelectedMemberIndexChange: (Int) -> Unit,
+    onNavigateToCamera: () -> Unit,
+    onEditCaptionClick: (Int) -> Unit,
+    onDeleteClick: (Int) -> Unit,
+    onInviteClick: () -> Unit,
+    density: androidx.compose.ui.unit.Density,
+    context: android.content.Context
+) {
+    val isActualMember = index < groupMembers.size
+    val cardShape = if (isGrid) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(28.dp)
+    val memberName = if (isActualMember) groupMembers[index] else null
+    val isUser = index == 0 || (memberName != null && (memberName.contains("(You)") || memberName == userFirstName))
+
+    val memberSub = if (isActualMember) {
+        filteredSubmissions.firstOrNull { sub ->
+            if (isUser) {
+                sub.userId == currentUserId
+            } else {
+                val cleanSubName = sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                cleanSubName.equals(memberName, ignoreCase = true)
+            }
+        }
+    } else {
+        null
+    }
+    val hasSubmission = memberSub != null
+    var showDropdownMenu by remember { mutableStateOf(false) }
+
+    if (index == selectedMemberIndex && hasSubmission) {
+        // ACTIVE VIDEO CARD PLAYER
+        val videoPath = memberSub!!.imageUrl.split("|||").firstOrNull() ?: ""
+        val caption = memberSub.imageUrl.split("|||").getOrNull(1) ?: ""
+        val timeText = if (!memberSub.createdAt.isNullOrEmpty()) {
+            try {
+                val instant = java.time.Instant.parse(memberSub.createdAt)
+                val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
+            } catch (e: Exception) {
+                memberSub.createdAt.substringAfter("T").substringBefore(".").take(5)
+            }
+        } else {
+            "12:00"
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(cardHeightDp)
+                .clip(cardShape)
+                .background(Color.Black)
+                .border(
+                    width = 2.dp,
+                    color = accentColor,
+                    shape = cardShape
+                )
+        ) {
+            val localPlayer = remember(videoPath) {
+                androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                    volume = 0f
+                    val cleanPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
+                    val file = java.io.File(cleanPath)
+                    if (file.exists()) {
+                        setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
+                        prepare()
+                    }
+                }
+            }
+
+            DisposableEffect(localPlayer) {
+                onDispose {
+                    localPlayer.release()
+                }
+            }
+
+            LaunchedEffect(localPlayer) {
+                localPlayer.playWhenReady = true
+            }
+
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { ctx ->
+                    val view = android.view.LayoutInflater.from(ctx)
+                        .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                    view.apply {
+                        player = localPlayer
+                        useController = false
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+
+                        localPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                super.onVideoSizeChanged(videoSize)
+                                val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
+                                val containerWidth = width.toFloat()
+                                val containerHeight = height.toFloat()
+                                if (containerWidth > 0f && containerHeight > 0f) {
+                                    if (videoSize.height > videoSize.width) {
+                                        val scaleX = containerHeight / containerWidth
+                                        val scaleY = containerWidth / containerHeight
+                                        textureView.scaleX = scaleX
+                                        textureView.scaleY = scaleY
+                                        textureView.rotation = 270f
+                                    } else {
+                                        textureView.scaleX = 1.0f
+                                        textureView.scaleY = 1.0f
+                                        textureView.rotation = 0f
+                                    }
+                                }
+                            }
+                        })
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Overlay 1: Avatar and Name (Top Left)
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val userAvatar = if (isUser) customAvatarUriString else null
+                if (userAvatar != null) {
+                    UriImage(
+                        uriString = userAvatar,
+                        modifier = Modifier
+                            .size(if (isGrid) 18.dp else 24.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(if (isGrid) 18.dp else 24.dp)
+                            .clip(CircleShape)
+                            .background(accentColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.smile_medium),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                Text(
+                    text = if (isUser) userFirstName else (memberName ?: ""),
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = if (isGrid) 12.sp else 15.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color.White
+                )
+            }
+
+            // Overlay 2: Time Text (Center)
+            Text(
+                text = timeText,
+                fontFamily = BricolageVariableFontFamily,
+                fontSize = if (isGrid) 16.sp else 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.align(Alignment.Center)
+            )
+
+            // Overlay 3: Caption Text
+            if (caption.isNotEmpty()) {
+                Text(
+                    text = caption,
+                    fontFamily = RobotoFontFamily,
+                    fontSize = if (isGrid) 11.sp else 14.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = if (isGrid) 12.dp else 36.dp),
+                    style = TextStyle(
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = Color.Black.copy(alpha = 0.5f),
+                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                            blurRadius = 3f
+                        )
+                    )
+                )
+            }
+
+            // Overlay 4: Triple dots at bottom right (Only show if it is the user's card)
+            if (isUser) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
+                        .clickable { showDropdownMenu = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "•••",
+                        fontSize = if (isGrid) 14.sp else 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+
+                    DropdownMenu(
+                        expanded = showDropdownMenu,
+                        onDismissRequest = { showDropdownMenu = false },
+                        modifier = Modifier
+                            .background(if (isDark) Color(0xFF1E1D22) else Color(0xFFF5F3EB), RoundedCornerShape(8.dp))
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("edit caption", color = if (isDark) Color.White else Color.Black) },
+                            onClick = {
+                                showDropdownMenu = false
+                                onEditCaptionClick(index)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("delete", color = if (isDark) Color.White else Color.Black) },
+                            onClick = {
+                                showDropdownMenu = false
+                                onDeleteClick(index)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    } else if (isUser && !hasSubmission) {
+        // BOUNCING SCREEN SAVER CARD FOR USER (Slot 0, empty)
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(cardHeightDp)
+                .clip(cardShape)
+                .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE5E5EA))
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
+                    shape = cardShape
+                )
+        ) {
+            val widthPx = with(density) { maxWidth.toPx() }
+            val heightPx = with(density) { maxHeight.toPx() }
+            val smileySizePx = with(density) { (if (isGrid) 34.dp else 50.dp).toPx() }
+
+            var groupPosX by remember { mutableStateOf(0f) }
+            var groupPosY by remember { mutableStateOf(0f) }
+            var groupSmileRotation by remember { mutableStateOf(0f) }
+            var groupSmileColorIndex by remember { mutableStateOf(0) }
+
+            LaunchedEffect(widthPx, heightPx) {
+                if (widthPx <= 0f || heightPx <= 0f) return@LaunchedEffect
+                groupPosX = (widthPx - smileySizePx) / 2f
+                groupPosY = (heightPx - smileySizePx) / 2f
+
+                val speed = with(density) { 100.dp.toPx() }
+                var vx = speed * 0.76f
+                var vy = speed * 0.65f
+
+                var lastTime = androidx.compose.runtime.withFrameNanos { it }
+
+                while (true) {
+                    androidx.compose.runtime.withFrameNanos { time ->
+                        val dt = (time - lastTime) / 1_000_000_000f
+                        lastTime = time
+
+                        val cappedDt = dt.coerceAtMost(0.1f)
+
+                        var newX = groupPosX + vx * cappedDt
+                        var newY = groupPosY + vy * cappedDt
+
+                        var collided = false
+
+                        val minX = 0f
+                        val maxX = widthPx - smileySizePx
+                        val minY = 0f
+                        val maxY = heightPx - smileySizePx
+
+                        if (maxX > 0f) {
+                            if (newX <= minX) {
+                                newX = minX
+                                vx = -vx
+                                collided = true
+                            } else if (newX >= maxX) {
+                                newX = maxX
+                                vx = -vx
+                                collided = true
+                            }
+                        }
+
+                        if (maxY > 0f) {
+                            if (newY <= minY) {
+                                newY = minY
+                                vy = -vy
+                                collided = true
+                            } else if (newY >= maxY) {
+                                newY = maxY
+                                vy = -vy
+                                collided = true
+                            }
+                        }
+
+                        groupPosX = newX
+                        groupPosY = newY
+
+                        groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+
+                        if (collided) {
+                            groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
+                        }
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(if (isGrid) 34.dp else 50.dp)
+                    .offset(
+                        x = with(density) { groupPosX.toDp() },
+                        y = with(density) { groupPosY.toDp() }
+                    )
+                    .rotate(groupSmileRotation)
+                    .clip(CircleShape)
+                    .background(shufflingColors[groupSmileColorIndex]),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = if (isGrid) R.drawable.smile_small else R.drawable.smile_medium),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val userAvatar = if (isUser) customAvatarUriString else null
+                if (userAvatar != null) {
+                    UriImage(
+                        uriString = userAvatar,
+                        modifier = Modifier
+                            .size(if (isGrid) 18.dp else 24.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(if (isGrid) 18.dp else 24.dp)
+                            .clip(CircleShape)
+                            .background(accentColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.smile_medium),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                Text(
+                    text = userFirstName,
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = if (isGrid) 12.sp else 15.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = textColor
+                )
+            }
+
+            val now = java.time.LocalTime.now()
+            val roundedHourStr = String.format("%02d:00", now.hour)
+
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(if (isGrid) 4.dp else 6.dp)
+            ) {
+                Text(
+                    text = roundedHourStr,
+                    fontFamily = BricolageVariableFontFamily,
+                    fontSize = if (isGrid) 16.sp else 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(
+                            if (isDark) Color.Black.copy(alpha = 0.35f) else Color.White
+                        )
+                        .clickable { onNavigateToCamera() }
+                        .padding(horizontal = if (isGrid) 8.dp else 12.dp, vertical = if (isGrid) 2.dp else 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "tap to capture",
+                        fontFamily = GoogleSansFontFamily,
+                        fontSize = if (isGrid) 10.sp else 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color.White else Color.Black
+                    )
+                }
+            }
+
+            // Triple dots for User slot empty box
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
+                    .clickable {
+                        android.widget.Toast.makeText(context, "Capture a pal first!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "•••",
+                    fontSize = if (isGrid) 14.sp else 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isDark) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.7f)
+                )
+            }
+        }
+    } else if (isActualMember) {
+        // OTHER MEMBER CARD (either has submission but not active, or doesn't have submission)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(cardHeightDp)
+                .clip(cardShape)
+                .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE5E5EA))
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
+                    shape = cardShape
+                )
+                .then(
+                    if (hasSubmission) {
+                        Modifier.clickable { onSelectedMemberIndexChange(index) }
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val userAvatar = if (isUser) customAvatarUriString else null
+                if (userAvatar != null) {
+                    UriImage(
+                        uriString = userAvatar,
+                        modifier = Modifier
+                            .size(if (isGrid) 18.dp else 24.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(if (isGrid) 18.dp else 24.dp)
+                            .clip(CircleShape)
+                            .background(accentColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.smile_medium),
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                Text(
+                    text = memberName ?: "",
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = if (isGrid) 12.sp else 15.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = textColor
+                )
+            }
+
+            val displayTimeText = if (hasSubmission) {
+                val sub = memberSub!!
+                if (!sub.createdAt.isNullOrEmpty()) {
+                    try {
+                        val instant = java.time.Instant.parse(sub.createdAt)
+                        val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                        zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
+                    } catch (e: Exception) {
+                        sub.createdAt.substringAfter("T").substringBefore(".").take(5)
+                    }
+                } else {
+                    "12:00"
+                }
+            } else {
+                "4:00"
+            }
+
+            Text(
+                text = displayTimeText,
+                fontFamily = BricolageVariableFontFamily,
+                fontSize = if (isGrid) 16.sp else 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = textColor,
+                modifier = Modifier.align(Alignment.Center)
+            )
+
+            val outerColor = shufflingColors[index % 6]
+            val innerColor = shufflingColors[(index + 3) % 6]
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = if (isGrid) 10.dp else 24.dp)
+                    .size(if (isGrid) 30.dp else 44.dp)
+                    .then(
+                        if (hasSubmission) {
+                            Modifier.border(2.dp, outerColor, CircleShape)
+                        } else {
+                            Modifier
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                val currentInnerSize = if (hasSubmission) (if (isGrid) 22.dp else 34.dp) else (if (isGrid) 30.dp else 44.dp)
+                Box(
+                    modifier = Modifier
+                        .size(currentInnerSize)
+                        .clip(CircleShape)
+                        .background(
+                            if (hasSubmission) innerColor else (if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA))
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.smile_small),
+                        contentDescription = "Status Smiley",
+                        modifier = Modifier.fillMaxSize(),
+                        colorFilter = ColorFilter.tint(
+                            if (hasSubmission) {
+                                Color.Black
+                            } else {
+                                if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.3f)
+                            }
+                        )
+                    )
+                }
+            }
+        }
+    } else {
+        // INVITE SLOT (totalSlots > actualMembers)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(cardHeightDp)
+                .clip(cardShape)
+                .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE5E5EA))
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
+                    shape = cardShape
+                )
+                .clickable { onInviteClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add Friend",
+                    tint = textColor,
+                    modifier = Modifier.size(if (isGrid) 20.dp else 28.dp)
+                )
+                Text(
+                    text = "invite a friend",
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = if (isGrid) 11.sp else 14.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = textColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun GroupScreenContent(
+    params: VlogScreenContentParams,
+    pal: PalItem,
+    groupMembers: List<String>,
+    userFirstName: String,
+    filteredSubmissions: List<SubmissionDbItem>,
+    currentUserId: String,
+    currentDisplayName: String,
+    accentColor: Color,
+    isDark: Boolean,
+    textColor: Color,
+    customAvatarUriString: String?,
+    shufflingColors: List<Color>,
+    selectedMemberIndex: Int,
+    onSelectedMemberIndexChange: (Int) -> Unit,
+    onNavigateToCamera: () -> Unit,
+    capturedVlogsPaths: List<String>,
+    selectedPageIndex: Int,
+    onSelectedPageIndexChange: (Int) -> Unit,
+    isEditingCaption: Boolean,
+    onIsEditingCaptionChange: (Boolean) -> Unit,
+    showDeleteVlogConfirmation: Boolean,
+    onShowDeleteVlogConfirmationChange: (Boolean) -> Unit,
+    editCaptionText: androidx.compose.ui.text.input.TextFieldValue,
+    onEditCaptionTextChange: (androidx.compose.ui.text.input.TextFieldValue) -> Unit,
+    onUpdateVlogCaption: (Int, String) -> Unit,
+    density: androidx.compose.ui.unit.Density,
+    context: android.content.Context
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val screenHeightDp = maxHeight
+        val screenWidthDp = maxWidth
+
+        val totalSlots = maxOf(groupMembers.size, pal.size.toIntOrNull() ?: 4)
+        val isGrid = totalSlots > 5
+        val contentSpacingDp = if (isGrid) 2.dp else 9.dp
+        val topPaddingDp = 100.dp
+        val bottomPaddingDp = 24.dp
+        val rows = (totalSlots + 1) / 2
+
+        val totalSpacing = contentSpacingDp * (if (isGrid) (rows - 1) else (totalSlots - 1))
+        val availableHeight = screenHeightDp - topPaddingDp - bottomPaddingDp - totalSpacing
+
+        val cardHeightDp = if (isGrid) {
+            val cardWidthDpGrid = (screenWidthDp - contentSpacingDp) / 2
+            (availableHeight / rows).coerceAtMost(cardWidthDpGrid)
+        } else {
+            val cardWidthDp = screenWidthDp - 16.dp
+            val maxCardHeight = cardWidthDp * (9f / 16f)
+            (availableHeight / totalSlots).coerceAtMost(maxCardHeight)
+        }
+
+        val cardWidthDpGrid = (screenWidthDp - contentSpacingDp) / 2
+        val cardHeightDpGrid = cardHeightDp
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = topPaddingDp, bottom = bottomPaddingDp)
+                .padding(horizontal = if (isGrid) 0.dp else 8.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (totalSlots <= 5) {
+                for (index in 0 until totalSlots) {
+                    GroupMemberCard(
+                        index = index,
+                        isGrid = false,
+                        cardHeightDp = cardHeightDp,
+                        groupMembers = groupMembers,
+                        userFirstName = userFirstName,
+                        filteredSubmissions = filteredSubmissions,
+                        currentUserId = currentUserId,
+                        currentDisplayName = currentDisplayName,
+                        accentColor = accentColor,
+                        isDark = isDark,
+                        textColor = textColor,
+                        customAvatarUriString = customAvatarUriString,
+                        shufflingColors = shufflingColors,
+                        selectedMemberIndex = selectedMemberIndex,
+                        onSelectedMemberIndexChange = onSelectedMemberIndexChange,
+                        onNavigateToCamera = onNavigateToCamera,
+                        onEditCaptionClick = {
+                            val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                            if (userSub != null) {
+                                val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                val userFilteredIndex = capturedVlogsPaths.indexOf(userPath)
+                                if (userFilteredIndex != -1) {
+                                    onSelectedPageIndexChange(userFilteredIndex)
+                                    onIsEditingCaptionChange(true)
+                                }
+                            }
+                        },
+                        onDeleteClick = {
+                            val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                            if (userSub != null) {
+                                val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                val userFilteredIndex = capturedVlogsPaths.indexOf(userPath)
+                                if (userFilteredIndex != -1) {
+                                    onSelectedPageIndexChange(userFilteredIndex)
+                                    onShowDeleteVlogConfirmationChange(true)
+                                }
+                            }
+                        },
+                        onInviteClick = {
+                            try {
+                                val sendIntent = android.content.Intent().apply {
+                                    action = android.content.Intent.ACTION_SEND
+                                    putExtra(android.content.Intent.EXTRA_TEXT, "Join my pal code: ${pal.code}")
+                                    type = "text/plain"
+                                }
+                                val shareIntent = android.content.Intent.createChooser(sendIntent, null)
+                                context.startActivity(shareIntent)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        },
+                        density = density,
+                        context = context
+                    )
+                }
+            } else {
+                val rows = (totalSlots + 1) / 2
+                for (r in 0 until rows) {
+                    val index1 = r * 2
+                    val index2 = r * 2 + 1
+
+                    if (index2 < totalSlots) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(contentSpacingDp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                GroupMemberCard(
+                                    index = index1,
+                                    isGrid = true,
+                                    cardHeightDp = cardHeightDpGrid,
+                                    groupMembers = groupMembers,
+                                    userFirstName = userFirstName,
+                                    filteredSubmissions = filteredSubmissions,
+                                    currentUserId = currentUserId,
+                                    currentDisplayName = currentDisplayName,
+                                    accentColor = accentColor,
+                                    isDark = isDark,
+                                    textColor = textColor,
+                                    customAvatarUriString = customAvatarUriString,
+                                    shufflingColors = shufflingColors,
+                                    selectedMemberIndex = selectedMemberIndex,
+                                    onSelectedMemberIndexChange = onSelectedMemberIndexChange,
+                                    onNavigateToCamera = onNavigateToCamera,
+                                    onEditCaptionClick = {
+                                        val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                                        if (userSub != null) {
+                                            val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                            val userFilteredIndex = capturedVlogsPaths.indexOf(userPath)
+                                            if (userFilteredIndex != -1) {
+                                                onSelectedPageIndexChange(userFilteredIndex)
+                                                onIsEditingCaptionChange(true)
+                                            }
+                                        }
+                                    },
+                                    onDeleteClick = {
+                                        val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                                        if (userSub != null) {
+                                            val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                            val userFilteredIndex = capturedVlogsPaths.indexOf(userPath)
+                                            if (userFilteredIndex != -1) {
+                                                onSelectedPageIndexChange(userFilteredIndex)
+                                                onShowDeleteVlogConfirmationChange(true)
+                                            }
+                                        }
+                                    },
+                                    onInviteClick = {
+                                        try {
+                                            val sendIntent = android.content.Intent().apply {
+                                                action = android.content.Intent.ACTION_SEND
+                                                putExtra(android.content.Intent.EXTRA_TEXT, "Join my pal code: ${pal.code}")
+                                                type = "text/plain"
+                                            }
+                                            val shareIntent = android.content.Intent.createChooser(sendIntent, null)
+                                            context.startActivity(shareIntent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    },
+                                    density = density,
+                                    context = context
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                GroupMemberCard(
+                                    index = index2,
+                                    isGrid = true,
+                                    cardHeightDp = cardHeightDpGrid,
+                                    groupMembers = groupMembers,
+                                    userFirstName = userFirstName,
+                                    filteredSubmissions = filteredSubmissions,
+                                    currentUserId = currentUserId,
+                                    currentDisplayName = currentDisplayName,
+                                    accentColor = accentColor,
+                                    isDark = isDark,
+                                    textColor = textColor,
+                                    customAvatarUriString = customAvatarUriString,
+                                    shufflingColors = shufflingColors,
+                                    selectedMemberIndex = selectedMemberIndex,
+                                    onSelectedMemberIndexChange = onSelectedMemberIndexChange,
+                                    onNavigateToCamera = onNavigateToCamera,
+                                    onEditCaptionClick = {
+                                        val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                                        if (userSub != null) {
+                                            val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                            val userFilteredIndex = capturedVlogsPaths.indexOf(userPath)
+                                            if (userFilteredIndex != -1) {
+                                                onSelectedPageIndexChange(userFilteredIndex)
+                                                onIsEditingCaptionChange(true)
+                                            }
+                                        }
+                                    },
+                                    onDeleteClick = {
+                                        val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                                        if (userSub != null) {
+                                            val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                            val userFilteredIndex = capturedVlogsPaths.indexOf(userPath)
+                                            if (userFilteredIndex != -1) {
+                                                onSelectedPageIndexChange(userFilteredIndex)
+                                                onShowDeleteVlogConfirmationChange(true)
+                                            }
+                                        }
+                                    },
+                                    onInviteClick = {
+                                        try {
+                                            val sendIntent = android.content.Intent().apply {
+                                                action = android.content.Intent.ACTION_SEND
+                                                putExtra(android.content.Intent.EXTRA_TEXT, "Join my pal code: ${pal.code}")
+                                                type = "text/plain"
+                                            }
+                                            val shareIntent = android.content.Intent.createChooser(sendIntent, null)
+                                            context.startActivity(shareIntent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    },
+                                    density = density,
+                                    context = context
+                                )
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Box(modifier = Modifier.width(cardWidthDpGrid)) {
+                                GroupMemberCard(
+                                    index = index1,
+                                    isGrid = true,
+                                    cardHeightDp = cardHeightDpGrid,
+                                    groupMembers = groupMembers,
+                                    userFirstName = userFirstName,
+                                    filteredSubmissions = filteredSubmissions,
+                                    currentUserId = currentUserId,
+                                    currentDisplayName = currentDisplayName,
+                                    accentColor = accentColor,
+                                    isDark = isDark,
+                                    textColor = textColor,
+                                    customAvatarUriString = customAvatarUriString,
+                                    shufflingColors = shufflingColors,
+                                    selectedMemberIndex = selectedMemberIndex,
+                                    onSelectedMemberIndexChange = onSelectedMemberIndexChange,
+                                    onNavigateToCamera = onNavigateToCamera,
+                                    onEditCaptionClick = {
+                                        val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                                        if (userSub != null) {
+                                            val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                            val userFilteredIndex = capturedVlogsPaths.indexOf(userPath)
+                                            if (userFilteredIndex != -1) {
+                                                onSelectedPageIndexChange(userFilteredIndex)
+                                                onIsEditingCaptionChange(true)
+                                            }
+                                        }
+                                    },
+                                    onDeleteClick = {
+                                        val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                                        if (userSub != null) {
+                                            val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                            val userFilteredIndex = capturedVlogsPaths.indexOf(userPath)
+                                            if (userFilteredIndex != -1) {
+                                                onSelectedPageIndexChange(userFilteredIndex)
+                                                onShowDeleteVlogConfirmationChange(true)
+                                            }
+                                        }
+                                    },
+                                    onInviteClick = {
+                                        try {
+                                            val sendIntent = android.content.Intent().apply {
+                                                action = android.content.Intent.ACTION_SEND
+                                                putExtra(android.content.Intent.EXTRA_TEXT, "Join my pal code: ${pal.code}")
+                                                type = "text/plain"
+                                            }
+                                            val shareIntent = android.content.Intent.createChooser(sendIntent, null)
+                                            context.startActivity(shareIntent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    },
+                                    density = density,
+                                    context = context
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (isEditingCaption) {
+            Dialog(onDismissRequest = { onIsEditingCaptionChange(false) }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(if (isDark) Color(0xFF2B2930) else Color(0xFFF5F3EB))
+                        .padding(24.dp)
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Edit Caption",
+                            fontFamily = BricolageVariableFontFamily,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color.White else Color.Black
+                        )
+
+                        val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+                        LaunchedEffect(Unit) {
+                            focusRequester.requestFocus()
+                        }
+
+                        OutlinedTextField(
+                            value = editCaptionText,
+                            onValueChange = onEditCaptionTextChange,
+                            placeholder = {
+                                Text(
+                                    text = "write caption...",
+                                    color = if (isDark) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.5f)
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = if (isDark) Color.White else Color.Black,
+                                unfocusedTextColor = if (isDark) Color.White else Color.Black,
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.2f)
+                            ),
+                            textStyle = TextStyle(
+                                fontFamily = RobotoFontFamily,
+                                fontSize = 16.sp
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
+                            singleLine = true
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Cancel",
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF6750A4),
+                                modifier = Modifier
+                                    .clickable { onIsEditingCaptionChange(false) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
+                            
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Text(
+                                text = "Save",
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = accentColor,
+                                modifier = Modifier
+                                    .clickable {
+                                        val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                                        if (userSub != null) {
+                                            val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                            val userFilteredIndex = capturedVlogsPaths.indexOf(userPath)
+                                            if (userFilteredIndex != -1) {
+                                                onUpdateVlogCaption(userFilteredIndex, editCaptionText.text.trim())
+                                            }
+                                        }
+                                        onIsEditingCaptionChange(false)
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun VlogScreenContent(
@@ -5046,6 +6077,28 @@ fun VlogScreenContent(
 
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
+    var selectedMemberIndex by remember(pal.code) { mutableStateOf(0) }
+    val activePalSubmissions = remember(pal.code, params.allPalsSubmissions) {
+        params.allPalsSubmissions[pal.code] ?: emptyList<SubmissionDbItem>()
+    }
+    val targetDate = remember(selectedDayOffset) {
+        java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
+    }
+    val filteredSubmissions = remember(activePalSubmissions, targetDate) {
+        activePalSubmissions.filter { sub ->
+            getSubmissionLocalDate(sub) == targetDate
+        }
+    }
+    val shufflingColors = remember {
+        listOf(
+            Color(0xFFFFE600), // Yellow
+            Color(0xFFFF6700), // Orange
+            Color(0xFFFF007F), // Pink
+            Color(0xFF00F0FF), // Blue
+            Color(0xFFB000FF), // Purple
+            Color(0xFFFF073A)  // Red
+        )
+    }
     var selectedPageIndex by remember(pal.code) { mutableStateOf(0) }
     var inMembersSubMenu by remember { mutableStateOf(false) }
     var capsuleLeftDp by remember { mutableStateOf(0.dp) }
@@ -5129,619 +6182,35 @@ fun VlogScreenContent(
                 )
             } else {
                 if (!pal.isVlog) {
-                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                        val density = androidx.compose.ui.platform.LocalDensity.current
-                        val screenHeightDp = maxHeight
-                        val screenWidthDp = maxWidth
-                        val cardWidthDp = screenWidthDp - 16.dp
-
-                        val totalSlots = maxOf(groupMembers.size, pal.size.toIntOrNull() ?: 4)
-                        val spacingDp = 9.dp
-                        val headerHeightDp = 80.dp
-                        val bottomPaddingDp = 24.dp
-
-                        val totalSpacing = spacingDp * (totalSlots - 1)
-                        val availableHeight = screenHeightDp - headerHeightDp - bottomPaddingDp - totalSpacing
-
-                        val calculatedCardHeight = availableHeight / totalSlots
-                        val maxCardHeight = cardWidthDp * (9f / 16f)
-                        val cardHeightDp = calculatedCardHeight.coerceIn(100.dp, maxCardHeight)
-
-                        val activePalSubmissions: List<SubmissionDbItem> = remember(pal.code, params.allPalsSubmissions) {
-                            params.allPalsSubmissions[pal.code] ?: emptyList<SubmissionDbItem>()
-                        }
-                        val targetDate = remember(params.selectedDayOffset) {
-                            java.time.LocalDate.now().minusDays(params.selectedDayOffset.toLong())
-                        }
-                        val filteredSubmissions: List<SubmissionDbItem> = remember(activePalSubmissions, targetDate) {
-                            activePalSubmissions.filter { sub ->
-                                getSubmissionLocalDate(sub) == targetDate
-                            }
-                        }
-
-                        val totalCardsHeight = (cardHeightDp * totalSlots) + totalSpacing
-                        val topSpacerHeightDp = if (screenHeightDp > totalCardsHeight + 80.dp) {
-                            (screenHeightDp - totalCardsHeight) / 2
-                        } else {
-                            80.dp
-                        }
-
-                        var selectedMemberIndex by remember(pal.code) { mutableStateOf(0) }
-
-                        val shufflingColors = listOf(
-                            Color(0xFFFFE600), // Yellow
-                            Color(0xFFFF6700), // Orange
-                            Color(0xFFFF007F), // Pink
-                            Color(0xFF00F0FF), // Blue
-                            Color(0xFFB000FF), // Purple
-                            Color(0xFFFF073A)  // Red
-                        )
-
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(top = topSpacerHeightDp + 7.5.dp)
-                                .padding(horizontal = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(9.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            for (index in 0 until totalSlots) {
-                                val isActualMember = index < groupMembers.size
-                                val memberName = if (isActualMember) groupMembers[index] else null
-                                val isUser = index == 0 || (memberName != null && (memberName.contains("(You)") || memberName == userFirstName))
-
-                                val memberSub = if (isActualMember) {
-                                    filteredSubmissions.firstOrNull { sub ->
-                                        if (isUser) {
-                                            sub.userId == currentUserId
-                                        } else {
-                                            val cleanSubName = sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                                            cleanSubName.equals(memberName, ignoreCase = true)
-                                        }
-                                    }
-                                } else {
-                                    null
-                                }
-                                val hasSubmission = memberSub != null
-
-                                if (index == selectedMemberIndex && hasSubmission) {
-                                    // ACTIVE VIDEO CARD PLAYER
-                                    val videoPath = memberSub!!.imageUrl.split("|||").firstOrNull() ?: ""
-                                    val caption = memberSub.imageUrl.split("|||").getOrNull(1) ?: ""
-                                    val timeText = if (!memberSub.createdAt.isNullOrEmpty()) {
-                                        try {
-                                            val instant = java.time.Instant.parse(memberSub.createdAt)
-                                            val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
-                                            zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
-                                        } catch (e: Exception) {
-                                            memberSub.createdAt.substringAfter("T").substringBefore(".").take(5)
-                                        }
-                                    } else {
-                                        "12:00"
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(cardHeightDp)
-                                            .clip(RoundedCornerShape(28.dp))
-                                            .background(Color.Black)
-                                    ) {
-                                        val localPlayer = remember(videoPath) {
-                                            androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-                                                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                                                volume = 0f
-                                                val cleanPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
-                                                val file = java.io.File(cleanPath)
-                                                if (file.exists()) {
-                                                    setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
-                                                    prepare()
-                                                }
-                                            }
-                                        }
-
-                                        DisposableEffect(localPlayer) {
-                                            onDispose {
-                                                localPlayer.release()
-                                            }
-                                        }
-
-                                        LaunchedEffect(localPlayer) {
-                                            localPlayer.playWhenReady = true
-                                        }
-
-                                        androidx.compose.ui.viewinterop.AndroidView(
-                                            factory = { ctx ->
-                                                val view = android.view.LayoutInflater.from(ctx)
-                                                    .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                                view.apply {
-                                                    player = localPlayer
-                                                    useController = false
-                                                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-
-                                                    localPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                                                        override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                                            super.onVideoSizeChanged(videoSize)
-                                                            val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                                                            val containerWidth = width.toFloat()
-                                                            val containerHeight = height.toFloat()
-                                                            if (containerWidth > 0f && containerHeight > 0f) {
-                                                                if (videoSize.height > videoSize.width) {
-                                                                    val scaleX = containerHeight / containerWidth
-                                                                    val scaleY = containerWidth / containerHeight
-                                                                    textureView.scaleX = scaleX
-                                                                    textureView.scaleY = scaleY
-                                                                    textureView.rotation = 270f
-                                                                } else {
-                                                                    textureView.scaleX = 1.0f
-                                                                    textureView.scaleY = 1.0f
-                                                                    textureView.rotation = 0f
-                                                                }
-                                                            }
-                                                        }
-                                                    })
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-
-                                        // Overlay 1: Avatar and Name (Top Left)
-                                        Row(
-                                            modifier = Modifier
-                                                .align(Alignment.TopStart)
-                                                .padding(top = 12.dp, start = 16.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                             val userAvatar = if (isUser) customAvatarUriString else null
-                                             if (userAvatar != null) {
-                                                 UriImage(
-                                                     uriString = userAvatar,
-                                                     modifier = Modifier
-                                                         .size(24.dp)
-                                                         .clip(CircleShape)
-                                                         .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                                 )
-                                             } else {
-                                                 Box(
-                                                     modifier = Modifier
-                                                         .size(24.dp)
-                                                         .clip(CircleShape)
-                                                         .background(accentColor),
-                                                     contentAlignment = Alignment.Center
-                                                 ) {
-                                                     Image(
-                                                         painter = painterResource(id = R.drawable.smile_medium),
-                                                         contentDescription = null,
-                                                         modifier = Modifier.fillMaxSize()
-                                                     )
-                                                 }
-                                             }
-
-                                            Text(
-                                                text = if (isUser) userFirstName else (memberName ?: ""),
-                                                fontFamily = FontFamily.SansSerif,
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = Color.White
-                                            )
-                                        }
-
-                                        // Overlay 2: Time Text (Center)
-                                        Text(
-                                            text = timeText,
-                                            fontFamily = BricolageVariableFontFamily,
-                                            fontSize = 22.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            modifier = Modifier.align(Alignment.Center)
-                                        )
-
-                                        // Overlay 3: Caption Text
-                                        if (caption.isNotEmpty()) {
-                                            Text(
-                                                text = caption,
-                                                fontFamily = RobotoFontFamily,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = Color.White,
-                                                modifier = Modifier
-                                                    .align(Alignment.BottomCenter)
-                                                    .padding(bottom = 36.dp),
-                                                style = TextStyle(
-                                                    shadow = androidx.compose.ui.graphics.Shadow(
-                                                        color = Color.Black.copy(alpha = 0.5f),
-                                                        offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                                        blurRadius = 3f
-                                                    )
-                                                )
-                                            )
-                                        }
-
-                                        // Overlay 4: Triple dots at bottom right
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.BottomEnd)
-                                                .padding(bottom = 12.dp, end = 16.dp)
-                                                .clickable {
-                                                    selectedPageIndex = index
-                                                    showTripleDotMenu = true
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = "•••",
-                                                fontSize = 18.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            )
-                                        }
-                                    }
-                                } else if (isUser && !hasSubmission) {
-                                    // BOUNCING SCREEN SAVER CARD FOR USER (Slot 0, empty)
-                                    BoxWithConstraints(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(cardHeightDp)
-                                            .clip(RoundedCornerShape(28.dp))
-                                            .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE5E5EA))
-                                            .border(
-                                                width = 1.dp,
-                                                color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
-                                                shape = RoundedCornerShape(28.dp)
-                                            )
-                                    ) {
-                                        val widthPx = with(density) { maxWidth.toPx() }
-                                        val heightPx = with(density) { maxHeight.toPx() }
-                                        val smileySizePx = with(density) { 50.dp.toPx() }
-
-                                        var groupPosX by remember { mutableStateOf(0f) }
-                                        var groupPosY by remember { mutableStateOf(0f) }
-                                        var groupSmileRotation by remember { mutableStateOf(0f) }
-                                        var groupSmileColorIndex by remember { mutableStateOf(0) }
-
-                                        LaunchedEffect(widthPx, heightPx) {
-                                            if (widthPx <= 0f || heightPx <= 0f) return@LaunchedEffect
-                                            groupPosX = (widthPx - smileySizePx) / 2f
-                                            groupPosY = (heightPx - smileySizePx) / 2f
-
-                                            val speed = with(density) { 100.dp.toPx() }
-                                            var vx = speed * 0.76f
-                                            var vy = speed * 0.65f
-
-                                            var lastTime = androidx.compose.runtime.withFrameNanos { it }
-
-                                            while (true) {
-                                                androidx.compose.runtime.withFrameNanos { time ->
-                                                    val dt = (time - lastTime) / 1_000_000_000f
-                                                    lastTime = time
-
-                                                    val cappedDt = dt.coerceAtMost(0.1f)
-
-                                                    var newX = groupPosX + vx * cappedDt
-                                                    var newY = groupPosY + vy * cappedDt
-
-                                                    var collided = false
-
-                                                    val minX = 0f
-                                                    val maxX = widthPx - smileySizePx
-                                                    val minY = 0f
-                                                    val maxY = heightPx - smileySizePx
-
-                                                    if (maxX > 0f) {
-                                                        if (newX <= minX) {
-                                                            newX = minX
-                                                            vx = -vx
-                                                            collided = true
-                                                        } else if (newX >= maxX) {
-                                                            newX = maxX
-                                                            vx = -vx
-                                                            collided = true
-                                                        }
-                                                    }
-
-                                                    if (maxY > 0f) {
-                                                        if (newY <= minY) {
-                                                            newY = minY
-                                                            vy = -vy
-                                                            collided = true
-                                                        } else if (newY >= maxY) {
-                                                            newY = maxY
-                                                            vy = -vy
-                                                            collided = true
-                                                        }
-                                                    }
-
-                                                    groupPosX = newX
-                                                    groupPosY = newY
-
-                                                    groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
-
-                                                    if (collided) {
-                                                        groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        Box(
-                                            modifier = Modifier
-                                                .size(50.dp)
-                                                .offset(
-                                                    x = with(density) { groupPosX.toDp() },
-                                                    y = with(density) { groupPosY.toDp() }
-                                                )
-                                                .rotate(groupSmileRotation)
-                                                .clip(CircleShape)
-                                                .background(shufflingColors[groupSmileColorIndex]),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Image(
-                                                painter = painterResource(id = R.drawable.capture_smile),
-                                                contentDescription = null,
-                                                modifier = Modifier.fillMaxSize()
-                                            )
-                                        }
-
-                                        Row(
-                                            modifier = Modifier
-                                                .align(Alignment.TopStart)
-                                                .padding(top = 12.dp, start = 16.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            if (customAvatarUriString != null) {
-                                                UriImage(
-                                                    uriString = customAvatarUriString,
-                                                    modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(CircleShape)
-                                                        .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                                )
-                                            } else {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(CircleShape)
-                                                        .background(accentColor),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Image(
-                                                        painter = painterResource(id = R.drawable.smile_medium),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                }
-                                            }
-
-                                            Text(
-                                                text = userFirstName,
-                                                fontFamily = FontFamily.SansSerif,
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = textColor
-                                            )
-                                        }
-
-                                        val now = java.time.LocalTime.now()
-                                        val roundedHourStr = String.format("%02d:00", now.hour)
-
-                                        Column(
-                                            modifier = Modifier.align(Alignment.Center),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = roundedHourStr,
-                                                fontFamily = BricolageVariableFontFamily,
-                                                fontSize = 22.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = textColor
-                                            )
-
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(22.dp))
-                                                    .background(
-                                                        if (isDark) Color.Black.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.35f)
-                                                    )
-                                                    .clickable { onNavigateToCamera() }
-                                                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = "tap to capture",
-                                                    fontFamily = GoogleSansFontFamily,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isDark) Color.White else Color.Black
-                                                )
-                                            }
-                                        }
-                                    }
-                                } else if (isActualMember) {
-                                    // OTHER MEMBER CARD (either has submission but not active, or doesn't have submission)
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(cardHeightDp)
-                                            .clip(RoundedCornerShape(28.dp))
-                                            .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE5E5EA))
-                                            .border(
-                                                width = 1.dp,
-                                                color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
-                                                shape = RoundedCornerShape(28.dp)
-                                            )
-                                            .then(
-                                                if (hasSubmission) {
-                                                    Modifier.clickable { selectedMemberIndex = index }
-                                                } else {
-                                                    Modifier
-                                                }
-                                            )
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .align(Alignment.TopStart)
-                                                .padding(top = 12.dp, start = 16.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            val userAvatar = if (isUser) customAvatarUriString else null
-                                            if (userAvatar != null) {
-                                                UriImage(
-                                                    uriString = userAvatar,
-                                                    modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(CircleShape)
-                                                        .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                                )
-                                            } else {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(CircleShape)
-                                                        .background(accentColor),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Image(
-                                                        painter = painterResource(id = R.drawable.smile_medium),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.fillMaxSize()
-                                                    )
-                                                }
-                                            }
-
-                                            Text(
-                                                text = memberName ?: "",
-                                                fontFamily = FontFamily.SansSerif,
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = textColor
-                                            )
-                                        }
-
-                                        val displayTimeText = if (hasSubmission) {
-                                            val sub = memberSub!!
-                                            if (!sub.createdAt.isNullOrEmpty()) {
-                                                try {
-                                                    val instant = java.time.Instant.parse(sub.createdAt)
-                                                    val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
-                                                    zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
-                                                } catch (e: Exception) {
-                                                    sub.createdAt.substringAfter("T").substringBefore(".").take(5)
-                                                }
-                                            } else {
-                                                "12:00"
-                                            }
-                                        } else {
-                                            "4:00"
-                                        }
-
-                                        Text(
-                                            text = displayTimeText,
-                                            fontFamily = BricolageVariableFontFamily,
-                                            fontSize = 22.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = textColor,
-                                            modifier = Modifier.align(Alignment.Center)
-                                        )
-
-                                        val outerColor = shufflingColors[index % 6]
-                                        val innerColor = shufflingColors[(index + 3) % 6]
-
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.CenterEnd)
-                                                .padding(end = 24.dp)
-                                                .size(44.dp)
-                                                .then(
-                                                    if (hasSubmission) {
-                                                        Modifier.border(2.dp, outerColor, CircleShape)
-                                                    } else {
-                                                        Modifier
-                                                    }
-                                                ),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            val currentInnerSize = if (hasSubmission) 34.dp else 44.dp
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(currentInnerSize)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        if (hasSubmission) innerColor else (if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA))
-                                                    ),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Image(
-                                                    painter = painterResource(id = R.drawable.smile_small),
-                                                    contentDescription = "Status Smiley",
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    colorFilter = ColorFilter.tint(
-                                                        if (hasSubmission) {
-                                                            Color.Black
-                                                        } else {
-                                                            if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.3f)
-                                                        }
-                                                    )
-                                                )
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    // INVITE SLOT (totalSlots > actualMembers)
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(cardHeightDp)
-                                            .clip(RoundedCornerShape(28.dp))
-                                            .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE5E5EA))
-                                            .border(
-                                                width = 1.dp,
-                                                color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
-                                                shape = RoundedCornerShape(28.dp)
-                                            )
-                                            .clickable {
-                                                try {
-                                                    val sendIntent = android.content.Intent().apply {
-                                                        action = android.content.Intent.ACTION_SEND
-                                                        putExtra(android.content.Intent.EXTRA_TEXT, "Join my pal code: ${pal.code}")
-                                                        type = "text/plain"
-                                                    }
-                                                    val shareIntent = android.content.Intent.createChooser(sendIntent, null)
-                                                    context.startActivity(shareIntent)
-                                                } catch (e: Exception) {
-                                                    e.printStackTrace()
-                                                }
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Add,
-                                                contentDescription = "Add Friend",
-                                                tint = textColor,
-                                                modifier = Modifier.size(28.dp)
-                                            )
-                                            Text(
-                                                text = "invite a friend",
-                                                fontFamily = FontFamily.SansSerif,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = textColor
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(100.dp))
-                        }
-                    }
+                    GroupScreenContent(
+                        params = params,
+                        pal = pal,
+                        groupMembers = groupMembers,
+                        userFirstName = userFirstName,
+                        filteredSubmissions = filteredSubmissions,
+                        currentUserId = currentUserId,
+                        currentDisplayName = currentDisplayName,
+                        accentColor = accentColor,
+                        isDark = isDark,
+                        textColor = textColor,
+                        customAvatarUriString = customAvatarUriString,
+                        shufflingColors = shufflingColors,
+                        selectedMemberIndex = selectedMemberIndex,
+                        onSelectedMemberIndexChange = { selectedMemberIndex = it },
+                        onNavigateToCamera = onNavigateToCamera,
+                        capturedVlogsPaths = capturedVlogsPaths,
+                        selectedPageIndex = selectedPageIndex,
+                        onSelectedPageIndexChange = { selectedPageIndex = it },
+                        isEditingCaption = isEditingCaption,
+                        onIsEditingCaptionChange = { isEditingCaption = it },
+                        showDeleteVlogConfirmation = showDeleteVlogConfirmation,
+                        onShowDeleteVlogConfirmationChange = { showDeleteVlogConfirmation = it },
+                        editCaptionText = editCaptionText,
+                        onEditCaptionTextChange = { editCaptionText = it },
+                        onUpdateVlogCaption = onUpdateVlogCaption,
+                        density = density,
+                        context = context
+                    )
                 } else {
                     // main centered vlog video card
                     val density = androidx.compose.ui.platform.LocalDensity.current
