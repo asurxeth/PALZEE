@@ -9857,6 +9857,853 @@ fun VideoPlayerItem(videoPath: String, modifier: Modifier = Modifier) {
             },
             modifier = Modifier.fillMaxSize()
         )
+}
+
+@Composable
+fun DeleteVlogConfirmationDialog(
+    showDeleteVlogConfirmation: Boolean,
+    isDark: Boolean,
+    capturedVlogsPaths: List<String>,
+    selectedPageIndex: Int,
+    onSelectedPageIndexChange: (Int) -> Unit,
+    onShowDeleteVlogConfirmationChange: (Boolean) -> Unit,
+    onDeleteVlog: (Int) -> Unit
+) {
+    if (!showDeleteVlogConfirmation) return
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.45f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onShowDeleteVlogConfirmationChange(false) },
+        contentAlignment = Alignment.Center
+    ) {
+        val dialogBg = if (isDark) Color(0xFF2B2930) else Color(0xFFF5F3EB)
+        val titleColor = if (isDark) Color(0xFFE6E1E5) else Color(0xFF1C1B1F)
+        val buttonColor = Color(0xFF6750A4)
+        val deleteButtonColor = Color(0xFFBA1A1A)
+
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 24.dp)
+                .widthIn(max = 320.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(dialogBg)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}
+                )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Do you wish to delete this pal ? This action can't be undone",
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = titleColor,
+                    lineHeight = 22.sp
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Cancel",
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = buttonColor,
+                        modifier = Modifier
+                            .clickable { onShowDeleteVlogConfirmationChange(false) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                    
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Text(
+                        text = "delete",
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = deleteButtonColor,
+                        modifier = Modifier
+                            .clickable {
+                                val indexToDelete = selectedPageIndex
+                                onShowDeleteVlogConfirmationChange(false)
+                                val nextIndex = if (capturedVlogsPaths.size <= 1) 0 else selectedPageIndex.coerceAtMost(capturedVlogsPaths.size - 2)
+                                onSelectedPageIndexChange(nextIndex)
+                                onDeleteVlog(indexToDelete)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ReplyPreviewOverlay(
+    activeReplyPreviewPath: String?,
+    palName: String,
+    accentColor: Color,
+    onActiveReplyPreviewPathChange: (String?) -> Unit
+) {
+    if (activeReplyPreviewPath == null) return
+    val videoPath = activeReplyPreviewPath
+    androidx.activity.compose.BackHandler {
+        onActiveReplyPreviewPathChange(null)
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.95f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        var replyInput by remember { mutableStateOf("") }
+        val context = LocalContext.current
+
+        // 1. Top Header
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, top = 20.dp)
+                .height(60.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.1f))
+                    .clickable { onActiveReplyPreviewPathChange(null) },
+                contentAlignment = Alignment.Center
+            ) {
+                ChevronLeftIcon(
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Text(
+                text = palName,
+                fontFamily = BricolageVariableFontFamily,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
+        // 2. Centered Video with White Border (few dp's above center)
+        Column(
+            modifier = Modifier
+                .offset(y = (-40).dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(260.dp)
+                    .height(156.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(2.dp, Color.White, RoundedCornerShape(16.dp))
+            ) {
+                VideoPlayerItem(
+                    videoPath = videoPath,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+
+        // 3. Message Input Bar at bottom
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .imePadding()
+                .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                androidx.compose.foundation.text.BasicTextField(
+                    value = replyInput,
+                    onValueChange = { replyInput = it },
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 14.sp,
+                        color = Color.White
+                    ),
+                    singleLine = true,
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                    modifier = Modifier.fillMaxWidth(),
+                    decorationBox = { innerTextField ->
+                        if (replyInput.isEmpty()) {
+                            Text(
+                                text = "message",
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 14.sp,
+                                color = Color.White.copy(alpha = 0.5f)
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+            }
+
+            val isReplyValid = replyInput.trim().isNotEmpty()
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(if (isReplyValid) accentColor else Color.White.copy(alpha = 0.1f))
+                    .clickable(enabled = isReplyValid) {
+                        Toast.makeText(context, "Reply sent!", Toast.LENGTH_SHORT).show()
+                        onActiveReplyPreviewPathChange(null)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send",
+                    tint = if (isReplyValid) Color.White else Color.White.copy(alpha = 0.4f),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ReactionPreviewOverlay(
+    activeReactionPreview: Pair<String, String>?,
+    palName: String,
+    onActiveReactionPreviewChange: (Pair<String, String>?) -> Unit
+) {
+    if (activeReactionPreview == null) return
+    val (videoPath, emoji) = activeReactionPreview
+    androidx.activity.compose.BackHandler {
+        onActiveReactionPreviewChange(null)
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.95f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        // 1. Top Header
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp, top = 20.dp)
+                .height(60.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.1f))
+                    .clickable { onActiveReactionPreviewChange(null) },
+                contentAlignment = Alignment.Center
+            ) {
+                ChevronLeftIcon(
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Text(
+                text = palName,
+                fontFamily = BricolageVariableFontFamily,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
+        // 2. Centered Video with White Border and Reaction Emoji underneath
+        Column(
+            modifier = Modifier
+                .offset(y = (-40).dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(260.dp)
+                    .height(156.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .border(2.2.dp, Color.White, RoundedCornerShape(16.dp))
+            ) {
+                VideoPlayerItem(
+                    videoPath = videoPath,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Text(
+                text = emoji,
+                fontSize = 64.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun PalChatOverlay(
+    showChat: Boolean,
+    pal: PalDbItem,
+    isDark: Boolean,
+    textColor: Color,
+    mutedTextColor: Color,
+    accentColor: Color,
+    headerButtonBg: Color,
+    selectedProfileColor: Color,
+    capturedVlogsPaths: List<String>,
+    capturedVlogsCaptions: List<String>,
+    allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
+    currentUserId: String,
+    currentDisplayName: String,
+    palReactions: Map<String, String>,
+    onEmojiReacted: (String, String) -> Unit,
+    onActiveReplyPreviewPathChange: (String?) -> Unit,
+    onShowChatChange: (Boolean) -> Unit,
+    onNavigateToCamera: () -> Unit,
+    onSendMessage: (String) -> Unit
+) {
+    if (!showChat) return
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isDark) Color.Black else PalBackground)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {}
+            )
+    ) {
+        var messageInput by remember { mutableStateOf("") }
+        val context = LocalContext.current
+        val defaultEmojis = remember { listOf("😂", "❤️", "😭", "✨", "🥺", "🔥", "🥰", "🎉", "💀", "👍", "🙏", "💯", "😎", "👀") }
+        var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }
+
+        val feedItems = remember(pal.code, capturedVlogsPaths, allPalsSubmissions, currentUserId) {
+            if (pal.isVlog) {
+                capturedVlogsPaths.mapIndexedNotNull { idx, path ->
+                    val cleanPath = if (path.startsWith("file://")) path.substring(7) else path
+                    val file = java.io.File(cleanPath)
+                    if (file.exists()) {
+                        val instant = java.time.Instant.ofEpochMilli(file.lastModified())
+                        val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                        val dayDateStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d", java.util.Locale.US))
+                        val timeStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US))
+                        val caption = capturedVlogsCaptions.getOrNull(idx) ?: ""
+                        FeedItem(
+                            path = path,
+                            caption = caption,
+                            userId = currentUserId,
+                            userDisplayName = currentDisplayName,
+                            dayDateStr = dayDateStr,
+                            timeStr = timeStr,
+                            rawInstant = instant,
+                            localDate = zonedDateTime.toLocalDate(),
+                            isUser = true
+                        )
+                    } else {
+                        null
+                    }
+                }
+                .sortedBy { it.rawInstant }
+            } else {
+                val subs = allPalsSubmissions[pal.code] ?: emptyList()
+                subs.mapNotNull { sub ->
+                    val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                    val caption = sub.imageUrl.split("|||").getOrNull(1) ?: ""
+                    val cleanPath = if (path.startsWith("file://")) path.substring(7) else path
+                    val file = java.io.File(cleanPath)
+                    if (file.exists() || path.isNotEmpty()) {
+                        val instant = if (!sub.createdAt.isNullOrEmpty()) {
+                            try {
+                                java.time.Instant.parse(sub.createdAt)
+                            } catch (e: Exception) {
+                                java.time.Instant.now()
+                            }
+                        } else {
+                            java.time.Instant.now()
+                        }
+                        val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                        val dayDateStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d", java.util.Locale.US))
+                        val timeStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US))
+                        FeedItem(
+                            path = path,
+                            caption = caption,
+                            userId = sub.userId,
+                            userDisplayName = sub.userDisplayName,
+                            dayDateStr = dayDateStr,
+                            timeStr = timeStr,
+                            rawInstant = instant,
+                            localDate = zonedDateTime.toLocalDate(),
+                            isUser = (sub.userId == currentUserId)
+                        )
+                    } else {
+                        null
+                    }
+                }
+                .sortedBy { it.rawInstant }
+            }
+        }
+
+        val groupedByDay = remember(feedItems) {
+            feedItems.groupBy { it.localDate }
+        }
+
+        var showEmojiOverlayForPath by remember { mutableStateOf<String?>(null) }
+
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // 1. Scrollable feed column
+            if (feedItems.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 64.dp, bottom = 80.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "no captured pals yet",
+                        fontFamily = OwnglyphFontFamily,
+                        fontSize = 24.5.sp,
+                        color = mutedTextColor,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 64.dp, bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp)
+                ) {
+                    groupedByDay.keys.sorted().forEach { dayDate ->
+                        val dayFeed = groupedByDay[dayDate] ?: emptyList()
+                        val today = java.time.LocalDate.now()
+                        val dayLabel = when (dayDate) {
+                            today -> "Today"
+                            today.minusDays(1) -> "Yesterday"
+                            else -> dayDate.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d", java.util.Locale.US))
+                        }
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            dayFeed.forEach { feedItem ->
+                                val headerText = "$dayLabel ${feedItem.timeStr}"
+
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    // 1. Centered Date/Time header
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = headerText,
+                                            color = textColor.copy(alpha = 0.6f),
+                                            fontSize = 13.sp,
+                                            fontFamily = FontFamily.SansSerif,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+
+                                    // 2. Aligned message body
+                                    if (feedItem.isUser) {
+                                        // USER (Right Aligned)
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(end = 17.dp),
+                                            horizontalAlignment = Alignment.End
+                                        ) {
+                                            Text(
+                                                text = "apple_user",
+                                                fontFamily = FontFamily.SansSerif,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Normal,
+                                                color = textColor.copy(alpha = 0.6f),
+                                                modifier = Modifier.padding(bottom = 2.dp, end = 4.dp)
+                                            )
+
+                                            VideoPlayerItem(
+                                                videoPath = feedItem.path,
+                                                modifier = Modifier
+                                                    .width(210.dp)
+                                                    .height(125.dp)
+                                                    .clip(RoundedCornerShape(16.dp))
+                                            )
+
+                                            val reactedEmoji = palReactions[feedItem.path]
+                                            if (reactedEmoji != null) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = reactedEmoji,
+                                                    fontSize = 20.sp,
+                                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        // OTHERS (Left Aligned)
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(start = 24.dp),
+                                            horizontalAlignment = Alignment.Start
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier.padding(bottom = 4.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .clip(CircleShape)
+                                                        .background(accentColor),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Image(
+                                                        painter = painterResource(id = R.drawable.smile_medium),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                }
+                                                val cleanName = feedItem.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                                Text(
+                                                    text = cleanName,
+                                                    color = textColor,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = FontFamily.SansSerif
+                                                )
+                                            }
+
+                                            Column(
+                                                modifier = Modifier.width(210.dp)
+                                            ) {
+                                                VideoPlayerItem(
+                                                    videoPath = feedItem.path,
+                                                    modifier = Modifier
+                                                        .width(210.dp)
+                                                        .height(125.dp)
+                                                        .clip(RoundedCornerShape(16.dp))
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                                                        contentDescription = "Reply",
+                                                        tint = textColor.copy(alpha = 0.8f),
+                                                        modifier = Modifier
+                                                            .graphicsLayer(scaleX = -1f)
+                                                            .size(20.dp)
+                                                            .clickable {
+                                                                onActiveReplyPreviewPathChange(feedItem.path)
+                                                            }
+                                                    )
+                                                    Icon(
+                                                        imageVector = Icons.Default.FavoriteBorder,
+                                                        contentDescription = "Love",
+                                                        tint = textColor.copy(alpha = 0.8f),
+                                                        modifier = Modifier
+                                                            .size(20.dp)
+                                                            .clickable {
+                                                                showEmojiOverlayForPath = feedItem.path
+                                                            }
+                                                    )
+                                                    
+                                                    val reactedEmoji = palReactions[feedItem.path]
+                                                    if (reactedEmoji != null) {
+                                                        Text(text = reactedEmoji, fontSize = 20.sp)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. View Log Card
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 8.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFF5F3EB))
+                                    .border(1.dp, selectedProfileColor, RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        Toast.makeText(context, "view log clicked for $dayLabel", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Text(
+                                    text = dayLabel,
+                                    color = textColor,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.SansSerif,
+                                    modifier = Modifier.align(Alignment.CenterStart)
+                                )
+                                Text(
+                                    text = "view log",
+                                    color = Color(0xFFFF007F),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.SansSerif,
+                                    modifier = Modifier.align(Alignment.CenterEnd)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Emoji Reaction Overlay
+            if (showEmojiOverlayForPath != null) {
+                val path = showEmojiOverlayForPath!!
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            showEmojiOverlayForPath = null
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(30.dp))
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(30.dp))
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        currentEmojis.forEach { emoji ->
+                            Text(
+                                text = emoji,
+                                fontSize = 26.sp,
+                                modifier = Modifier
+                                    .clickable {
+                                        onEmojiReacted(path, emoji)
+                                        showEmojiOverlayForPath = null
+                                    }
+                            )
+                        }
+
+                        val stroke = remember { androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = 3f,
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                        ) }
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clickable {
+                                    currentEmojis = defaultEmojis.shuffled().take(5)
+                                }
+                                .drawBehind {
+                                    drawCircle(color = Color.White.copy(alpha = 0.6f), style = stroke)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Shuffle",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2. Header Box
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .height(60.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(y = 2.dp)
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(headerButtonBg)
+                        .clickable { onShowChatChange(false) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    ChevronLeftIcon(
+                        tint = textColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Text(
+                    text = pal.name,
+                    fontFamily = BricolageVariableFontFamily,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = 2.dp)
+                )
+            }
+
+            // 3. Footer Row
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF161616) else Color(0xFFEBEBEB))
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f), CircleShape)
+                        .clickable {
+                            onNavigateToCamera()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(accentColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.capture_smile),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .graphicsLayer(rotationZ = -180f)
+                                .fillMaxSize()
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .border(1.dp, if (isDark) Color(0xFF333333) else Color(0xFFCCCCCC), RoundedCornerShape(22.dp))
+                        .background(Color.Transparent)
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = messageInput,
+                        onValueChange = { messageInput = it },
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = FontFamily.SansSerif,
+                            fontSize = 14.sp,
+                            color = textColor
+                        ),
+                        singleLine = true,
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(textColor),
+                        modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { innerTextField ->
+                            if (messageInput.isEmpty()) {
+                                Text(
+                                    text = "message",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 14.sp,
+                                    color = mutedTextColor
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                }
+
+                val isInputValid = messageInput.trim().isNotEmpty()
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (isInputValid) accentColor else headerButtonBg)
+                        .clickable(enabled = isInputValid) {
+                            onSendMessage(messageInput.trim())
+                            messageInput = ""
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send",
+                        tint = if (isInputValid) Color.White else textColor.copy(alpha = 0.4f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
