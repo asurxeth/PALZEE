@@ -1,0 +1,18 @@
+# Env file
+.env
+
+# Local properties file
+local.properties
+
+# Gradle layers
+.gradle/
+build/
+app/build/
+
+# Android Studio & VS Code layers
+.idea/
+*.iml
+.vscode/
+
+# System files
+.DS_Store
