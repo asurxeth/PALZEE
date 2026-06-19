@@ -27,6 +27,9 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -4960,6 +4963,7 @@ fun GroupMemberCard(
     }
     val hasSubmission = memberSub != null
     var showDropdownMenu by remember { mutableStateOf(false) }
+    var isLoved by rememberSaveable { mutableStateOf(false) }
 
     if (index == selectedMemberIndex && hasSubmission) {
         // ACTIVE VIDEO CARD PLAYER
@@ -5163,6 +5167,48 @@ fun GroupMemberCard(
                         )
                     }
                 }
+            } else {
+                // Reply Icon at middle right
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = if (isGrid) 10.dp else 16.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            Toast.makeText(context, "Reply to ${memberName ?: "member"}", Toast.LENGTH_SHORT).show()
+                        }
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Reply,
+                        contentDescription = "Reply",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .graphicsLayer(scaleX = -1f)
+                            .size(if (isGrid) 20.dp else 28.dp)
+                    )
+                }
+
+                // Love Icon at bottom right
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            isLoved = !isLoved
+                        }
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isLoved) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Love",
+                        tint = if (isLoved) Color.Red else Color.White,
+                        modifier = Modifier.size(if (isGrid) 20.dp else 28.dp)
+                    )
+                }
             }
         }
     } else if (isUser && !hasSubmission) {
@@ -5303,12 +5349,14 @@ fun GroupMemberCard(
                     }
                 }
 
+                val userEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
+                val userEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color.Black
                 Text(
                     text = userFirstName,
                     fontFamily = FontFamily.SansSerif,
                     fontSize = if (isGrid) 12.sp else 15.sp,
                     fontWeight = FontWeight.Normal,
-                    color = textColor
+                    color = userEmptyTextColor
                 )
             }
 
@@ -5320,12 +5368,14 @@ fun GroupMemberCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(if (isGrid) 4.dp else 6.dp)
             ) {
+                val userEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
+                val userEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color.Black
                 Text(
                     text = roundedHourStr,
                     fontFamily = BricolageVariableFontFamily,
                     fontSize = if (isGrid) 16.sp else 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = textColor
+                    color = userEmptyTextColor
                 )
 
                 Box(
@@ -5343,7 +5393,7 @@ fun GroupMemberCard(
                         fontFamily = GoogleSansFontFamily,
                         fontSize = if (isGrid) 10.sp else 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color.White else Color.Black
+                        color = userEmptyCaptureColor
                     )
                 }
             }
@@ -5362,7 +5412,7 @@ fun GroupMemberCard(
                     text = "•••",
                     fontSize = if (isGrid) 14.sp else 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isDark) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.7f)
+                    color = if (isDark) Color(0xFF8E8E93) else Color.Black.copy(alpha = 0.7f)
                 )
             }
         }
@@ -5419,12 +5469,13 @@ fun GroupMemberCard(
                     }
                 }
 
+                val actualMemberTextColor = if (isUser && hasSubmission) Color.White else textColor
                 Text(
                     text = memberName ?: "",
                     fontFamily = FontFamily.SansSerif,
                     fontSize = if (isGrid) 12.sp else 15.sp,
                     fontWeight = FontWeight.Normal,
-                    color = textColor
+                    color = actualMemberTextColor
                 )
             }
 
@@ -5445,12 +5496,13 @@ fun GroupMemberCard(
                 "4:00"
             }
 
+            val actualMemberTextColor = if (isUser && hasSubmission) Color.White else textColor
             Text(
                 text = displayTimeText,
                 fontFamily = BricolageVariableFontFamily,
                 fontSize = if (isGrid) 16.sp else 22.sp,
                 fontWeight = FontWeight.Bold,
-                color = textColor,
+                color = actualMemberTextColor,
                 modifier = Modifier.align(Alignment.Center)
             )
 
@@ -6725,12 +6777,13 @@ fun VlogScreenContent(
                                     }
                                 }
 
+                                val vlogEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
                                 Text(
                                     text = currentDisplayName,
                                     fontFamily = FontFamily.SansSerif,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Normal,
-                                    color = textColor
+                                    color = vlogEmptyTextColor
                                 )
                             }
 
@@ -6743,12 +6796,13 @@ fun VlogScreenContent(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                val vlogEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
                                 Text(
                                     text = if (showEdit && editName.isNotEmpty()) editName else pal.name,
                                     fontFamily = BricolageVariableFontFamily,
                                     fontSize = 19.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = textColor
+                                    color = vlogEmptyTextColor
                                 )
 
                                 Text(
@@ -6756,7 +6810,7 @@ fun VlogScreenContent(
                                     fontFamily = RobotoFontFamily,
                                     fontSize = 12.5.sp, // reduced to 12.5sp exactly
                                     fontWeight = FontWeight.Normal,
-                                    color = textColor
+                                    color = vlogEmptyTextColor
                                 )
                             }
 
@@ -6772,12 +6826,13 @@ fun VlogScreenContent(
                                     .padding(horizontal = 12.dp, vertical = 4.dp),
                                 contentAlignment = Alignment.Center
                             ) {
+                                val vlogEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color.Black
                                 Text(
                                     text = "tap to capture",
                                     fontFamily = GoogleSansFontFamily,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color.White else Color.Black
+                                    color = vlogEmptyCaptureColor
                                 )
                             }
                         }
@@ -11060,12 +11115,13 @@ fun VlogEmptyStateContent(
                     }
 
                     val firstName = currentDisplayName.substringBefore(" ")
+                    val vlogEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
                     Text(
                         text = firstName,
                         fontFamily = FontFamily.SansSerif,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Normal,
-                        color = textColor
+                        color = vlogEmptyTextColor
                     )
                 }
 
@@ -11077,6 +11133,7 @@ fun VlogEmptyStateContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    val vlogEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.offset(y = 2.5.dp)
@@ -11086,14 +11143,14 @@ fun VlogEmptyStateContent(
                             fontFamily = BricolageVariableFontFamily,
                             fontSize = 21.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = textColor
+                            color = vlogEmptyTextColor
                         )
                         Text(
                             text = ":",
                             fontFamily = BricolageVariableFontFamily,
                             fontSize = 21.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = textColor,
+                            color = vlogEmptyTextColor,
                             modifier = Modifier.offset(y = (-1.5).dp)
                         )
                         Text(
@@ -11101,7 +11158,7 @@ fun VlogEmptyStateContent(
                             fontFamily = BricolageVariableFontFamily,
                             fontSize = 21.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = textColor
+                            color = vlogEmptyTextColor
                         )
                     }
 
@@ -11115,12 +11172,13 @@ fun VlogEmptyStateContent(
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
+                        val vlogEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color.Black
                         Text(
                             text = "tap to capture",
                             fontFamily = GoogleSansFontFamily,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color.White else Color.Black
+                            color = vlogEmptyCaptureColor
                         )
                     }
                 }
