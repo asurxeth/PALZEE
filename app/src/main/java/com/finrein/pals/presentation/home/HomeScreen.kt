@@ -1827,24 +1827,11 @@ fun HomeScreen(
                         onDeleteVlog = { indexToDelete ->
                             if (indexToDelete in filteredPaths.indices) {
                                 val deletedPath = filteredPaths[indexToDelete]
-                                val globalIndex = capturedVlogsPaths.indexOf(deletedPath)
-                                if (globalIndex != -1) {
-                                    val palCode = activeVlogPal?.code ?: "vlog"
-                                    
-                                    val updatedPaths = ArrayList(capturedVlogsPaths).apply { removeAt(globalIndex) }
-                                    val updatedTimes = ArrayList(capturedVlogsTimes).apply { if (globalIndex < size) removeAt(globalIndex) }
-                                    val updatedCaptions = ArrayList(capturedVlogsCaptions).apply { if (globalIndex < size) removeAt(globalIndex) }
-                                    val updatedDurations = ArrayList(capturedVlogsDurations).apply { if (globalIndex < size) removeAt(globalIndex) }
-                                    
-                                    sharedPrefs.edit().apply {
-                                        putString("vlog_paths", updatedPaths.joinToString(";;;"))
-                                        putString("vlog_times", updatedTimes.joinToString(";;;"))
-                                        putString("vlog_captions", updatedCaptions.joinToString(";;;"))
-                                        putString("vlog_durations", updatedDurations.joinToString(";;;"))
-                                        apply()
-                                    }
-                                    
-                                    // Add to local deleted blacklist in sharedPrefs
+                                val palCode = activeVlogPal?.code ?: "vlog"
+                                
+                                if (palCode != "vlog") {
+                                    // GROUP PAL DELETION
+                                    // 1. Add to local deleted blacklist in sharedPrefs
                                     val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
                                     val currentDeleted = if (savedDeleted.isEmpty()) mutableSetOf<String>() else savedDeleted.split(";;;").toMutableSet()
                                     
@@ -1859,23 +1846,17 @@ fun HomeScreen(
                                     }
                                     sharedPrefs.edit().putString(deletedVlogsKey, currentDeleted.joinToString(";;;")).apply()
 
-                                    // Also remove from allPalsSubmissions if it's a group pal
-                                    if (palCode != "vlog") {
-                                        val currentSubs = allPalsSubmissions[palCode]
-                                        if (currentSubs != null) {
-                                            val updatedSubs = currentSubs.filterNot { 
-                                                val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
-                                                pathPart == deletedPath || it.imageUrl == deletedPath
-                                            }
-                                            allPalsSubmissions[palCode] = updatedSubs
+                                    // 2. Remove from allPalsSubmissions
+                                    val currentSubs = allPalsSubmissions[palCode]
+                                    if (currentSubs != null) {
+                                        val updatedSubs = currentSubs.filterNot { 
+                                            val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
+                                            pathPart == deletedPath || it.imageUrl == deletedPath
                                         }
+                                        allPalsSubmissions[palCode] = updatedSubs
                                     }
-
-                                    capturedVlogsPaths = updatedPaths
-                                    capturedVlogsTimes = updatedTimes
-                                    capturedVlogsCaptions = updatedCaptions
-                                    capturedVlogsDurations = updatedDurations
                                     
+                                    // 3. Delete from Supabase
                                     coroutineScope.launch {
                                         try {
                                             val dbSubs = supabaseClient.postgrest.from("submissions")
@@ -1897,36 +1878,100 @@ fun HomeScreen(
                                                     }
                                                 }
                                             }
+                                            refreshActivePalDetails(palCode)
                                         } catch (e: Exception) {
                                             e.printStackTrace()
                                         }
                                     }
-                                    
-                                    vlogExoPlayer.stop()
-                                    vlogExoPlayer.clearMediaItems()
-                                    val newFilteredPaths = updatedPaths.filter { getVlogLocalDate(it) == targetDate }
-                                    newFilteredPaths.forEach { path ->
+                                } else {
+                                    // STANDARD VLOG DELETION
+                                    val globalIndex = capturedVlogsPaths.indexOf(deletedPath)
+                                    if (globalIndex != -1) {
+                                        val updatedPaths = ArrayList(capturedVlogsPaths).apply { removeAt(globalIndex) }
+                                        val updatedTimes = ArrayList(capturedVlogsTimes).apply { if (globalIndex < size) removeAt(globalIndex) }
+                                        val updatedCaptions = ArrayList(capturedVlogsCaptions).apply { if (globalIndex < size) removeAt(globalIndex) }
+                                        val updatedDurations = ArrayList(capturedVlogsDurations).apply { if (globalIndex < size) removeAt(globalIndex) }
+                                        
+                                        sharedPrefs.edit().apply {
+                                            putString("vlog_paths", updatedPaths.joinToString(";;;"))
+                                            putString("vlog_times", updatedTimes.joinToString(";;;"))
+                                            putString("vlog_captions", updatedCaptions.joinToString(";;;"))
+                                            putString("vlog_durations", updatedDurations.joinToString(";;;"))
+                                            apply()
+                                        }
+                                        
+                                        // Add to local deleted blacklist in sharedPrefs
+                                        val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
+                                        val currentDeleted = if (savedDeleted.isEmpty()) mutableSetOf<String>() else savedDeleted.split(";;;").toMutableSet()
+                                        
                                         val cleanPath = when {
-                                            path.startsWith("file://") -> path.substring(7)
-                                            else -> path
+                                            deletedPath.startsWith("file://") -> deletedPath.substring(7)
+                                            else -> deletedPath
                                         }
-                                        val fileTarget = java.io.File(cleanPath)
-                                        if (fileTarget.exists() && fileTarget.length() > 0) {
-                                            val targetUri = android.net.Uri.fromFile(fileTarget)
-                                            vlogExoPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
+                                        currentDeleted.add(deletedPath)
+                                        currentDeleted.add(cleanPath)
+                                        if (!deletedPath.startsWith("file://")) {
+                                            currentDeleted.add("file://$deletedPath")
                                         }
-                                    }
-                                    if (newFilteredPaths.isNotEmpty()) {
-                                        val nextIndex = indexToDelete.coerceAtMost(newFilteredPaths.lastIndex)
-                                        if (nextIndex < vlogExoPlayer.mediaItemCount) {
-                                            vlogExoPlayer.seekTo(nextIndex, 0L)
-                                            vlogExoPlayer.prepare()
-                                            vlogExoPlayer.playWhenReady = true
-                                            vlogExoPlayer.play()
+                                        sharedPrefs.edit().putString(deletedVlogsKey, currentDeleted.joinToString(";;;")).apply()
+
+                                        capturedVlogsPaths = updatedPaths
+                                        capturedVlogsTimes = updatedTimes
+                                        capturedVlogsCaptions = updatedCaptions
+                                        capturedVlogsDurations = updatedDurations
+                                        
+                                        coroutineScope.launch {
+                                            try {
+                                                val dbSubs = supabaseClient.postgrest.from("submissions")
+                                                    .select {
+                                                        filter {
+                                                            eq("pal_code", palCode)
+                                                            eq("user_id", currentUserId)
+                                                        }
+                                                    }
+                                                    .decodeList<SubmissionDbItem>()
+                                                val targetSub = dbSubs.firstOrNull { 
+                                                    val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
+                                                    pathPart == deletedPath || it.imageUrl == deletedPath 
+                                                }
+                                                if (targetSub != null && targetSub.id != null) {
+                                                    supabaseClient.postgrest.from("submissions").delete {
+                                                        filter {
+                                                            eq("id", targetSub.id)
+                                                        }
+                                                    }
+                                                }
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
                                         }
-                                        currentPlayingIndex = nextIndex
-                                    } else {
-                                        currentPlayingIndex = 0
+                                        
+                                        vlogExoPlayer.stop()
+                                        vlogExoPlayer.clearMediaItems()
+                                        val newFilteredPaths = updatedPaths.filter { getVlogLocalDate(it) == targetDate }
+                                        newFilteredPaths.forEach { path ->
+                                            val cleanPath2 = when {
+                                                path.startsWith("file://") -> path.substring(7)
+                                                else -> path
+                                            }
+                                            val fileTarget = java.io.File(cleanPath2)
+                                            if (fileTarget.exists() && fileTarget.length() > 0) {
+                                                val targetUri = android.net.Uri.fromFile(fileTarget)
+                                                vlogExoPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
+                                            }
+                                        }
+                                        if (newFilteredPaths.isNotEmpty()) {
+                                            val nextIndex = indexToDelete.coerceAtMost(newFilteredPaths.lastIndex)
+                                            if (nextIndex < vlogExoPlayer.mediaItemCount) {
+                                                vlogExoPlayer.seekTo(nextIndex, 0L)
+                                                vlogExoPlayer.prepare()
+                                                vlogExoPlayer.playWhenReady = true
+                                                vlogExoPlayer.play()
+                                            }
+                                            currentPlayingIndex = nextIndex
+                                        } else {
+                                            currentPlayingIndex = 0
+                                        }
                                     }
                                 }
                             }
@@ -5437,6 +5482,67 @@ fun GroupMemberCard(
                     }
                 )
         ) {
+            if (hasSubmission) {
+                val videoPath = memberSub!!.imageUrl.split("|||").firstOrNull() ?: ""
+                val localPlayer = remember(videoPath) {
+                    androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+                        repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                        volume = 0f
+                        val cleanPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
+                        val file = java.io.File(cleanPath)
+                        if (file.exists()) {
+                            setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
+                            prepare()
+                        }
+                    }
+                }
+
+                DisposableEffect(localPlayer) {
+                    onDispose {
+                        localPlayer.release()
+                    }
+                }
+
+                LaunchedEffect(localPlayer) {
+                    localPlayer.playWhenReady = true
+                }
+
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { ctx ->
+                        val view = android.view.LayoutInflater.from(ctx)
+                            .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                        view.apply {
+                            player = localPlayer
+                            useController = false
+                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+
+                            localPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                    super.onVideoSizeChanged(videoSize)
+                                    val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
+                                    val containerWidth = width.toFloat()
+                                    val containerHeight = height.toFloat()
+                                    if (containerWidth > 0f && containerHeight > 0f) {
+                                        if (videoSize.height > videoSize.width) {
+                                            val scaleX = containerHeight / containerWidth
+                                            val scaleY = containerWidth / containerHeight
+                                            textureView.scaleX = scaleX
+                                            textureView.scaleY = scaleY
+                                            textureView.rotation = 270f
+                                        } else {
+                                            textureView.scaleX = 1.0f
+                                            textureView.scaleY = 1.0f
+                                            textureView.rotation = 0f
+                                        }
+                                    }
+                                }
+                            })
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -5469,7 +5575,7 @@ fun GroupMemberCard(
                     }
                 }
 
-                val actualMemberTextColor = if (isUser && hasSubmission) Color.White else textColor
+                val actualMemberTextColor = if (hasSubmission) Color.White else textColor
                 Text(
                     text = memberName ?: "",
                     fontFamily = FontFamily.SansSerif,
@@ -5496,7 +5602,7 @@ fun GroupMemberCard(
                 "4:00"
             }
 
-            val actualMemberTextColor = if (isUser && hasSubmission) Color.White else textColor
+            val actualMemberTextColor = if (hasSubmission) Color.White else textColor
             Text(
                 text = displayTimeText,
                 fontFamily = BricolageVariableFontFamily,
