@@ -140,7 +140,7 @@ fun PalGroupGridScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Image(
-                                        painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                        painter = painterResource(id = R.drawable.smile_medium),
                                         contentDescription = "Profile Avatar",
                                         modifier = Modifier.fillMaxSize()
                                     )
@@ -167,7 +167,7 @@ fun PalGroupGridScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
-                                painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                painter = painterResource(id = R.drawable.capture_smile),
                                 contentDescription = null,
                                 modifier = Modifier
                                     .fillMaxSize()

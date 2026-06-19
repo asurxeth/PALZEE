@@ -1979,7 +1979,8 @@ fun HomeScreen(
                     },
                         selectedDayOffset = selectedDayOffset,
                         onSelectedDayOffsetChange = { selectedDayOffset = it },
-                        allPalsSubmissions = allPalsSubmissions
+                        allPalsSubmissions = allPalsSubmissions,
+                        allPalsMembers = allPalsMembers
                     )
             )
             } else if (selectedTab == "camera") {
@@ -4271,7 +4272,7 @@ fun GroupMembersSmileysRow(
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                        painter = painterResource(id = R.drawable.smile_small),
                         contentDescription = "Smiley",
                         modifier = Modifier.fillMaxSize(),
                         colorFilter = ColorFilter.tint(
@@ -4912,6 +4913,7 @@ data class VlogScreenContentParams(
     val selectedDayOffset: Int = 0,
     val onSelectedDayOffsetChange: (Int) -> Unit = {},
     val allPalsSubmissions: Map<String, List<SubmissionDbItem>> = emptyMap(),
+    val allPalsMembers: Map<String, List<String>> = emptyMap(),
     val currentUserId: String = ""
 )
 
@@ -4990,7 +4992,21 @@ fun VlogScreenContent(
     val userFirstName = remember(currentDisplayName) {
         currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
     }
-    var groupMembers by remember(pal.code) { mutableStateOf(listOf<String>()) }
+    var groupMembers by remember(pal.code) {
+        val cached = params.allPalsMembers[pal.code]
+        val initialList = if (cached != null) {
+            cached.map { name ->
+                if (name == userFirstName || name == "$userFirstName (You)") {
+                    "$userFirstName (You)"
+                } else {
+                    name
+                }
+            }
+        } else {
+            listOf("$userFirstName (You)")
+        }
+        mutableStateOf(initialList)
+    }
     LaunchedEffect(pal.code, currentDisplayName) {
         if (pal.isVlog) {
             groupMembers = listOf("$userFirstName (You)")
@@ -5165,7 +5181,7 @@ fun VlogScreenContent(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState())
-                                .padding(top = topSpacerHeightDp)
+                                .padding(top = topSpacerHeightDp + 7.5.dp)
                                 .padding(horizontal = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(9.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
@@ -5279,33 +5295,29 @@ fun VlogScreenContent(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                              val userAvatar = if (isUser) customAvatarUriString else null
-                                            if (userAvatar != null) {
-                                                UriImage(
-                                                    uriString = userAvatar,
-                                                    modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(CircleShape)
-                                                        .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                                )
-                                            } else {
-                                                val displayNameToUse = if (isUser) currentDisplayName else (memberName ?: "")
-                                                val firstLetter = displayNameToUse.firstOrNull()?.toString()?.uppercase() ?: "?"
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(CircleShape)
-                                                        .background(shufflingColors[index % 6]),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Text(
-                                                        text = firstLetter,
-                                                        fontFamily = FontFamily.SansSerif,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.Black
-                                                    )
-                                                }
-                                            }
+                                             if (userAvatar != null) {
+                                                 UriImage(
+                                                     uriString = userAvatar,
+                                                     modifier = Modifier
+                                                         .size(24.dp)
+                                                         .clip(CircleShape)
+                                                         .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                                 )
+                                             } else {
+                                                 Box(
+                                                     modifier = Modifier
+                                                         .size(24.dp)
+                                                         .clip(CircleShape)
+                                                         .background(accentColor),
+                                                     contentAlignment = Alignment.Center
+                                                 ) {
+                                                     Image(
+                                                         painter = painterResource(id = R.drawable.smile_medium),
+                                                         contentDescription = null,
+                                                         modifier = Modifier.fillMaxSize()
+                                                     )
+                                                 }
+                                             }
 
                                             Text(
                                                 text = if (isUser) userFirstName else (memberName ?: ""),
@@ -5496,7 +5508,7 @@ fun VlogScreenContent(
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     Image(
-                                                        painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                                        painter = painterResource(id = R.drawable.smile_medium),
                                                         contentDescription = null,
                                                         modifier = Modifier.fillMaxSize()
                                                     )
@@ -5576,21 +5588,29 @@ fun VlogScreenContent(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            val firstLetter = memberName?.firstOrNull()?.toString()?.uppercase() ?: "?"
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(24.dp)
-                                                    .clip(CircleShape)
-                                                    .background(shufflingColors[index % 6]),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = firstLetter,
-                                                    fontFamily = FontFamily.SansSerif,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color.Black
+                                            val userAvatar = if (isUser) customAvatarUriString else null
+                                            if (userAvatar != null) {
+                                                UriImage(
+                                                    uriString = userAvatar,
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .clip(CircleShape)
+                                                        .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
                                                 )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .clip(CircleShape)
+                                                        .background(accentColor),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Image(
+                                                        painter = painterResource(id = R.drawable.smile_medium),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                }
                                             }
 
                                             Text(
@@ -5656,7 +5676,7 @@ fun VlogScreenContent(
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Image(
-                                                    painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                                    painter = painterResource(id = R.drawable.smile_small),
                                                     contentDescription = "Status Smiley",
                                                     modifier = Modifier.fillMaxSize(),
                                                     colorFilter = ColorFilter.tint(
@@ -5915,7 +5935,7 @@ fun VlogScreenContent(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Image(
-                                                painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                                painter = painterResource(id = R.drawable.smile_medium),
                                                 contentDescription = null,
                                                 modifier = Modifier.fillMaxSize()
                                             )
@@ -6229,7 +6249,7 @@ fun VlogScreenContent(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Image(
-                                            painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                            painter = painterResource(id = R.drawable.smile_medium),
                                             contentDescription = null,
                                             modifier = Modifier.fillMaxSize()
                                         )
@@ -6534,7 +6554,7 @@ fun VlogScreenContent(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Image(
-                                            painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                            painter = painterResource(id = R.drawable.smile_small),
                                             contentDescription = null,
                                             modifier = Modifier.fillMaxSize(),
                                             colorFilter = ColorFilter.tint(Color.Black)
@@ -6591,7 +6611,7 @@ fun VlogScreenContent(
 
                     // Horizontal row of small smileys showing the pals sent to vlog menu count (spaced 12.5dp below capsule, filled with boundary/accentColor, with active ring)
                     Row(
-                        modifier = Modifier.offset(y = 35.dp), // offset downwards below the non-vlog capsule (shifted up by 7dp from 42dp to 35dp)
+                        modifier = Modifier.offset(y = 32.5.dp), // offset downwards below the non-vlog capsule (shifted up by 7dp from 42dp to 35dp)
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -6627,7 +6647,7 @@ fun VlogScreenContent(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Image(
-                                        painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                        painter = painterResource(id = R.drawable.smile_small),
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         colorFilter = ColorFilter.tint(if (isActive) Color.Black else Color.Black.copy(alpha = 0.5f))
@@ -7504,7 +7524,7 @@ fun VlogScreenContent(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Image(
-                                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_smiley_avatar),
+                                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.capture_smile),
                                     contentDescription = null,
                                     modifier = Modifier
                                         .graphicsLayer(rotationZ = -180f)
@@ -9691,7 +9711,7 @@ fun TripleDotMenuOverlay(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Image(
-                                            painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                            painter = painterResource(id = R.drawable.smile_medium),
                                             contentDescription = "Profile Avatar",
                                             modifier = Modifier.size(44.dp)
                                         )
@@ -10563,7 +10583,7 @@ fun VlogEmptyStateContent(
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
-                                painter = painterResource(id = R.drawable.ic_smiley_avatar),
+                                painter = painterResource(id = R.drawable.smile_medium),
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize()
                             )
