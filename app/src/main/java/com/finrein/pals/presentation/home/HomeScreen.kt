@@ -2310,7 +2310,7 @@ fun HomeScreen(
                 }
             }
         }
-}
+    }
 
         Box(
             modifier = Modifier
@@ -2473,8 +2473,6 @@ fun HomeScreen(
             onCurrentDisplayNameChange = { currentDisplayName = it },
             useDarkTextOnAccent = themeConfig.useDarkTextOnAccent
         )
-
-
     }
 }
 
@@ -4181,7 +4179,7 @@ fun SendToPalRow(
     val totalMembers = if (pal.isVlog) 1 else 1 + members.size
     val currentAlreadySent = submissions.any { it.userId == currentUserId }
     val uniqueSendersCount = submissions.map { it.userId }.distinct().size
-    val isCurrentUserLit = currentAlreadySent || isSelected
+    val isCurrentUserLit = currentAlreadySent || (isSelected && pal.isVlog)
     val litCount = if (isCurrentUserLit && !currentAlreadySent) {
         (uniqueSendersCount + 1).coerceAtMost(totalMembers)
     } else {
@@ -4339,7 +4337,9 @@ fun GroupMembersSmileysRow(
                     Image(
                         painter = painterResource(id = R.drawable.smile_small),
                         contentDescription = "Smiley",
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .rotate(if (isLit) 180f else 0f),
                         colorFilter = ColorFilter.tint(
                             if (isLit) {
                                 Color.Black
@@ -5153,7 +5153,9 @@ fun GroupMemberCard(
                         Image(
                             painter = painterResource(id = R.drawable.smile_medium),
                             contentDescription = null,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .rotate(180f)
                         )
                     }
                 }
@@ -5492,7 +5494,9 @@ fun GroupMemberCard(
                         Image(
                             painter = painterResource(id = R.drawable.smile_medium),
                             contentDescription = null,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .rotate(180f)
                         )
                     }
                 }
@@ -5673,7 +5677,9 @@ fun GroupMemberCard(
                         Image(
                             painter = painterResource(id = R.drawable.smile_medium),
                             contentDescription = null,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .rotate(if (hasSubmission) 180f else 0f)
                         )
                     }
                 }
@@ -5745,7 +5751,9 @@ fun GroupMemberCard(
                     Image(
                         painter = painterResource(id = R.drawable.smile_small),
                         contentDescription = "Status Smiley",
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .rotate(if (hasSubmission) 180f else 0f),
                         colorFilter = ColorFilter.tint(
                             if (hasSubmission) {
                                 Color.Black
@@ -6676,7 +6684,9 @@ fun VlogScreenContent(
                                             Image(
                                                 painter = painterResource(id = R.drawable.smile_medium),
                                                 contentDescription = null,
-                                                modifier = Modifier.fillMaxSize()
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .rotate(180f)
                                             )
                                         }
                                     }
@@ -6990,7 +7000,9 @@ fun VlogScreenContent(
                                         Image(
                                             painter = painterResource(id = R.drawable.smile_medium),
                                             contentDescription = null,
-                                            modifier = Modifier.fillMaxSize()
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .rotate(180f)
                                         )
                                     }
                                 }
@@ -7298,7 +7310,9 @@ fun VlogScreenContent(
                                         Image(
                                             painter = painterResource(id = R.drawable.smile_small),
                                             contentDescription = null,
-                                            modifier = Modifier.fillMaxSize(),
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .rotate(180f),
                                             colorFilter = ColorFilter.tint(Color.Black)
                                         )
                                     }
@@ -7391,7 +7405,9 @@ fun VlogScreenContent(
                                     Image(
                                         painter = painterResource(id = R.drawable.smile_small),
                                         contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(),
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .rotate(if (isActive) 180f else 0f),
                                         colorFilter = ColorFilter.tint(if (isActive) Color.Black else Color.Black.copy(alpha = 0.5f))
                                     )
                                 }
@@ -9090,6 +9106,7 @@ fun VideoPlayerItem(videoPath: String, modifier: Modifier = Modifier) {
             },
             modifier = Modifier.fillMaxSize()
         )
+    }
 }
 
 @Composable
@@ -9421,7 +9438,7 @@ fun ReactionPreviewOverlay(
 @Composable
 fun PalChatOverlay(
     showChat: Boolean,
-    pal: PalDbItem,
+    pal: PalItem,
     isDark: Boolean,
     textColor: Color,
     mutedTextColor: Color,
@@ -9649,7 +9666,9 @@ fun PalChatOverlay(
                                                     Image(
                                                         painter = painterResource(id = R.drawable.smile_medium),
                                                         contentDescription = null,
-                                                        modifier = Modifier.fillMaxSize()
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .rotate(180f)
                                                     )
                                                 }
                                                 val cleanName = feedItem.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
@@ -11659,7 +11678,7 @@ fun VlogArchiveCard(
                                                     modifier = Modifier
                                                         .fillMaxSize()
                                                         .padding(1.5.dp)
-                                                        .rotate(-180f),
+                                                        .rotate(180f),
                                                     contentScale = androidx.compose.ui.layout.ContentScale.Fit
                                                 )
                                             }
@@ -11869,7 +11888,9 @@ fun VlogEmptyStateContent(
                             Image(
                                 painter = painterResource(id = R.drawable.smile_medium),
                                 contentDescription = null,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .rotate(180f)
                             )
                         }
                     }
@@ -11994,6 +12015,7 @@ fun VlogEmptyStateContent(
         }
     }
 }
+
 
 
 
