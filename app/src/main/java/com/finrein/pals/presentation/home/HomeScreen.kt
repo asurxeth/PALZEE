@@ -648,9 +648,60 @@ fun HomeScreen(
         }
     }
     var isLoadingPals by remember { mutableStateOf(sessionManager.isFirstLogin()) }
-
     var selectedTab by rememberSaveable { mutableStateOf("pals") } // "camera" or "pals"
     var isRecordingCamera by remember { mutableStateOf(false) }
+
+    val storagePermissionString = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            android.Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+        }
+    }
+
+    val homePermissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ -> }
+
+    val homeCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    LaunchedEffect(onboardingFlowStep) {
+        if (onboardingFlowStep == 6) {
+            val hasMicrophone = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            val hasStorage = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, storagePermissionString
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            val permissionsToRequest = mutableListOf<String>()
+            if (!hasMicrophone) {
+                permissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO)
+            }
+            if (!hasStorage) {
+                permissionsToRequest.add(storagePermissionString)
+            }
+
+            if (permissionsToRequest.isNotEmpty()) {
+                homePermissionsLauncher.launch(permissionsToRequest.toTypedArray())
+            }
+        }
+    }
+
+    LaunchedEffect(selectedTab, onboardingFlowStep) {
+        if (onboardingFlowStep == 6 && selectedTab == "camera") {
+            val hasCamera = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.CAMERA
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (!hasCamera) {
+                homeCameraLauncher.launch(android.Manifest.permission.CAMERA)
+            }
+        }
+    }
 
 
 
@@ -702,7 +753,8 @@ fun HomeScreen(
             onboardingFlowStep = 4
         } else if (onboardingFlowStep == 0 && currentUserId.isNotEmpty()) {
             try {
-                val mappings = supabaseClient.postgrest.from("user_pals")
+                val supabase = com.finrein.pals.PALApplication.supabase
+                val mappings = supabase.postgrest.from("user_pals")
                     .select {
                         filter {
                             eq("user_id", currentUserId)
@@ -710,7 +762,7 @@ fun HomeScreen(
                     }
                     .decodeList<UserPalMapping>()
 
-                val dbSubmissions = supabaseClient.postgrest.from("submissions")
+                val dbSubmissions = supabase.postgrest.from("submissions")
                     .select {
                         filter {
                             eq("user_id", currentUserId)
@@ -3503,10 +3555,10 @@ fun CameraScreenContent(
         val progressWidth = 7.5.dp
 
         // Precise positioning constants for taller layout
-        val shutterBottomMargin = 100.dp
+        val shutterBottomMargin = 67.5.dp
         val shutterSize = 59.dp * scale
         val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
-        val cameraFrameBottomPadding = cardBottomPadding - 15.dp
+        val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
 
         // Dynamically calculate camera frame size to be exactly 7.5dp spaced from both ends of the screen
         var cameraWidth = screenWidth - 15.dp
@@ -3827,7 +3879,7 @@ fun CameraScreenContent(
         Canvas(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = cameraFrameBottomPadding - (67.dp * scale / 2f))
+                .padding(bottom = shutterBottomMargin + (shutterSize / 2f) - (67.dp * scale / 2f))
                 .size(67.dp * scale)
         ) {
             drawCircle(
@@ -3842,7 +3894,7 @@ fun CameraScreenContent(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(x = (-64).dp * scale)
-                .padding(bottom = cameraFrameBottomPadding - (36.dp * scale / 2f))
+                .padding(bottom = cameraFrameBottomPadding + 30.dp - (36.dp * scale / 2f))
                 .size(36.dp * scale)
                 .clip(CircleShape) // circular shape for soft click ripple!
                 .clickable {
@@ -5208,7 +5260,7 @@ fun GroupMemberCard(
             // Overlay 2: Time Text (Center)
             Text(
                 text = timeText,
-                fontFamily = BricolageVariableFontFamily,
+                fontFamily = DelaGothicOneFontFamily,
                 fontSize = if (isGrid) 16.sp else 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
@@ -5556,21 +5608,23 @@ fun GroupMemberCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(if (isGrid) 4.dp else 6.dp)
             ) {
-                val userEmptyTextColor = if (isDark) Color(0xFF5C5E62) else textColor
-                val userEmptyCaptureColor = if (isDark) Color(0xFF5C5E62) else Color.Black
+                val userEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
+                val userEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color.Black
                 Text(
                     text = roundedHourStr,
-                    fontFamily = BricolageVariableFontFamily,
+                    fontFamily = DelaGothicOneFontFamily,
                     fontSize = if (isGrid) 16.sp else 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = userEmptyTextColor
+                    color = userEmptyTextColor,
+                    modifier = Modifier.offset(y = 2.5.dp)
                 )
 
                 Box(
                     modifier = Modifier
+                        .offset(y = (-2.5).dp)
                         .clip(RoundedCornerShape(22.dp))
                         .background(
-                            if (isDark) Color.Black.copy(alpha = 0.35f) else Color.White
+                            if (isDark) Color.Black.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.35f)
                         )
                         .clickable { onNavigateToCamera() }
                         .padding(horizontal = if (isGrid) 8.dp else 12.dp, vertical = if (isGrid) 2.dp else 4.dp),
@@ -5750,7 +5804,7 @@ fun GroupMemberCard(
             val actualMemberTextColor = if (hasSubmission) Color.White else textColor
             Text(
                 text = displayTimeText,
-                fontFamily = BricolageVariableFontFamily,
+                fontFamily = DelaGothicOneFontFamily,
                 fontSize = if (isGrid) 16.sp else 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = actualMemberTextColor,
@@ -8138,10 +8192,10 @@ fun VlogScreenContent(
                 val scale = scaleHeight.coerceAtMost(scaleWidth).coerceAtMost(1.1f)
 
                 // Precise positioning and dimension logic matching the main camera frame exactly
-                val shutterBottomMargin = 100.dp
+                val shutterBottomMargin = 67.5.dp
                 val shutterSize = 59.dp * scale
                 val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
-                val cameraFrameBottomPadding = cardBottomPadding - 15.dp
+                val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
 
                 val cameraWidth = screenWidth - 15.dp
                 val cameraHeight = cameraWidth * (16f / 9f)
