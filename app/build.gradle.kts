@@ -24,6 +24,15 @@ android {
     namespace = "com.finrein.pals"
     compileSdk = 34
 
+    signingConfigs {
+        create("release") {
+            storeFile = project.rootProject.file("Palls.jks")
+            storePassword = "11223344"
+            keyAlias = "pals-release"
+            keyPassword = "11223344"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.finrein.pals"
         minSdk = 26
@@ -57,6 +66,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
