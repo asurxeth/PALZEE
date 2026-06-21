@@ -3683,29 +3683,13 @@ fun CameraScreenContent(
                                     .padding(vertical = 4.dp * scale),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(4.dp * scale)
-                                ) {
-                                    Text(
-                                        text = slot.toString(),
-                                        color = if (isSelected) selectedProfileColor else Color.White,
-                                        fontSize = (15 * scale).sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.rotate(-90f)
-                                    )
-                                    if (isSelected) {
-                                        Box(
-                                            modifier = Modifier
-                                                .width(12.dp * scale)
-                                                .height(2.5.dp * scale)
-                                                .clip(RoundedCornerShape(1.25.dp * scale))
-                                                .background(selectedProfileColor)
-                                        )
-                                    } else {
-                                        Spacer(modifier = Modifier.height(2.5.dp * scale))
-                                    }
-                                }
+                                Text(
+                                    text = slot.toString(),
+                                    color = if (isSelected) selectedProfileColor else Color.White,
+                                    fontSize = (15 * scale).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.rotate(-90f)
+                                )
                             }
                         }
                     }
