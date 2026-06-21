@@ -160,7 +160,7 @@ fun PalGroupGridScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
                             .padding(start = 8.dp, bottom = 4.dp)
-                            .offset(y = (-7.5).dp)
+                            .offset(y = (-15).dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -204,7 +204,7 @@ fun PalGroupGridScreen(
                                 .clip(RoundedCornerShape(28.dp))
                                 .background(Color.Black)
                                 .clickable { onPalClick(vlogPal) }
-                                .offset(y = (-7.5).dp)
+                                .offset(y = (-15).dp)
                         ) {
                             androidx.compose.ui.viewinterop.AndroidView(
                                 factory = { ctx ->
@@ -348,7 +348,7 @@ fun PalGroupGridScreen(
                         GlassmorphicCard(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .offset(y = (-7.5).dp),
+                                .offset(y = (-15).dp),
                             onClick = { onPalClick(vlogPal) },
                             borderRadius = 28.dp,
                             isDark = isDark,
@@ -411,7 +411,7 @@ fun PalGroupGridScreen(
             items(nonVlogGroups, span = { GridItemSpan(maxLineSpan) }) { group ->
                 PalGroupCard(
                     pal = group,
-                    modifier = Modifier.offset(y = (-7.5).dp),
+                    modifier = Modifier.offset(y = (-15).dp),
                     allPalsMembers = allPalsMembers,
                     groupMembersUserIds = groupMembersUserIds,
                     allPalsSubmissions = allPalsSubmissions,
@@ -456,7 +456,7 @@ fun PalGroupGridScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .offset(y = (-53).dp),
+                                .offset(y = (-58).dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Row(
@@ -630,7 +630,7 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(54.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-82.5).dp),
+                                .offset(y = (-87.5).dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
@@ -681,7 +681,7 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(64.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-89).dp),
+                                .offset(y = (-101.5).dp),
                             contentScale = ContentScale.Fit
                         )
                     }
