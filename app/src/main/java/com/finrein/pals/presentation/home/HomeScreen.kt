@@ -615,8 +615,7 @@ fun HomeScreen(
             if (sessionManager.isOnboardingCompleted()) {
                 6
             } else if (sessionManager.hasLoggedInBefore()) {
-                sessionManager.setOnboardingCompleted(true)
-                6
+                4
             } else {
                 0
             }
@@ -780,6 +779,7 @@ fun HomeScreen(
                         }
                     }
                     sessionManager.setHasLoggedInBefore(true)
+                    sessionManager.setFirstLogin(false)
                     onboardingFlowStep = 4
                 } else {
                     onboardingFlowStep = 1
@@ -8983,7 +8983,7 @@ fun CreatingAccountScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = "→ welcome to pal",
+            text = if (firstName.isEmpty()) "→ restoring account" else "→ welcome to pal",
             fontFamily = FontFamily.Monospace,
             fontSize = 18.sp,
             color = textColor
@@ -8992,7 +8992,7 @@ fun CreatingAccountScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "to get started we need your\nfirst and last name...",
+            text = if (firstName.isEmpty()) "please wait while we configure\nyour workspace..." else "to get started we need your\nfirst and last name...",
             fontFamily = FontFamily.Monospace,
             fontSize = 16.sp,
             color = textColor,
@@ -9001,16 +9001,17 @@ fun CreatingAccountScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Star, Name, Smiley
-        Text(
-            text = "☆ $firstName $lastName :)",
-            fontFamily = FontFamily.Monospace,
-            fontSize = 20.sp,
-            color = textColor,
-            fontWeight = FontWeight.Medium
-        )
-
-        Spacer(modifier = Modifier.height(36.dp))
+        if (firstName.isNotEmpty() || lastName.isNotEmpty()) {
+            // Star, Name, Smiley
+            Text(
+                text = "☆ $firstName $lastName :)",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 20.sp,
+                color = textColor,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(36.dp))
+        }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
