@@ -630,7 +630,7 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(54.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-55).dp),
+                                .offset(y = (-67.5).dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
@@ -681,7 +681,7 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(64.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-56.5).dp),
+                                .offset(y = (-66.5).dp),
                             contentScale = ContentScale.Fit
                         )
                     }
