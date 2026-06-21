@@ -1590,6 +1590,23 @@ fun HomeScreen(
                 createdPals = createdPals.map { if (it.code == oldPal.code) updatedPal else it }
                 groupDatabase[oldPal.code] = updatedPal
                 activeVlogPal = updatedPal
+
+                if (oldPal.code != "vlog") {
+                    coroutineScope.launch {
+                        try {
+                            supabaseClient.postgrest.from("pals").update(mapOf(
+                                "name" to editPalName,
+                                "size" to editPalSize
+                            )) {
+                                filter {
+                                    eq("code", oldPal.code)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
             }
             isEditingPalLoading = false
             showEditPalFlow = false
@@ -3537,20 +3554,24 @@ fun CameraScreenContent(
                 return@LaunchedEffect
             }
 
-            recordingProgress = 0.0f
-            val steps = 50
-            val delayMs = durationMs / steps
-            for (step in 1..steps) {
-                delay(delayMs)
-                recordingProgress = step.toFloat() / steps
+            try {
+                recordingProgress = 0.0f
+                val steps = 50
+                val delayMs = durationMs / steps
+                for (step in 1..steps) {
+                    delay(delayMs)
+                    recordingProgress = step.toFloat() / steps
+                }
+            } finally {
+                session.stop()
+                activeRecordingSession = null
+                onRecordingChange(false)
+                recordingProgress = 0.0f
             }
-
-            session.stop()
-            activeRecordingSession = null
-            onRecordingChange(false)
         } else {
             activeRecordingSession?.stop()
             activeRecordingSession = null
+            recordingProgress = 0.0f
         }
     }
 
@@ -3648,28 +3669,43 @@ fun CameraScreenContent(
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 60.dp * scale)
-                            .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(16.dp * scale))
-                            .padding(horizontal = 8.dp * scale, vertical = 4.dp * scale),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp * scale),
+                            .padding(bottom = 54.dp * scale)
+                            .fillMaxWidth()
+                            .padding(horizontal = 48.dp * scale),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         (1..5).forEach { slot ->
                             val isSelected = activeSlot == slot
                             Box(
                                 modifier = Modifier
-                                    .size(28.dp * scale)
-                                    .clip(CircleShape)
-                                    .background(if (isSelected) selectedProfileColor else Color.Transparent)
-                                    .clickable { activeSlot = slot },
+                                    .clickable { activeSlot = slot }
+                                    .padding(vertical = 4.dp * scale),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = slot.toString(),
-                                    color = Color.White,
-                                    fontSize = (11 * scale).sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp * scale)
+                                ) {
+                                    Text(
+                                        text = slot.toString(),
+                                        color = if (isSelected) selectedProfileColor else Color.White,
+                                        fontSize = (15 * scale).sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.rotate(-90f)
+                                    )
+                                    if (isSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(12.dp * scale)
+                                                .height(2.5.dp * scale)
+                                                .clip(RoundedCornerShape(1.25.dp * scale))
+                                                .background(selectedProfileColor)
+                                        )
+                                    } else {
+                                        Spacer(modifier = Modifier.height(2.5.dp * scale))
+                                    }
+                                }
                             }
                         }
                     }
@@ -3966,22 +4002,24 @@ fun CameraScreenContent(
         }
 
         // Screen-Edge Anchored Vertical Progress Bar (parallel to card straight-edge, highest Z-index)
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(bottom = cameraFrameBottomPadding + 28.dp * scale, end = 0.dp) // aligned with straight vertical edge of card
-                .width(progressWidth) // width
-                .height(cameraHeight - 56.dp * scale) // length of straight vertical edge (cameraHeight - 28.dp * 2)
-                .clip(RoundedCornerShape(3.25.dp * scale))
-                .background(Color.Transparent) // fully transparent track
-        ) {
+        if (isRecording && recordingProgress > 0.0f) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(recordingProgress)
-                    .align(Alignment.TopCenter) // fills from top to bottom
-                    .background(palTextLogoColor) // exact same color as pal text logo on top left!
-            )
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = cameraFrameBottomPadding + 28.dp * scale, end = 0.dp) // aligned with straight vertical edge of card
+                    .width(progressWidth) // width
+                    .height(cameraHeight - 56.dp * scale) // length of straight vertical edge (cameraHeight - 28.dp * 2)
+                    .clip(RoundedCornerShape(3.25.dp * scale))
+                    .background(Color.Transparent) // fully transparent track
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(recordingProgress)
+                        .align(Alignment.TopCenter) // fills from top to bottom
+                        .background(palTextLogoColor) // exact same color as pal text logo on top left!
+                )
+            }
         }
 
         // Timer stopwatch button at bottom left of the screen (aligned with nav bar capsule)
@@ -7881,6 +7919,32 @@ fun VlogScreenContent(
                                     color = textColor
                                 )
                             }
+
+                            // 1.5. code option
+                            if (!pal.isVlog) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            try {
+                                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                val clip = android.content.ClipData.newPlainText("Pal Code", pal.code)
+                                                clipboard.setPrimaryClip(clip)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "code: ${pal.code}",
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 15.sp,
+                                        color = textColor
+                                    )
+                                }
+                            }
                             
                             // 2. members option (with right chevron)
                             Row(
@@ -7929,6 +7993,8 @@ fun VlogScreenContent(
                                     )
                                 }
                             }
+
+
                         }
                     }
                 }
@@ -8029,16 +8095,16 @@ fun VlogScreenContent(
 
                         Spacer(modifier = Modifier.height(24.dp))
 
-                        // Body: edit pal label and custom text input field
+                        // Body: edit pal label, custom text input field, and pal size options
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 32.dp),
                             verticalArrangement = Arrangement.spacedBy(24.dp)
                         ) {
-                            // Label: → edit log (using Monospace)
+                            // Label: → edit pal (using Monospace)
                             Text(
-                                text = "→ edit log",
+                                text = "→ edit pal",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Normal,
@@ -8059,6 +8125,89 @@ fun VlogScreenContent(
                                 cursorBrush = androidx.compose.ui.graphics.SolidColor(textColor),
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            // Label: pal size (using Monospace)
+                            Text(
+                                text = "pal size",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = textColor
+                            )
+
+                            // Sizes grid: Row 1 (2..6), Row 2 (7..10)
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    for (s in 2..6) {
+                                        val isSelected = editSize == s.toString()
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(
+                                                    if (isSelected) accentColor 
+                                                    else (if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA).copy(alpha = 0.5f))
+                                                )
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = if (isSelected) accentColor 
+                                                            else (if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.12f)),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+                                                .clickable { onEditSizeChange(s.toString()) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = s.toString(),
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color.White else textColor
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    for (s in 7..10) {
+                                        val isSelected = editSize == s.toString()
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(
+                                                    if (isSelected) accentColor 
+                                                    else (if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA).copy(alpha = 0.5f))
+                                                )
+                                                .border(
+                                                    width = 1.dp,
+                                                    color = if (isSelected) accentColor 
+                                                            else (if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.12f)),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+                                                .clickable { onEditSizeChange(s.toString()) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = s.toString(),
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color.White else textColor
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -8305,8 +8454,10 @@ fun VlogScreenContent(
             val localCoroutineScope = rememberCoroutineScope()
             
             var showEditExportSheet by remember { mutableStateOf(false) }
-            var exportBackground by remember(isDark) { mutableStateOf(if (isDark) "black" else "white") }
-            val exportMissedText = "💤"
+            var exportBackground by remember { mutableStateOf("black") }
+            var exportMissedText by remember { mutableStateOf("💤") }
+            var showMissedTextDialog by remember { mutableStateOf(false) }
+            var tempMissedText by remember { mutableStateOf("💤") }
 
             androidx.activity.compose.BackHandler {
                 onShowExportDialogChange(false)
@@ -8333,7 +8484,7 @@ fun VlogScreenContent(
                 val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
                 val isVlog = pal.isVlog
                 val exportShift = if (isVlog) 25.dp else 30.dp
-                val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp + exportShift
+                val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp + exportShift - 10.dp
 
                 val cameraWidth = screenWidth - 15.dp
                 val cameraHeight = cameraWidth * (16f / 9f)
@@ -8559,12 +8710,11 @@ fun VlogScreenContent(
                     }
                 }
 
-                // Space below the viewfinder containing the 4 buttons exactly 40.dp below the frame
+                // Space below the viewfinder containing the 4 buttons exactly 2.5.dp below the frame
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .height(cardBottomPadding + exportShift)
-                        .offset(y = -exportShift)
+                        .height(cameraFrameBottomPadding)
                         .fillMaxWidth()
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -8573,7 +8723,7 @@ fun VlogScreenContent(
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Spacer(modifier = Modifier.height(40.dp))
+                    Spacer(modifier = Modifier.height(12.5.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -8777,6 +8927,8 @@ fun VlogScreenContent(
                                     color = dialogTextColor
                                 )
                                 
+
+
                                 // Background Option: background · black / white
                                 Row(
                                     modifier = Modifier
@@ -8797,6 +8949,31 @@ fun VlogScreenContent(
                                         color = dialogTextColor
                                     )
                                 }
+
+                                // Missed Text Option: missed text · zzz
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            tempMissedText = exportMissedText
+                                            showMissedTextDialog = true
+                                        }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = androidx.compose.ui.text.buildAnnotatedString {
+                                            append("missed text · ")
+                                            pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFF0F8CFF)))
+                                            append(exportMissedText)
+                                            pop()
+                                        },
+                                        fontFamily = RobotoFontFamily,
+                                        fontSize = 16.sp,
+                                        color = dialogTextColor
+                                    )
+                                }
+
                                 Text(
                                     text = "cancel",
                                     fontFamily = FontFamily.SansSerif,
@@ -8807,6 +8984,106 @@ fun VlogScreenContent(
                                         .align(Alignment.End)
                                         .clickable { showEditExportSheet = false }
                                 )
+                            }
+                        }
+                    }
+                }
+
+                // Missed Text Input Dialog Overlay
+                if (showMissedTextDialog) {
+                    val dialogBg = if (isDark) Color(0xFF2C2B30) else Color(0xFFF5F3EB)
+                    val dialogTextColor = if (isDark) Color.White else Color.Black
+                    val buttonColor = if (isDark) Color(0xFFB39DDB) else Color(0xFF7C4DFF)
+                    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+                    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+                    LaunchedEffect(Unit) {
+                        kotlinx.coroutines.delay(100)
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .clickable { showMissedTextDialog = false },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(300.dp)
+                                .clip(RoundedCornerShape(28.dp))
+                                .background(dialogBg)
+                                .clickable(enabled = false) {}
+                                .padding(24.dp)
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Text(
+                                    text = "missed text",
+                                    fontFamily = BricolageVariableFontFamily,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = dialogTextColor
+                                )
+
+                                var textVal by remember { mutableStateOf(tempMissedText) }
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    androidx.compose.foundation.text.BasicTextField(
+                                        value = textVal,
+                                        onValueChange = { textVal = it },
+                                        textStyle = androidx.compose.ui.text.TextStyle(
+                                            fontFamily = RobotoFontFamily,
+                                            fontSize = 18.sp,
+                                            color = Color(0xFF0F8CFF),
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .focusRequester(focusRequester),
+                                        cursorBrush = androidx.compose.ui.graphics.SolidColor(buttonColor)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(dialogTextColor.copy(alpha = 0.3f))
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "cancel",
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = buttonColor,
+                                        modifier = Modifier
+                                            .clickable { showMissedTextDialog = false }
+                                            .padding(8.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Text(
+                                        text = "OK",
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = buttonColor,
+                                        modifier = Modifier
+                                            .clickable {
+                                                exportMissedText = textVal
+                                                showMissedTextDialog = false
+                                            }
+                                            .padding(8.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -12781,9 +13058,9 @@ private fun GroupExportMemberSlot(
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                // Missed text: sleep emoji in blue color
+                // Missed text: custom text in blue color
                 Text(
-                    text = "💤",
+                    text = exportMissedText,
                     fontSize = 22.sp,
                     fontFamily = BricolageVariableFontFamily,
                     fontWeight = FontWeight.Bold,
