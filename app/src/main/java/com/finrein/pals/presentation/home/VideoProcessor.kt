@@ -30,6 +30,7 @@ class VideoProcessor {
             timeText: String,
             captionText: String,
             roundedCorners: Boolean,
+            exportBackground: String = "black",
             callback: (Boolean) -> Unit
         ) {
             processVideoList(
@@ -40,6 +41,7 @@ class VideoProcessor {
                 timeTexts = listOf(timeText),
                 captionTexts = listOf(captionText),
                 roundedCorners = roundedCorners,
+                exportBackground = exportBackground,
                 callback = callback
             )
         }
@@ -52,19 +54,21 @@ class VideoProcessor {
             timeTexts: List<String>,
             captionTexts: List<String>,
             roundedCorners: Boolean,
+            exportBackground: String = "black",
             callback: (Boolean) -> Unit
         ) {
             Thread {
                 var success = false
                 try {
                     success = transcodeList(
-                        context,
-                        inputPaths,
-                        outputPath,
-                        vlogTexts,
-                        timeTexts,
-                        captionTexts,
-                        roundedCorners
+                        context = context,
+                        inputPaths = inputPaths,
+                        outputPath = outputPath,
+                        vlogTexts = vlogTexts,
+                        timeTexts = timeTexts,
+                        captionTexts = captionTexts,
+                        roundedCorners = roundedCorners,
+                        exportBackground = exportBackground
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Error transcoding video list", e)
@@ -112,7 +116,8 @@ class VideoProcessor {
             vlogTexts: List<String>,
             timeTexts: List<String>,
             captionTexts: List<String>,
-            roundedCorners: Boolean
+            roundedCorners: Boolean,
+            exportBackground: String = "black"
         ): Boolean {
             if (inputPaths.isEmpty()) {
                 Log.e(TAG, "Input paths list is empty")
@@ -319,7 +324,7 @@ class VideoProcessor {
                     videoDecoder.start()
 
                     // Generate Overlay Bitmap for this clip
-                    val overlayBitmap = generateOverlayBitmap(context, outputWidth, outputHeight, vlogText, timeText, captionText)
+                    val overlayBitmap = generateOverlayBitmap(context, outputWidth, outputHeight, vlogText, timeText, captionText, exportBackground)
                     GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, overlayTextureId)
                     GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, overlayBitmap, 0)
                     overlayBitmap.recycle()
@@ -370,7 +375,11 @@ class VideoProcessor {
                                 surfaceTexture.getTransformMatrix(stMatrix)
 
                                 // 1. Draw centered 16:9 video frame
-                                GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
+                                if (exportBackground == "white") {
+                                    GLES20.glClearColor(1.0f, 1.0f, 1.0f, 1.0f)
+                                } else {
+                                    GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
+                                }
                                 GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
                                 // Viewport is centered 16:9 box inside 720x1280
@@ -701,7 +710,8 @@ class VideoProcessor {
             height: Int,
             vlogText: String,
             timeText: String,
-            captionText: String
+            captionText: String,
+            exportBackground: String = "black"
         ): Bitmap {
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
@@ -727,14 +737,17 @@ class VideoProcessor {
             val scale = width / 306f
             val centerY = height / 2f
 
+            val overlayTextColor = if (exportBackground == "white") Color.BLACK else Color.WHITE
+            val shadowColor = if (exportBackground == "white") Color.argb(32, 0, 0, 0) else Color.argb(128, 0, 0, 0)
+
             // Draw "vlog" watermark left-aligned inside video box
             if (vlogText.isNotEmpty()) {
                 val paint = Paint().apply {
-                    color = Color.WHITE
+                    color = overlayTextColor
                     textSize = 22f * scale
                     typeface = bricolageFont
                     isAntiAlias = true
-                    setShadowLayer(3f, 1f, 1f, Color.argb(128, 0, 0, 0))
+                    setShadowLayer(3f, 1f, 1f, shadowColor)
                 }
                 canvas.drawText(
                     vlogText,
@@ -749,12 +762,12 @@ class VideoProcessor {
                 if (vlogText.isEmpty()) {
                     // Preview screen centered layout style
                     val timePaint = Paint().apply {
-                        color = Color.WHITE
+                        color = overlayTextColor
                         textSize = 20f * scale
                         typeface = delaFont
                         textAlign = Paint.Align.CENTER
                         isAntiAlias = true
-                        setShadowLayer(2f, 1f, 1f, Color.argb(128, 0, 0, 0))
+                        setShadowLayer(2f, 1f, 1f, shadowColor)
                     }
                     canvas.drawText(
                         timeText,
@@ -766,7 +779,7 @@ class VideoProcessor {
                     // Draw caption text underneath time
                     if (captionText.isNotEmpty()) {
                         val captionPaint = Paint().apply {
-                            color = Color.WHITE
+                            color = overlayTextColor
                             textSize = 15f * scale
                             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
                             textAlign = Paint.Align.CENTER
@@ -782,12 +795,12 @@ class VideoProcessor {
                 } else {
                     // Vlog screen right-aligned layout style
                     val timePaint = Paint().apply {
-                        color = Color.WHITE
+                        color = overlayTextColor
                         textSize = 17f * scale
                         typeface = robotoFont
                         textAlign = Paint.Align.RIGHT
                         isAntiAlias = true
-                        setShadowLayer(3f, 1f, 1f, Color.argb(128, 0, 0, 0))
+                        setShadowLayer(3f, 1f, 1f, shadowColor)
                     }
                     canvas.drawText(
                         timeText,
@@ -799,12 +812,12 @@ class VideoProcessor {
                     // Draw caption text in center
                     if (captionText.isNotEmpty()) {
                         val captionPaint = Paint().apply {
-                            color = Color.WHITE
+                            color = overlayTextColor
                             textSize = 22f * scale
                             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
                             textAlign = Paint.Align.CENTER
                             isAntiAlias = true
-                            setShadowLayer(3f, 1f, 1f, Color.argb(128, 0, 0, 0))
+                            setShadowLayer(3f, 1f, 1f, shadowColor)
                         }
                         canvas.drawText(
                             captionText,

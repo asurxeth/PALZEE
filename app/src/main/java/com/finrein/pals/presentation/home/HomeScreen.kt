@@ -612,7 +612,14 @@ fun HomeScreen(
     val sessionManager = remember { com.finrein.pals.data.local.SessionManager(context) }
     var onboardingFlowStep by rememberSaveable {
         mutableStateOf(
-            if (sessionManager.isOnboardingCompleted()) 6 else 1
+            if (sessionManager.isOnboardingCompleted()) {
+                6
+            } else if (sessionManager.hasLoggedInBefore()) {
+                sessionManager.setOnboardingCompleted(true)
+                6
+            } else {
+                0
+            }
         )
     }
     val parsedName = remember(user) { parseName(user?.email, user?.displayName) }
@@ -689,10 +696,46 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(onboardingFlowStep) {
+    LaunchedEffect(onboardingFlowStep, currentUserId) {
         if (onboardingFlowStep == 3) {
             kotlinx.coroutines.delay(2000)
             onboardingFlowStep = 4
+        } else if (onboardingFlowStep == 0 && currentUserId.isNotEmpty()) {
+            try {
+                val mappings = supabaseClient.postgrest.from("user_pals")
+                    .select {
+                        filter {
+                            eq("user_id", currentUserId)
+                        }
+                    }
+                    .decodeList<UserPalMapping>()
+
+                val dbSubmissions = supabaseClient.postgrest.from("submissions")
+                    .select {
+                        filter {
+                            eq("user_id", currentUserId)
+                        }
+                    }
+                    .decodeList<SubmissionDbItem>()
+
+                if (mappings.isNotEmpty() || dbSubmissions.isNotEmpty()) {
+                    val firstSub = dbSubmissions.firstOrNull { it.userDisplayName.isNotEmpty() }
+                    if (firstSub != null) {
+                        val restoredName = firstSub.userDisplayName
+                        currentDisplayName = restoredName
+                        user?.let {
+                            sessionManager.saveUser(it.copy(displayName = restoredName))
+                        }
+                    }
+                    sessionManager.setHasLoggedInBefore(true)
+                    onboardingFlowStep = 4
+                } else {
+                    onboardingFlowStep = 1
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onboardingFlowStep = 1
+            }
         }
     }
 
@@ -1646,6 +1689,12 @@ fun HomeScreen(
         val screenContent = @Composable {
             if (onboardingFlowStep < 6) {
                 when (onboardingFlowStep) {
+                    0 -> CreatingAccountScreen(
+                        firstName = "",
+                        lastName = "",
+                        textColor = textColor,
+                        mutedTextColor = mutedTextColor
+                    )
                     1 -> NameInputScreen(
                         firstName = onboardingFirstName,
                         onFirstNameChange = { onboardingFirstName = it },
@@ -3451,23 +3500,17 @@ fun CameraScreenContent(
         val scale = scaleHeight.coerceAtMost(scaleWidth).coerceAtMost(1.1f)
 
 
-        val progressWidth = 6.5.dp * scale
+        val progressWidth = 7.5.dp
 
         // Precise positioning constants for taller layout
         val shutterBottomMargin = 100.dp
         val shutterSize = 59.dp * scale
         val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
+        val cameraFrameBottomPadding = cardBottomPadding - 15.dp
 
-        // Dynamically calculate camera frame size so the right gap is exactly progressWidth
-        var cameraWidth = screenWidth - 4.dp - (progressWidth * 2)
+        // Dynamically calculate camera frame size to be exactly 7.5dp spaced from both ends of the screen
+        var cameraWidth = screenWidth - 15.dp
         var cameraHeight = cameraWidth * (16f / 9f)
-
-        // Ensure height doesn't exceed screen height minus margins (bottom padding + top margin of 30.dp)
-        val maxAllowedHeight = screenHeight - cardBottomPadding - 30.dp
-        if (cameraHeight > maxAllowedHeight) {
-            cameraHeight = maxAllowedHeight
-            cameraWidth = cameraHeight * (9f / 16f)
-        }
 
         val danceInnerColors = remember {
             listOf(
@@ -3502,7 +3545,7 @@ fun CameraScreenContent(
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = cardBottomPadding)
+                .padding(bottom = cameraFrameBottomPadding)
                 .width(cameraWidth)
                 .height(cameraHeight)
                 .background(selectedProfileColor.copy(alpha = 0.15f), RoundedCornerShape(29.dp * scale)) // soft glow layer
@@ -3784,7 +3827,7 @@ fun CameraScreenContent(
         Canvas(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = cardBottomPadding - (67.dp * scale / 2f))
+                .padding(bottom = cameraFrameBottomPadding - (67.dp * scale / 2f))
                 .size(67.dp * scale)
         ) {
             drawCircle(
@@ -3799,7 +3842,7 @@ fun CameraScreenContent(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(x = (-64).dp * scale)
-                .padding(bottom = cardBottomPadding - (36.dp * scale / 2f))
+                .padding(bottom = cameraFrameBottomPadding - (36.dp * scale / 2f))
                 .size(36.dp * scale)
                 .clip(CircleShape) // circular shape for soft click ripple!
                 .clickable {
@@ -3827,12 +3870,10 @@ fun CameraScreenContent(
         }
 
         // Screen-Edge Anchored Vertical Progress Bar (parallel to card straight-edge, highest Z-index)
-        val offsetFromCenter = (screenWidth / 4f) + (cameraWidth / 4f) - 1.dp
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(x = offsetFromCenter)
-                .padding(bottom = cardBottomPadding + 28.dp * scale) // aligned with straight vertical edge of card
+                .align(Alignment.BottomEnd)
+                .padding(bottom = cameraFrameBottomPadding + 28.dp * scale, end = 0.dp) // aligned with straight vertical edge of card
                 .width(progressWidth) // width
                 .height(cameraHeight - 56.dp * scale) // length of straight vertical edge (cameraHeight - 28.dp * 2)
                 .clip(RoundedCornerShape(3.25.dp * scale))
@@ -5061,11 +5102,6 @@ fun GroupMemberCard(
                 .height(cardHeightDp)
                 .clip(cardShape)
                 .background(Color.Black)
-                .border(
-                    width = 2.dp,
-                    color = accentColor,
-                    shape = cardShape
-                )
         ) {
             val localPlayer = remember(videoPath) {
                 androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
@@ -5842,7 +5878,7 @@ fun GroupScreenContent(
 
         val totalSlots = maxOf(groupMembers.size, pal.size.toIntOrNull() ?: 4)
         val isGrid = totalSlots > 5
-        val contentSpacingDp = if (isGrid) 2.dp else 9.dp
+        val contentSpacingDp = 2.5.dp
         val topPaddingDp = 100.dp
         val bottomPaddingDp = 24.dp
         val rows = (totalSlots + 1) / 2
@@ -5867,7 +5903,7 @@ fun GroupScreenContent(
                 .fillMaxSize()
                 .padding(top = topPaddingDp, bottom = bottomPaddingDp)
                 .padding(horizontal = if (isGrid) 0.dp else 8.dp),
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = Arrangement.spacedBy(contentSpacingDp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (totalSlots <= 5) {
@@ -6360,6 +6396,31 @@ fun VlogScreenContent(
     val filteredSubmissions = remember(activePalSubmissions, targetDate) {
         activePalSubmissions.filter { sub ->
             getSubmissionLocalDate(sub) == targetDate
+        }
+    }
+    val filteredPaths = remember(filteredSubmissions) {
+        filteredSubmissions.map { sub ->
+            sub.imageUrl.split("|||").getOrNull(0) ?: ""
+        }
+    }
+    val filteredTimes = remember(filteredSubmissions) {
+        filteredSubmissions.map { sub ->
+            if (!sub.createdAt.isNullOrEmpty()) {
+                try {
+                    val instant = java.time.Instant.parse(sub.createdAt)
+                    val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                    zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
+                } catch (e: Exception) {
+                    sub.createdAt.substringAfter("T").substringBefore(".").take(5)
+                }
+            } else {
+                "12:00"
+            }
+        }
+    }
+    val filteredCaptions = remember(filteredSubmissions) {
+        filteredSubmissions.map { sub ->
+            sub.imageUrl.split("|||").getOrNull(1) ?: ""
         }
     }
     val shufflingColors = remember {
@@ -8028,7 +8089,8 @@ fun VlogScreenContent(
             onActiveReplyPreviewPathChange = onActiveReplyPreviewPathChange,
             onShowChatChange = onShowChatChange,
             onNavigateToCamera = onNavigateToCamera,
-            onSendMessage = onSendMessage
+            onSendMessage = onSendMessage,
+            onShowExportDialogChange = onShowExportDialogChange
         )
 
         // --- Reply Preview Overlay ---
@@ -8051,13 +8113,18 @@ fun VlogScreenContent(
             var isExportSaving by remember { mutableStateOf(false) }
             var isExportSaved by remember { mutableStateOf(false) }
             val localCoroutineScope = rememberCoroutineScope()
+            
+            var showEditExportSheet by remember { mutableStateOf(false) }
+            var exportBackground by remember(isDark) { mutableStateOf(if (isDark) "black" else "white") }
+            val exportMissedText = "💤"
+
             androidx.activity.compose.BackHandler {
                 onShowExportDialogChange(false)
             }
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(if (isDark) Color.Black else PalBackground)
+                    .background(if (isDark) Color(0xFF1C1C1E) else Color.White)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -8074,16 +8141,10 @@ fun VlogScreenContent(
                 val shutterBottomMargin = 100.dp
                 val shutterSize = 59.dp * scale
                 val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
+                val cameraFrameBottomPadding = cardBottomPadding - 15.dp
 
-                val progressWidth = 6.5.dp * scale
-                var cameraWidth = screenWidth - 4.dp - (progressWidth * 2)
-                var cameraHeight = cameraWidth * (16f / 9f)
-
-                val maxAllowedHeight = screenHeight - cardBottomPadding - 30.dp
-                if (cameraHeight > maxAllowedHeight) {
-                    cameraHeight = maxAllowedHeight
-                    cameraWidth = cameraHeight * (9f / 16f)
-                }
+                val cameraWidth = screenWidth - 15.dp
+                val cameraHeight = cameraWidth * (16f / 9f)
 
                 val hasVlogs = capturedVlogsPaths.isNotEmpty()
 
@@ -8091,23 +8152,15 @@ fun VlogScreenContent(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = cardBottomPadding)
+                        .padding(bottom = cameraFrameBottomPadding)
                         .width(cameraWidth)
                         .height(cameraHeight)
-                        .background(selectedProfileColor.copy(alpha = 0.15f), RoundedCornerShape(29.dp * scale)) // soft glow layer
-                        .padding(1.dp * scale) // thin inset
                 ) {
                     GlassmorphicCard(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .border(
-                                width = 2.dp * scale,
-                                color = selectedProfileColor.copy(alpha = 0.15f), // light glow line
-                                shape = RoundedCornerShape(28.dp * scale)
-                            ),
+                        modifier = Modifier.fillMaxSize(),
                         borderRadius = 28.dp * scale,
                         isDark = isDark,
-                        gradientColors = if (isDark) listOf(Color(0xFF161616), Color(0xFF161616)) else listOf(Color(0xFFEBEBEB), Color(0xFFEBEBEB)),
+                        gradientColors = if (isDark) listOf(Color(0xFF1C1C1E), Color(0xFF1C1C1E)) else listOf(Color(0xFFEBEBEB), Color(0xFFEBEBEB)),
                         borderColor = Color.Transparent
                     ) {
                         Box(
@@ -8115,115 +8168,76 @@ fun VlogScreenContent(
                                 .fillMaxSize()
                                 .clip(RoundedCornerShape(28.dp * scale))
                         ) {
-                            if (!hasVlogs) {
-                                Text(
-                                    text = "Nothing to export for this collection.",
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontSize = (14 * scale).sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = if (isDark) Color.White else Color.Black,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .padding(horizontal = 24.dp * scale)
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(16f / 9f)
-                                        .align(Alignment.Center)
-                                        .background(Color.Black)
-                                ) {
-                                    androidx.compose.ui.viewinterop.AndroidView(
-                                        factory = { ctx ->
-                                            val view = android.view.LayoutInflater.from(ctx)
-                                                .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                            view.apply {
-                                                player = vlogExoPlayer
-                                                useController = false
-                                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                                
-                                                vlogExoPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                                                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                                        super.onVideoSizeChanged(videoSize)
-                                                        val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                                                        val containerWidth = width.toFloat()
-                                                        val containerHeight = height.toFloat()
-                                                        if (containerWidth > 0f && containerHeight > 0f) {
-                                                            if (videoSize.height > videoSize.width) {
-                                                                val scaleX = containerHeight / containerWidth
-                                                                val scaleY = containerWidth / containerHeight
-                                                                textureView.scaleX = scaleX
-                                                                textureView.scaleY = scaleY
-                                                                textureView.rotation = 270f
-                                                            } else {
-                                                                textureView.scaleX = 1.0f
-                                                                textureView.scaleY = 1.0f
-                                                                textureView.rotation = 0f
+                            if (pal.isVlog) {
+                                if (capturedVlogsPaths.isEmpty()) {
+                                    Text(
+                                        text = "Nothing to export for this collection.",
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = (14 * scale).sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = if (isDark) Color.White else Color.Black,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .padding(horizontal = 24.dp * scale)
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(16f / 9f)
+                                            .align(Alignment.Center)
+                                            .background(Color.Black)
+                                    ) {
+                                        androidx.compose.ui.viewinterop.AndroidView(
+                                            factory = { ctx ->
+                                                val view = android.view.LayoutInflater.from(ctx)
+                                                    .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                                                view.apply {
+                                                    player = vlogExoPlayer
+                                                    useController = false
+                                                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                                    
+                                                    vlogExoPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                                                        override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                                            super.onVideoSizeChanged(videoSize)
+                                                            val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
+                                                            val containerWidth = width.toFloat()
+                                                            val containerHeight = height.toFloat()
+                                                            if (containerWidth > 0f && containerHeight > 0f) {
+                                                                if (videoSize.height > videoSize.width) {
+                                                                    val scaleX = containerHeight / containerWidth
+                                                                    val scaleY = containerWidth / containerHeight
+                                                                    textureView.scaleX = scaleX
+                                                                    textureView.scaleY = scaleY
+                                                                    textureView.rotation = 270f
+                                                                } else {
+                                                                    textureView.scaleX = 1.0f
+                                                                    textureView.scaleY = 1.0f
+                                                                    textureView.rotation = 0f
+                                                                }
                                                             }
                                                         }
-                                                    }
-                                                })
-                                            }
-                                        },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                    
-                                    val activeIndex = currentPlayingIndex.coerceIn(0, capturedVlogsPaths.lastIndex.coerceAtLeast(0))
-                                    val currentCaption = capturedVlogsCaptions.getOrNull(activeIndex) ?: ""
-                                    val currentTime = capturedVlogsTimes.getOrNull(activeIndex) ?: ""
-
-                                    // Left center: "vlog" text in BricolageVariableFontFamily
-                                    Text(
-                                        text = "vlog",
-                                        fontFamily = BricolageVariableFontFamily,
-                                        fontSize = (22 * scale).sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        modifier = Modifier
-                                            .align(Alignment.CenterStart)
-                                            .padding(start = 5.5.dp * scale),
-                                        style = TextStyle(
-                                            shadow = androidx.compose.ui.graphics.Shadow(
-                                                color = Color.Black.copy(alpha = 0.5f),
-                                                offset = androidx.compose.ui.geometry.Offset(1f * scale, 1f * scale),
-                                                blurRadius = 3f * scale
-                                            )
+                                                    })
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxSize()
                                         )
-                                    )
+                                        
+                                        val activeIndex = currentPlayingIndex.coerceIn(0, capturedVlogsPaths.lastIndex.coerceAtLeast(0))
+                                        val currentCaption = capturedVlogsCaptions.getOrNull(activeIndex) ?: ""
+                                        val currentTime = capturedVlogsTimes.getOrNull(activeIndex) ?: ""
 
-                                    // Right center: capture time text in RobotoFontFamily
-                                    Text(
-                                        text = currentTime,
-                                        fontFamily = RobotoFontFamily,
-                                        fontSize = (17 * scale).sp,
-                                        fontWeight = FontWeight.Normal,
-                                        color = Color.White,
-                                        modifier = Modifier
-                                            .align(Alignment.CenterEnd)
-                                            .padding(end = 5.5.dp * scale),
-                                        style = TextStyle(
-                                            shadow = androidx.compose.ui.graphics.Shadow(
-                                                color = Color.Black.copy(alpha = 0.5f),
-                                                offset = androidx.compose.ui.geometry.Offset(1f * scale, 1f * scale),
-                                                blurRadius = 3f * scale
-                                            )
-                                        )
-                                    )
-
-                                    // Center: custom caption text (if present) in FontFamily.SansSerif
-                                    if (currentCaption.isNotEmpty()) {
+                                        // Left center: "vlog" text in BricolageVariableFontFamily
                                         Text(
-                                            text = currentCaption,
-                                            fontFamily = FontFamily.SansSerif,
+                                            text = "vlog",
+                                            fontFamily = BricolageVariableFontFamily,
                                             fontSize = (22 * scale).sp,
-                                            fontWeight = FontWeight.Normal,
+                                            fontWeight = FontWeight.Bold,
                                             color = Color.White,
                                             modifier = Modifier
-                                                .align(Alignment.Center)
-                                                .padding(horizontal = 48.dp * scale),
-                                            textAlign = TextAlign.Center,
+                                                .align(Alignment.CenterStart)
+                                                .padding(start = 5.5.dp * scale),
                                             style = TextStyle(
                                                 shadow = androidx.compose.ui.graphics.Shadow(
                                                     color = Color.Black.copy(alpha = 0.5f),
@@ -8232,6 +8246,120 @@ fun VlogScreenContent(
                                                 )
                                             )
                                         )
+
+                                        // Right center: capture time text in RobotoFontFamily
+                                        Text(
+                                            text = currentTime,
+                                            fontFamily = RobotoFontFamily,
+                                            fontSize = (17 * scale).sp,
+                                            fontWeight = FontWeight.Normal,
+                                            color = Color.White,
+                                            modifier = Modifier
+                                                .align(Alignment.CenterEnd)
+                                                .padding(end = 5.5.dp * scale),
+                                            style = TextStyle(
+                                                shadow = androidx.compose.ui.graphics.Shadow(
+                                                    color = Color.Black.copy(alpha = 0.5f),
+                                                    offset = androidx.compose.ui.geometry.Offset(1f * scale, 1f * scale),
+                                                    blurRadius = 3f * scale
+                                                )
+                                            )
+                                        )
+
+                                        // Center: custom caption text (if present) in FontFamily.SansSerif
+                                        if (currentCaption.isNotEmpty()) {
+                                            Text(
+                                                text = currentCaption,
+                                                fontFamily = FontFamily.SansSerif,
+                                                fontSize = (22 * scale).sp,
+                                                fontWeight = FontWeight.Normal,
+                                                color = Color.White,
+                                                modifier = Modifier
+                                                    .align(Alignment.Center)
+                                                    .padding(horizontal = 48.dp * scale),
+                                                textAlign = TextAlign.Center,
+                                                style = TextStyle(
+                                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                                        color = Color.Black.copy(alpha = 0.5f),
+                                                        offset = androidx.compose.ui.geometry.Offset(1f * scale, 1f * scale),
+                                                        blurRadius = 3f * scale
+                                                    )
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Group Export Preview
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
+                                ) {
+                                    val totalSlots = maxOf(groupMembers.size, pal.size.toIntOrNull() ?: 4)
+                                    val isGrid = totalSlots > 5
+                                    val columns = if (isGrid) 2 else 1
+                                    val contentSpacingDp = 0.dp
+                                    val verticalPadding = 28.dp * scale
+                                    
+                                    val rows = (totalSlots + columns - 1) / columns
+                                    val availableHeight = cameraHeight - (verticalPadding * 2)
+                                    
+                                    val cardHeightDp = if (isGrid) {
+                                        val cardWidthDpGrid = cameraWidth / 2
+                                        (availableHeight / rows).coerceAtMost(cardWidthDpGrid)
+                                    } else {
+                                        val cardWidthDp = cameraWidth
+                                        val maxCardHeight = cardWidthDp * (9f / 16f)
+                                        (availableHeight / totalSlots).coerceAtMost(maxCardHeight)
+                                    }
+
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(top = verticalPadding, bottom = verticalPadding)
+                                            .padding(horizontal = 0.dp),
+                                        verticalArrangement = Arrangement.spacedBy(contentSpacingDp, Alignment.CenterVertically),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        val chunked = (0 until totalSlots).chunked(columns)
+                                        for (rowIndices in chunked) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(contentSpacingDp)
+                                            ) {
+                                                for (index in rowIndices) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .height(cardHeightDp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        GroupExportMemberSlot(
+                                                            index = index,
+                                                            groupMembers = groupMembers,
+                                                            userFirstName = userFirstName,
+                                                            filteredSubmissions = filteredSubmissions,
+                                                            currentUserId = currentUserId,
+                                                            exportBackground = exportBackground,
+                                                            exportMissedText = exportMissedText,
+                                                            context = context,
+                                                            textColor = if (exportBackground == "white") Color.Black else Color.White,
+                                                            pal = pal,
+                                                            cardHeightDp = cardHeightDp,
+                                                            isGrid = isGrid
+                                                        )
+                                                    }
+                                                }
+                                                // If the last row is not full, fill it with empty space weights so items don't stretch
+                                                val emptySlotsCount = columns - rowIndices.size
+                                                if (emptySlotsCount > 0) {
+                                                    for (s in 0 until emptySlotsCount) {
+                                                        Spacer(modifier = Modifier.weight(1f))
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -8284,7 +8412,11 @@ fun VlogScreenContent(
                             label = "edit",
                             isPrimary = false,
                             isDark = isDark,
-                            onClick = {}
+                            onClick = {
+                                if (!pal.isVlog) {
+                                    showEditExportSheet = true
+                                }
+                            }
                         )
 
                         ExportMenuButton(
@@ -8307,22 +8439,29 @@ fun VlogScreenContent(
                             isPrimary = false,
                             isDark = isDark,
                             onClick = {
-                                if (!isExportSaving && !isExportSaved && capturedVlogsPaths.isNotEmpty()) {
+                                val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else filteredPaths.isNotEmpty()
+                                if (!isExportSaving && !isExportSaved && hasItemsToExport) {
                                     isExportSaving = true
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_save_${System.currentTimeMillis()}.mp4")
-                                        val reversedPaths = capturedVlogsPaths.reversed()
-                                        val reversedTimes = capturedVlogsTimes.reversed()
-                                        val reversedCaptions = capturedVlogsCaptions.reversed()
+                                        val pathsToProcess = if (pal.isVlog) capturedVlogsPaths.reversed() else filteredPaths
+                                        val timesToProcess = if (pal.isVlog) capturedVlogsTimes.reversed() else filteredTimes
+                                        val captionsToProcess = if (pal.isVlog) capturedVlogsCaptions.reversed() else filteredCaptions
+                                        val vlogsToProcess = if (pal.isVlog) List(pathsToProcess.size) { "vlog" } else {
+                                            filteredSubmissions.map { sub ->
+                                                sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                            }
+                                        }
 
                                         VideoProcessor.processVideoList(
                                             context = context,
-                                            inputPaths = reversedPaths,
+                                            inputPaths = pathsToProcess,
                                             outputPath = tempOut.absolutePath,
-                                            vlogTexts = List(reversedPaths.size) { "vlog" },
-                                            timeTexts = reversedTimes,
-                                            captionTexts = reversedCaptions,
-                                            roundedCorners = false
+                                            vlogTexts = vlogsToProcess,
+                                            timeTexts = timesToProcess,
+                                            captionTexts = captionsToProcess,
+                                            roundedCorners = false,
+                                            exportBackground = exportBackground
                                         ) { success ->
                                             if (success) {
                                                 val saveSuccess = saveVideoToGallery(context, tempOut.absolutePath)
@@ -8344,16 +8483,139 @@ fun VlogScreenContent(
 
                         ExportMenuButton(
                             icon = {
-                                UpwardArrowIcon(
-                                    tint = if (isDark) Color.Black else Color.White,
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                if (isExportSaving) {
+                                    CircularProgressIndicator(
+                                        color = if (isDark) Color.Black else Color.White,
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    UpwardArrowIcon(
+                                        tint = if (isDark) Color.Black else Color.White,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                             },
                             label = "share",
                             isPrimary = true,
                             isDark = isDark,
-                            onClick = {}
+                            onClick = {
+                                val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else filteredPaths.isNotEmpty()
+                                if (!isExportSaving && hasItemsToExport) {
+                                    isExportSaving = true
+                                    localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        val tempOut = java.io.File(context.cacheDir, "temp_export_share_${System.currentTimeMillis()}.mp4")
+                                        val pathsToProcess = if (pal.isVlog) capturedVlogsPaths.reversed() else filteredPaths
+                                        val timesToProcess = if (pal.isVlog) capturedVlogsTimes.reversed() else filteredTimes
+                                        val captionsToProcess = if (pal.isVlog) capturedVlogsCaptions.reversed() else filteredCaptions
+                                        val vlogsToProcess = if (pal.isVlog) List(pathsToProcess.size) { "vlog" } else {
+                                            filteredSubmissions.map { sub ->
+                                                sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                            }
+                                        }
+
+                                        VideoProcessor.processVideoList(
+                                            context = context,
+                                            inputPaths = pathsToProcess,
+                                            outputPath = tempOut.absolutePath,
+                                            vlogTexts = vlogsToProcess,
+                                            timeTexts = timesToProcess,
+                                            captionTexts = captionsToProcess,
+                                            roundedCorners = false,
+                                            exportBackground = exportBackground
+                                        ) { success ->
+                                            if (success) {
+                                                try {
+                                                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                                                        context,
+                                                        "com.finrein.pals.fileprovider",
+                                                        tempOut
+                                                    )
+                                                    val sendIntent = android.content.Intent().apply {
+                                                        action = android.content.Intent.ACTION_SEND
+                                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                                        type = "video/mp4"
+                                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    }
+                                                    val shareIntent = android.content.Intent.createChooser(sendIntent, "Share slideshow video")
+                                                    context.startActivity(shareIntent)
+                                                } catch (e: Exception) {
+                                                    e.printStackTrace()
+                                                }
+                                            }
+                                            isExportSaving = false
+                                        }
+                                    }
+                                }
+                            }
                         )
+                    }
+                }
+
+                // OVERLAY DIALOGS (edit export sheet)
+                if (showEditExportSheet) {
+                    val dialogBg = if (isDark) Color(0xFF2C2B30) else Color(0xFFF5F3EB)
+                    val dialogTextColor = if (isDark) Color.White else Color.Black
+                    val buttonColor = if (isDark) Color(0xFFB39DDB) else Color(0xFF7C4DFF)
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .clickable { showEditExportSheet = false },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(300.dp)
+                                .clip(RoundedCornerShape(28.dp))
+                                .background(dialogBg)
+                                .clickable(enabled = false) {}
+                                .padding(24.dp)
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(20.dp)
+                            ) {
+                                Text(
+                                    text = "edit export",
+                                    fontFamily = BricolageVariableFontFamily,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = dialogTextColor
+                                )
+                                
+                                // Background Option: background · black / white
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            exportBackground = if (exportBackground == "black") "white" else "black"
+                                        }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = androidx.compose.ui.text.buildAnnotatedString {
+                                            append("background · ")
+                                            append(exportBackground)
+                                        },
+                                        fontFamily = RobotoFontFamily,
+                                        fontSize = 16.sp,
+                                        color = dialogTextColor
+                                    )
+                                }
+                                Text(
+                                    text = "cancel",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = buttonColor,
+                                    modifier = Modifier
+                                        .align(Alignment.End)
+                                        .clickable { showEditExportSheet = false }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -8701,7 +8963,7 @@ fun CreatingAccountScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "creating account",
+                text = if (firstName.isEmpty()) "restoring account details" else "creating account",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 18.sp,
                 color = mutedTextColor.copy(alpha = 0.5f),
@@ -9110,6 +9372,142 @@ fun VideoPlayerItem(videoPath: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
+fun VoiceNotePlayerItem(
+    audioUrl: String,
+    title: String,
+    accentColor: Color,
+    isDark: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var isPlaying by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf(0f) }
+    var duration by remember { mutableStateOf(1) }
+    var currentPosition by remember { mutableStateOf(0) }
+
+    val mediaPlayer = remember(audioUrl) {
+        android.media.MediaPlayer().apply {
+            try {
+                setDataSource(audioUrl)
+                prepareAsync()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    DisposableEffect(mediaPlayer) {
+        onDispose {
+            try {
+                mediaPlayer.stop()
+            } catch (e: Exception) {}
+            mediaPlayer.release()
+        }
+    }
+
+    LaunchedEffect(mediaPlayer) {
+        mediaPlayer.setOnPreparedListener { mp ->
+            duration = mp.duration.coerceAtLeast(1)
+        }
+        mediaPlayer.setOnCompletionListener {
+            isPlaying = false
+            progress = 0f
+            currentPosition = 0
+            mediaPlayer.seekTo(0)
+        }
+    }
+
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isPlaying) {
+                currentPosition = mediaPlayer.currentPosition
+                progress = (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+                kotlinx.coroutines.delay(50)
+            }
+        }
+    }
+
+    val amplitudes = remember {
+        listOf(
+            0.3f, 0.4f, 0.6f, 0.8f, 0.5f, 0.3f, 0.4f, 0.7f, 0.9f, 1.0f,
+            0.8f, 0.5f, 0.4f, 0.6f, 0.8f, 0.7f, 0.5f, 0.3f, 0.4f, 0.6f,
+            0.8f, 0.9f, 0.7f, 0.4f, 0.3f
+        )
+    }
+
+    Row(
+        modifier = modifier
+            .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA), RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Play/Pause Button
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(accentColor)
+                .clickable {
+                    try {
+                        if (isPlaying) {
+                            mediaPlayer.pause()
+                            isPlaying = false
+                        } else {
+                            mediaPlayer.start()
+                            isPlaying = true
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (isPlaying) "⏸" else "▶",
+                color = Color.White,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = if (isPlaying) 0.dp else 2.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = title,
+                color = if (isDark) Color.White else Color.Black,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Wave bars
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                amplitudes.forEachIndexed { index, amp ->
+                    val barProgress = index.toFloat() / amplitudes.size.toFloat()
+                    val barColor = if (progress >= barProgress) accentColor else (if (isDark) Color(0xFF444444) else Color(0xFFCCCCCC))
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height((amp * 20f).dp)
+                            .background(barColor, RoundedCornerShape(1.dp))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun DeleteVlogConfirmationDialog(
     showDeleteVlogConfirmation: Boolean,
     isDark: Boolean,
@@ -9455,7 +9853,8 @@ fun PalChatOverlay(
     onActiveReplyPreviewPathChange: (String?) -> Unit,
     onShowChatChange: (Boolean) -> Unit,
     onNavigateToCamera: () -> Unit,
-    onSendMessage: (String) -> Unit
+    onSendMessage: (String) -> Unit,
+    onShowExportDialogChange: (Boolean) -> Unit
 ) {
     if (!showChat) return
 
@@ -9616,14 +10015,46 @@ fun PalChatOverlay(
                                                 .padding(end = 17.dp),
                                             horizontalAlignment = Alignment.End
                                         ) {
-                                            Text(
-                                                text = "apple_user",
-                                                fontFamily = FontFamily.SansSerif,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Normal,
-                                                color = textColor.copy(alpha = 0.6f),
-                                                modifier = Modifier.padding(bottom = 2.dp, end = 4.dp)
-                                            )
+                                            if (pal.isVlog) {
+                                                Text(
+                                                    text = feedItem.userDisplayName,
+                                                    fontFamily = FontFamily.SansSerif,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Normal,
+                                                    color = textColor.copy(alpha = 0.6f),
+                                                    modifier = Modifier.padding(bottom = 2.dp, end = 4.dp)
+                                                )
+                                            } else {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    modifier = Modifier.padding(bottom = 4.dp)
+                                                ) {
+                                                    val cleanName = feedItem.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                                    Text(
+                                                        text = cleanName,
+                                                        color = textColor,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontFamily = FontFamily.SansSerif
+                                                    )
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(24.dp)
+                                                            .clip(CircleShape)
+                                                            .background(accentColor),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Image(
+                                                            painter = painterResource(id = R.drawable.smile_medium),
+                                                            contentDescription = null,
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .rotate(180f)
+                                                        )
+                                                    }
+                                                }
+                                            }
 
                                             VideoPlayerItem(
                                                 videoPath = feedItem.path,
@@ -9730,34 +10161,36 @@ fun PalChatOverlay(
                             }
 
                             // 3. View Log Card
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 24.dp, vertical = 8.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFF5F3EB))
-                                    .border(1.dp, selectedProfileColor, RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        Toast.makeText(context, "view log clicked for $dayLabel", Toast.LENGTH_SHORT).show()
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                            ) {
-                                Text(
-                                    text = dayLabel,
-                                    color = textColor,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.SansSerif,
-                                    modifier = Modifier.align(Alignment.CenterStart)
-                                )
-                                Text(
-                                    text = "view log",
-                                    color = Color(0xFFFF007F),
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.SansSerif,
-                                    modifier = Modifier.align(Alignment.CenterEnd)
-                                )
+                            if (!pal.isVlog) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFF5F3EB))
+                                        .border(1.dp, selectedProfileColor, RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            Toast.makeText(context, "view log clicked for $dayLabel", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    Text(
+                                        text = dayLabel,
+                                        color = textColor,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.SansSerif,
+                                        modifier = Modifier.align(Alignment.CenterStart)
+                                    )
+                                    Text(
+                                        text = "view log",
+                                        color = Color(0xFFFF007F),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.SansSerif,
+                                        modifier = Modifier.align(Alignment.CenterEnd)
+                                    )
+                                }
                             }
                         }
                     }
@@ -12011,6 +12444,157 @@ fun VlogEmptyStateContent(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupExportMemberSlot(
+    index: Int,
+    groupMembers: List<String>,
+    userFirstName: String,
+    filteredSubmissions: List<SubmissionDbItem>,
+    currentUserId: String,
+    exportBackground: String,
+    exportMissedText: String,
+    context: android.content.Context,
+    textColor: Color,
+    pal: PalItem,
+    cardHeightDp: Dp,
+    isGrid: Boolean
+) {
+    val memberNameWithYou = groupMembers.getOrNull(index)
+    val memberName = if (memberNameWithYou != null) {
+        if (memberNameWithYou.contains("(You)")) userFirstName else memberNameWithYou
+    } else {
+        null
+    }
+    val isUser = memberNameWithYou != null && (memberNameWithYou.contains("(You)") || memberNameWithYou == userFirstName)
+    
+    // Find the submission for this member on the active day
+    val submission = if (isUser) {
+        filteredSubmissions.firstOrNull { it.userId == currentUserId }
+    } else if (memberName != null) {
+        filteredSubmissions.firstOrNull { 
+            val cleanSubName = it.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+            cleanSubName == memberName
+        }
+    } else {
+        null
+    }
+    
+    val videoPath = submission?.imageUrl?.substringBefore("|||") ?: ""
+    val captureTime = submission?.imageUrl?.substringAfter("|||")?.substringBefore("|||") ?: ""
+    val displayTimeText = "4:00"
+    
+    val cardShape = androidx.compose.ui.graphics.RectangleShape
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(cardShape)
+            .background(if (videoPath.isNotEmpty()) Color.Black else (if (exportBackground == "white") Color.White else Color.Black)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (videoPath.isNotEmpty()) {
+            val localPlayer = remember(videoPath) {
+                androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                    volume = 0f
+                    val cleanPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
+                    val file = java.io.File(cleanPath)
+                    if (file.exists()) {
+                        setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
+                        prepare()
+                    } else if (videoPath.startsWith("http")) {
+                        setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(videoPath)))
+                        prepare()
+                    }
+                }
+            }
+            DisposableEffect(localPlayer) {
+                onDispose {
+                    localPlayer.release()
+                }
+            }
+            LaunchedEffect(localPlayer) {
+                localPlayer.playWhenReady = true
+            }
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { ctx ->
+                    val view = android.view.LayoutInflater.from(ctx)
+                        .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                    view.apply {
+                        player = localPlayer
+                        useController = false
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        
+                        localPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                super.onVideoSizeChanged(videoSize)
+                                val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
+                                val containerWidth = width.toFloat()
+                                val containerHeight = height.toFloat()
+                                if (containerWidth > 0f && containerHeight > 0f) {
+                                    if (videoSize.height > videoSize.width) {
+                                        val scaleX = containerHeight / containerWidth
+                                        val scaleY = containerWidth / containerHeight
+                                        textureView.scaleX = scaleX
+                                        textureView.scaleY = scaleY
+                                        textureView.rotation = 270f
+                                    } else {
+                                        textureView.scaleX = 1.0f
+                                        textureView.scaleY = 1.0f
+                                        textureView.rotation = 0f
+                                    }
+                                }
+                            }
+                        })
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+            
+            // Time text centered, size 20.sp, bold white Dela Gothic One
+            val showTime = if (captureTime.isNotEmpty()) captureTime else displayTimeText
+            Text(
+                text = showTime,
+                fontFamily = DelaGothicOneFontFamily,
+                fontSize = 20.sp,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                style = TextStyle(
+                    shadow = androidx.compose.ui.graphics.Shadow(
+                        color = Color.Black.copy(alpha = 0.6f),
+                        offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                        blurRadius = 4f
+                    )
+                )
+            )
+        } else {
+            // Missed state: Center-aligned vertical stack
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Scheduled time text: Dela Gothic One (20.sp), textColor (black or white)
+                Text(
+                    text = displayTimeText,
+                    fontFamily = DelaGothicOneFontFamily,
+                    fontSize = 20.sp,
+                    color = textColor,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                // Missed text: sleep emoji in blue color
+                Text(
+                    text = "💤",
+                    fontSize = 22.sp,
+                    fontFamily = BricolageVariableFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF0F8CFF)
+                )
             }
         }
     }

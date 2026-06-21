@@ -127,7 +127,7 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // CameraX dependencies
-    val cameraVersion = "1.3.4"
+    val cameraVersion = "1.4.0"
     implementation("androidx.camera:camera-core:$cameraVersion")
     implementation("androidx.camera:camera-camera2:$cameraVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraVersion")

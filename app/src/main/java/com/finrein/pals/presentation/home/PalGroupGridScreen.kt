@@ -52,6 +52,7 @@ fun PalGroupGridScreen(
     vlogExoPlayer: androidx.media3.exoplayer.ExoPlayer,
     textColor: Color,
     allPalsMembers: Map<String, List<String>>,
+    groupMembersUserIds: Map<String, List<String>> = emptyMap(),
     firstName: String,
     allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
     currentUserId: String,
@@ -369,12 +370,18 @@ fun PalGroupGridScreen(
                                     Text(
                                         text = buildAnnotatedString {
                                             append("your space. each day runs ")
-                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = RobotoFontFamily)) {
-                                                append("4am")
+                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                                                append("4")
+                                            }
+                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                                                append("am")
                                             }
                                             append(" to ")
-                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = RobotoFontFamily)) {
-                                                append("4am")
+                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                                                append("4")
+                                            }
+                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                                                append("am")
                                             }
                                             append(".")
                                         },
@@ -400,6 +407,7 @@ fun PalGroupGridScreen(
                 PalGroupCard(
                     pal = group,
                     allPalsMembers = allPalsMembers,
+                    groupMembersUserIds = groupMembersUserIds,
                     allPalsSubmissions = allPalsSubmissions,
                     isDark = isDark,
                     accentColor = accentColor,
@@ -459,7 +467,7 @@ fun PalGroupGridScreen(
                                 ) {
                                     Text(
                                         text = "1",
-                                        fontFamily = RobotoFontFamily,
+                                        fontFamily = FontFamily.SansSerif,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = circleNumText
@@ -568,7 +576,7 @@ fun PalGroupGridScreen(
                                 ) {
                                     Text(
                                         text = "2",
-                                        fontFamily = RobotoFontFamily,
+                                        fontFamily = FontFamily.SansSerif,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = circleNumText
@@ -581,8 +589,11 @@ fun PalGroupGridScreen(
                                     Text(
                                         text = buildAnnotatedString {
                                             append("add a ")
-                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = RobotoFontFamily)) {
-                                                append("2s")
+                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                                                append("2")
+                                            }
+                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                                                append("s")
                                             }
                                             append(" clip every hour.")
                                         },
@@ -630,7 +641,16 @@ fun PalGroupGridScreen(
                                 verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 Text(
-                                    text = "day resets at 4AM.",
+                                    text = buildAnnotatedString {
+                                        append("day resets at ")
+                                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                                            append("4")
+                                        }
+                                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                                            append("AM")
+                                        }
+                                        append(".")
+                                    },
                                     fontFamily = OwnglyphFontFamily,
                                     fontSize = 14.sp,
                                     color = textColor,
@@ -674,6 +694,7 @@ fun PalGroupGridScreen(
 fun PalGroupCard(
     pal: PalItem,
     allPalsMembers: Map<String, List<String>>,
+    groupMembersUserIds: Map<String, List<String>> = emptyMap(),
     allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
     isDark: Boolean,
     accentColor: Color,
@@ -688,10 +709,55 @@ fun PalGroupCard(
 ) {
     val capitalizedGroupName = pal.name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
     val members = allPalsMembers[pal.code] ?: emptyList()
-    val subtitleText = if (members.size <= 1) {
-        "only you"
-    } else {
-        "${members.size} members"
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sharedPrefs = remember(context) { context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE) }
+    
+    val groupSubs = allPalsSubmissions[pal.code] ?: emptyList()
+    val userSub = groupSubs.firstOrNull { it.userId == currentUserId }
+    val otherSubs = groupSubs.filter { it.userId != currentUserId }
+    val lastViewed = sharedPrefs.getLong("viewed_${pal.code}", 0L)
+
+    val subtitleAnnotated = remember(groupSubs, lastViewed, members.size) {
+        buildAnnotatedString {
+            if (userSub != null) {
+                val timestamp = getSubmissionTimestamp(userSub)
+                val durationStr = formatDuration(timestamp)
+                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                    append("sent log ")
+                }
+                val numberPart = durationStr.takeWhile { it.isDigit() }
+                val suffixPart = durationStr.dropWhile { it.isDigit() }
+                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                    append(numberPart)
+                }
+                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                    append(suffixPart)
+                }
+            } else if (otherSubs.isNotEmpty() && lastViewed > 0L) {
+                val durationStr = formatDuration(lastViewed)
+                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                    append("viewed ")
+                }
+                val numberPart = durationStr.takeWhile { it.isDigit() }
+                val suffixPart = durationStr.dropWhile { it.isDigit() }
+                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                    append(numberPart)
+                }
+                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                    append(suffixPart)
+                }
+            } else {
+                if (members.size <= 1) {
+                    withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                        append("only you")
+                    }
+                } else {
+                    withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                        append("${members.size} members")
+                    }
+                }
+            }
+        }
     }
 
     GlassmorphicCard(
@@ -725,8 +791,7 @@ fun PalGroupCard(
                     maxLines = 1
                 )
                 Text(
-                    text = subtitleText,
-                    fontFamily = FontFamily.SansSerif,
+                    text = subtitleAnnotated,
                     fontSize = 11.sp,
                     color = mutedTextColor,
                     maxLines = 1
@@ -741,6 +806,9 @@ fun PalGroupCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 val groupSubs = allPalsSubmissions[pal.code] ?: emptyList()
+                val memberUserIds = groupMembersUserIds[pal.code] ?: emptyList()
+                val hasUserSubmitted = groupSubs.any { it.userId == currentUserId }
+
                 GroupMembersSmileysRow(
                     members = members,
                     submissions = groupSubs,
@@ -754,19 +822,22 @@ fun PalGroupCard(
                     unlitAlpha = 1.0f
                 )
 
-                // Compact Camera Button
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
-                        .clickable { onCameraClick() },
-                    contentAlignment = Alignment.Center
-                ) {
+                if (!hasUserSubmitted) {
+                    // Vertical line divider
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(18.dp)
+                            .background(if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f))
+                    )
+
+                    // Raw Camera Icon
                     Image(
                         painter = painterResource(id = R.drawable.camera_list_icon),
                         contentDescription = "Camera",
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clickable { onCameraClick() },
                         colorFilter = ColorFilter.tint(if (isDark) Color.White else Color.Black)
                     )
                 }
@@ -775,3 +846,35 @@ fun PalGroupCard(
     }
 }
 
+private fun formatDuration(fromMillis: Long): String {
+    val diffMs = System.currentTimeMillis() - fromMillis
+    if (diffMs < 0) return "0m"
+    val diffMins = Math.round(diffMs / 60000.0)
+    if (diffMins < 60) {
+        return "${diffMins}m"
+    }
+    val diffHours = Math.round(diffMs / 3600000.0)
+    if (diffHours < 24) {
+        return "${diffHours}h"
+    }
+    val diffDays = Math.round(diffMs / 86400000.0)
+    return "${diffDays}d"
+}
+
+private fun getSubmissionTimestamp(sub: SubmissionDbItem): Long {
+    if (!sub.createdAt.isNullOrEmpty()) {
+        try {
+            return java.time.Instant.parse(sub.createdAt).toEpochMilli()
+        } catch (e: Exception) {}
+    }
+    val parts = sub.imageUrl.split("|||")
+    val path = parts.getOrNull(0) ?: ""
+    val regex = Regex("\\d{13}")
+    val match = regex.find(path)
+    if (match != null) {
+        try {
+            return match.value.toLong()
+        } catch (e: Exception) {}
+    }
+    return System.currentTimeMillis()
+}
