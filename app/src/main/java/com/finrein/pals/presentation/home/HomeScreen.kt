@@ -1727,7 +1727,7 @@ fun HomeScreen(
     val currentBackgroundColor = if (onboardingFlowStep < 5) {
         if (isDark) Color(0xFF181513) else Color(0xFFFCF6ED)
     } else {
-        if (isDark) Color(0xFF121212) else PalBackground
+        if (isDark) Color.Black else PalBackground
     }
 
     Box(
@@ -2240,26 +2240,6 @@ fun HomeScreen(
                         currentUserId = currentUserId,
                         currentDisplayName = currentDisplayName
                     )
-                } else {
-                    CameraScreenContent(
-                        isDark = isDark,
-                        accentColor = accentColor,
-                        textColor = textColor,
-                        mutedTextColor = mutedTextColor,
-                        activeGradientColors = activeGradientColors,
-                        selectedThemeColor = selectedThemeColor,
-                        selectedProfileColor = selectedProfileColor,
-                        rotationAngle = rotationAngle,
-                        palTextLogoColor = palTextLogoColor,
-                        isRecording = isRecordingCamera,
-                        onRecordingChange = { isRecordingCamera = it },
-                        onClose = { selectedTab = "pals" },
-                        onCaptureSuccess = { path, duration ->
-                            capturedVideoPath = path
-                            capturedVideoDuration = duration
-                            showingCapturedPreview = true
-                        }
-                    )
                 }
             } else {
                 PalsTabScreenContent(
@@ -2420,6 +2400,37 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
         ) {
+            if (onboardingFlowStep == 6) {
+                val isCameraTabActive = selectedTab == "camera" && !showingCapturedPreview && activeVlogPal == null
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(if (isCameraTabActive) 1f else 0f)
+                        .then(
+                            if (isCameraTabActive) Modifier else Modifier.absoluteOffset(x = 10000.dp)
+                        )
+                ) {
+                    CameraScreenContent(
+                        isDark = isDark,
+                        accentColor = accentColor,
+                        textColor = textColor,
+                        mutedTextColor = mutedTextColor,
+                        activeGradientColors = activeGradientColors,
+                        selectedThemeColor = selectedThemeColor,
+                        selectedProfileColor = selectedProfileColor,
+                        rotationAngle = rotationAngle,
+                        palTextLogoColor = palTextLogoColor,
+                        isRecording = isRecordingCamera,
+                        onRecordingChange = { isRecordingCamera = it },
+                        onClose = { selectedTab = "pals" },
+                        onCaptureSuccess = { path, duration ->
+                            capturedVideoPath = path
+                            capturedVideoDuration = duration
+                            showingCapturedPreview = true
+                        }
+                    )
+                }
+            }
             screenContent()
         }
 
@@ -3632,6 +3643,36 @@ fun CameraScreenContent(
                         zoomLevel = activeSlot,
                         onVideoCaptureCreated = { videoCaptureRef = it }
                     )
+
+                    // Zoom Selector Options (1 to 5) inside the camera frame
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 60.dp * scale)
+                            .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(16.dp * scale))
+                            .padding(horizontal = 8.dp * scale, vertical = 4.dp * scale),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp * scale),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        (1..5).forEach { slot ->
+                            val isSelected = activeSlot == slot
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp * scale)
+                                    .clip(CircleShape)
+                                    .background(if (isSelected) selectedProfileColor else Color.Transparent)
+                                    .clickable { activeSlot = slot },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = slot.toString(),
+                                    color = Color.White,
+                                    fontSize = (11 * scale).sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
 
                     // Timelapse Recording Overlay
                     if (isRecording && activeTimerMode == TimerMode.TIMELAPSE) {
@@ -4933,7 +4974,10 @@ fun CapturedPreviewScreen(
                     val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
                     val oneHourAgo = System.currentTimeMillis() - 3600 * 1000
                     groupSubs.filter { it.userId == currentUserId }
-                        .filter { sub -> sub.imageUrl !in currentDeleted }
+                        .filter { sub ->
+                            val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                            path !in currentDeleted && sub.imageUrl !in currentDeleted
+                        }
                         .firstOrNull { sub ->
                             var subTime = 0L
                             if (!sub.createdAt.isNullOrEmpty()) {
@@ -8270,7 +8314,7 @@ fun VlogScreenContent(
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(if (isDark) Color(0xFF1C1C1E) else Color.White)
+                    .background(if (isDark) Color.Black else Color.White)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -8519,7 +8563,7 @@ fun VlogScreenContent(
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .height(cardBottomPadding)
+                        .height(cardBottomPadding + exportShift)
                         .offset(y = -exportShift)
                         .fillMaxWidth()
                         .clickable(

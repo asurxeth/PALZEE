@@ -71,7 +71,7 @@ fun PalGroupGridScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0xFF0A0A0A) else Color(0xFFF9F9F9))
+            .background(if (isDark) Color.Black else Color(0xFFF9F9F9))
     ) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 160.dp),
