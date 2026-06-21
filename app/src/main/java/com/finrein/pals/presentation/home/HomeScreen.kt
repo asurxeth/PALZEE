@@ -4494,6 +4494,8 @@ fun CapturedPreviewScreen(
     val userFirstName = remember(currentDisplayName) {
         currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
     }
+    val sharedPrefs = remember(context) { context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE) }
+    val deletedVlogsKey = "deleted_vlog_paths_$currentUserId"
 
     LaunchedEffect(createdPals, currentDisplayName) {
         createdPals.forEach { pal ->
@@ -4909,6 +4911,9 @@ fun CapturedPreviewScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             val sortedPals = createdPals.sortedWith(compareByDescending { it.isVlog })
+            val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
+            val currentDeleted = if (savedDeleted.isEmpty()) emptySet<String>() else savedDeleted.split(";;;").toSet()
+
             sortedPals.forEach { pal ->
                 val isSelected = selectedPals.contains(pal.code)
                 val groupName = pal.name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
@@ -4924,30 +4929,63 @@ fun CapturedPreviewScreen(
                     }
                 }
                 
-                val isHourlyRestricted = if (pal.isVlog) false else {
+                val lastHourSub = if (pal.isVlog) null else {
                     val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
                     val oneHourAgo = System.currentTimeMillis() - 3600 * 1000
-                    groupSubs.filter { it.userId == currentUserId }.any { sub ->
-                        var subTime = 0L
-                        if (!sub.createdAt.isNullOrEmpty()) {
-                            try {
-                                subTime = java.time.Instant.parse(sub.createdAt).toEpochMilli()
-                            } catch (e: Exception) {}
-                        }
-                        if (subTime == 0L) {
-                            val parts = sub.imageUrl.split("|||")
-                            val path = parts.getOrNull(0) ?: ""
-                            val regex = Regex("\\d{13}")
-                            val match = regex.find(path)
-                            if (match != null) {
+                    groupSubs.filter { it.userId == currentUserId }
+                        .filter { sub -> sub.imageUrl !in currentDeleted }
+                        .firstOrNull { sub ->
+                            var subTime = 0L
+                            if (!sub.createdAt.isNullOrEmpty()) {
                                 try {
-                                    subTime = match.value.toLong()
+                                    subTime = java.time.Instant.parse(sub.createdAt).toEpochMilli()
                                 } catch (e: Exception) {}
                             }
+                            if (subTime == 0L) {
+                                val parts = sub.imageUrl.split("|||")
+                                val path = parts.getOrNull(0) ?: ""
+                                val regex = Regex("\\d{13}")
+                                val match = regex.find(path)
+                                if (match != null) {
+                                    try {
+                                        subTime = match.value.toLong()
+                                    } catch (e: Exception) {}
+                                }
+                            }
+                            subTime > oneHourAgo
                         }
-                        subTime > oneHourAgo
-                    }
                 }
+                val isHourlyRestricted = lastHourSub != null
+                
+                val hourlySentText = if (lastHourSub != null) {
+                    var subTime = 0L
+                    if (!lastHourSub.createdAt.isNullOrEmpty()) {
+                        try {
+                            subTime = java.time.Instant.parse(lastHourSub.createdAt).toEpochMilli()
+                        } catch (e: Exception) {}
+                    }
+                    if (subTime == 0L) {
+                        val parts = lastHourSub.imageUrl.split("|||")
+                        val path = parts.getOrNull(0) ?: ""
+                        val regex = Regex("\\d{13}")
+                        val match = regex.find(path)
+                        if (match != null) {
+                            try {
+                                subTime = match.value.toLong()
+                            } catch (e: Exception) {}
+                        }
+                    }
+                    if (subTime > 0L) {
+                        val instant = java.time.Instant.ofEpochMilli(subTime)
+                        val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                        String.format("sent for %02d:00", zonedDateTime.hour)
+                    } else {
+                        "sent"
+                    }
+                } else {
+                    ""
+                }
+
                 val cardAlpha = if (isHourlyRestricted) 0.5f else 1.0f
 
                 // Card Box Container (Grey in light mode, Charcoal in dark mode)
@@ -5009,9 +5047,9 @@ fun CapturedPreviewScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = if (isDark) Color.White else Color.Black
                             )
-                            if (isHourlyRestricted) {
+                            if (isHourlyRestricted && hourlySentText.isNotEmpty()) {
                                 Text(
-                                    text = "(sent < 1h ago)",
+                                    text = "($hourlySentText)",
                                     fontFamily = FontFamily.SansSerif,
                                     fontSize = 11.sp,
                                     color = Color.Red.copy(alpha = 0.7f)
@@ -8507,7 +8545,7 @@ fun VlogScreenContent(
                                     modifier = Modifier.size(24.dp)
                                 )
                             },
-                            label = "close",
+                            label = "discard",
                             isPrimary = false,
                             isDark = isDark,
                             onClick = { onShowExportDialogChange(false) }
