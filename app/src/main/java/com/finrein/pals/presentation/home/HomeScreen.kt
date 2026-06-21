@@ -2163,72 +2163,74 @@ fun HomeScreen(
                         capturedVideoPath = capturedVideoPath,
                         capturedVlogsPaths = todayVlogPaths,
                         onClose = { showingCapturedPreview = false },
-                        onSend = { caption, targetPal ->
+                        onSend = { caption, targetPals ->
                             capturedCaptionText = caption
                             val time = java.time.LocalTime.now()
                             val formattedTime = String.format("%02d:%02d", time.hour, time.minute)
                             capturedVideoTimeText = formattedTime
 
-                            val targetPalCode = targetPal.code
-                            if (targetPalCode == "vlog") {
-                                capturedVideoPath?.let { path ->
-                                    val cleanPath = when {
-                                        path.startsWith("file://") -> path.substring(7)
-                                        else -> path
-                                    }
-                                    val sourceFile = java.io.File(cleanPath)
-                                    val targetFile = java.io.File(context.filesDir, sourceFile.name)
-                                    if (sourceFile.exists()) {
-                                        try {
-                                            sourceFile.copyTo(targetFile, overwrite = true)
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
+                            targetPals.forEach { targetPal ->
+                                val targetPalCode = targetPal.code
+                                if (targetPalCode == "vlog") {
+                                    capturedVideoPath?.let { path ->
+                                        val cleanPath = when {
+                                            path.startsWith("file://") -> path.substring(7)
+                                            else -> path
                                         }
+                                        val sourceFile = java.io.File(cleanPath)
+                                        val targetFile = java.io.File(context.filesDir, sourceFile.name)
+                                        if (sourceFile.exists()) {
+                                            try {
+                                                sourceFile.copyTo(targetFile, overwrite = true)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        }
+                                        val persistentPath = targetFile.absolutePath
+
+                                        val updatedPaths = ArrayList(capturedVlogsPaths)
+                                        updatedPaths.add(0, persistentPath)
+                                        capturedVlogsPaths = updatedPaths
+                                        sharedPrefs.edit().putString("vlog_paths", updatedPaths.joinToString(";;;")).apply()
+
+                                        val updatedTimes = ArrayList(capturedVlogsTimes)
+                                        updatedTimes.add(0, formattedTime)
+                                        capturedVlogsTimes = updatedTimes
+                                        sharedPrefs.edit().putString("vlog_times", updatedTimes.joinToString(";;;")).apply()
+
+                                        val updatedCaptions = ArrayList(capturedVlogsCaptions)
+                                        updatedCaptions.add(0, caption)
+                                        capturedVlogsCaptions = updatedCaptions
+                                        sharedPrefs.edit().putString("vlog_captions", updatedCaptions.joinToString(";;;")).apply()
+
+                                        val updatedDurations = ArrayList(capturedVlogsDurations)
+                                        updatedDurations.add(0, capturedVideoDuration.toString())
+                                        capturedVlogsDurations = updatedDurations
+                                        sharedPrefs.edit().putString("vlog_durations", updatedDurations.joinToString(";;;")).apply()
                                     }
-                                    val persistentPath = targetFile.absolutePath
-
-                                    val updatedPaths = ArrayList(capturedVlogsPaths)
-                                    updatedPaths.add(0, persistentPath)
-                                    capturedVlogsPaths = updatedPaths
-                                    sharedPrefs.edit().putString("vlog_paths", updatedPaths.joinToString(";;;")).apply()
-
-                                    val updatedTimes = ArrayList(capturedVlogsTimes)
-                                    updatedTimes.add(0, formattedTime)
-                                    capturedVlogsTimes = updatedTimes
-                                    sharedPrefs.edit().putString("vlog_times", updatedTimes.joinToString(";;;")).apply()
-
-                                    val updatedCaptions = ArrayList(capturedVlogsCaptions)
-                                    updatedCaptions.add(0, caption)
-                                    capturedVlogsCaptions = updatedCaptions
-                                    sharedPrefs.edit().putString("vlog_captions", updatedCaptions.joinToString(";;;")).apply()
-
-                                    val updatedDurations = ArrayList(capturedVlogsDurations)
-                                    updatedDurations.add(0, capturedVideoDuration.toString())
-                                    capturedVlogsDurations = updatedDurations
-                                    sharedPrefs.edit().putString("vlog_durations", updatedDurations.joinToString(";;;")).apply()
                                 }
-                            }
 
-                            if (targetPalCode != "vlog") {
-                                palPalsCount[targetPalCode] = (palPalsCount[targetPalCode] ?: 0) + 1
-                            }
-                            coroutineScope.launch {
-                                try {
-                                    val delimiterString = "${capturedVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}"
-                                    val newSubmission = SubmissionDbItem(
-                                        palCode = targetPalCode,
-                                        userId = currentUserId,
-                                        userDisplayName = currentDisplayName,
-                                        imageUrl = delimiterString
-                                    )
-                                    supabaseClient.postgrest.from("submissions").insert(newSubmission)
-                                    if (targetPalCode != "vlog") {
-                                        refreshActivePalDetails(targetPalCode)
-                                    } else {
-                                        refreshVlogs()
+                                if (targetPalCode != "vlog") {
+                                    palPalsCount[targetPalCode] = (palPalsCount[targetPalCode] ?: 0) + 1
+                                }
+                                coroutineScope.launch {
+                                    try {
+                                        val delimiterString = "${capturedVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}"
+                                        val newSubmission = SubmissionDbItem(
+                                            palCode = targetPalCode,
+                                            userId = currentUserId,
+                                            userDisplayName = currentDisplayName,
+                                            imageUrl = delimiterString
+                                        )
+                                        supabaseClient.postgrest.from("submissions").insert(newSubmission)
+                                        if (targetPalCode != "vlog") {
+                                            refreshActivePalDetails(targetPalCode)
+                                        } else {
+                                            refreshVlogs()
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
                                     }
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
                                 }
                             }
                             showingCapturedPreview = false
@@ -4460,7 +4462,7 @@ fun CapturedPreviewScreen(
     capturedVideoPath: String?,
     capturedVlogsPaths: List<String>,
     onClose: () -> Unit,
-    onSend: (String, PalItem) -> Unit,
+    onSend: (String, List<PalItem>) -> Unit,
     currentUserId: String,
     currentDisplayName: String
 ) {
@@ -4485,7 +4487,7 @@ fun CapturedPreviewScreen(
     }
 
     val coroutineScope = rememberCoroutineScope()
-    var selectedPal by remember { mutableStateOf<PalItem?>(null) }
+    var selectedPals by remember { mutableStateOf<Set<String>>(emptySet()) }
     val groupMembersMap = remember { mutableStateMapOf<String, List<String>>() }
     val groupSubmissionsMap = remember { mutableStateMapOf<String, List<SubmissionDbItem>>() }
     val userFirstName = remember(currentDisplayName) {
@@ -4660,10 +4662,13 @@ fun CapturedPreviewScreen(
             }
 
             // Top Middle Vlog Title Header Text ("vlog >" or selected group name + " >")
-            val selectedPalName = selectedPal?.name?.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-            if (selectedPalName != null) {
+            val selectedPalNames = remember(selectedPals, createdPals) {
+                createdPals.filter { selectedPals.contains(it.code) }
+                    .joinToString(", ") { it.name.replaceFirstChar { c -> if (c.isLowerCase()) c.titlecase() else c.toString() } }
+            }
+            if (selectedPalNames.isNotEmpty()) {
                 Text(
-                    text = "$selectedPalName >",
+                    text = "$selectedPalNames >",
                     fontFamily = FontFamily.SansSerif,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
@@ -4755,7 +4760,7 @@ fun CapturedPreviewScreen(
             }
 
             // Top Right Send Button (Glows up only when target is selected)
-            val isButtonEnabled = selectedPal != null
+            val isButtonEnabled = selectedPals.isNotEmpty()
             val sendButtonBg = if (isButtonEnabled) {
                 accentColor
             } else {
@@ -4778,7 +4783,8 @@ fun CapturedPreviewScreen(
                     .then(
                         if (isButtonEnabled) {
                             Modifier.clickable {
-                                selectedPal?.let { onSend(captionText, it) }
+                                val targets = createdPals.filter { selectedPals.contains(it.code) }
+                                onSend(captionText, targets)
                             }
                         } else {
                             Modifier
@@ -4833,7 +4839,9 @@ fun CapturedPreviewScreen(
                                     context = context,
                                     inputPath = cleanPath,
                                     outputPath = tempOut.absolutePath,
-                                    vlogText = selectedPal?.name ?: "vlog",
+                                    vlogText = createdPals.filter { selectedPals.contains(it.code) }
+                                        .joinToString(", ") { it.name }
+                                        .ifEmpty { "vlog" },
                                     timeText = capturedTimeText,
                                     captionText = captionText,
                                     roundedCorners = true
@@ -4901,7 +4909,7 @@ fun CapturedPreviewScreen(
         ) {
             val sortedPals = createdPals.sortedWith(compareByDescending { it.isVlog })
             sortedPals.forEach { pal ->
-                val isSelected = selectedPal?.code == pal.code
+                val isSelected = selectedPals.contains(pal.code)
                 val groupName = pal.name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
                 
                 val members = groupMembersMap[pal.code] ?: emptyList()
@@ -4915,16 +4923,48 @@ fun CapturedPreviewScreen(
                     }
                 }
                 
+                val isHourlyRestricted = if (pal.isVlog) false else {
+                    val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
+                    val oneHourAgo = System.currentTimeMillis() - 3600 * 1000
+                    groupSubs.filter { it.userId == currentUserId }.any { sub ->
+                        var subTime = 0L
+                        if (!sub.createdAt.isNullOrEmpty()) {
+                            try {
+                                subTime = java.time.Instant.parse(sub.createdAt).toEpochMilli()
+                            } catch (e: Exception) {}
+                        }
+                        if (subTime == 0L) {
+                            val parts = sub.imageUrl.split("|||")
+                            val path = parts.getOrNull(0) ?: ""
+                            val regex = Regex("\\d{13}")
+                            val match = regex.find(path)
+                            if (match != null) {
+                                try {
+                                    subTime = match.value.toLong()
+                                } catch (e: Exception) {}
+                            }
+                        }
+                        subTime > oneHourAgo
+                    }
+                }
+                val cardAlpha = if (isHourlyRestricted) 0.5f else 1.0f
+
                 // Card Box Container (Grey in light mode, Charcoal in dark mode)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
+                        .alpha(cardAlpha)
                         .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
-                        .clickable {
-                            // Toggle selection (single-select style)
-                            selectedPal = if (isSelected) null else pal
-                        }
+                        .then(
+                            if (isHourlyRestricted) Modifier else Modifier.clickable {
+                                selectedPals = if (isSelected) {
+                                    selectedPals - pal.code
+                                } else {
+                                    selectedPals + pal.code
+                                }
+                            }
+                        )
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -4957,13 +4997,26 @@ fun CapturedPreviewScreen(
                     Column(
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(
-                            text = groupName,
-                            fontFamily = FontFamily.SansSerif,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color.White else Color.Black
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = groupName,
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color.White else Color.Black
+                            )
+                            if (isHourlyRestricted) {
+                                Text(
+                                    text = "(sent < 1h ago)",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 11.sp,
+                                    color = Color.Red.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
                         Text(
                             text = description,
                             fontFamily = FontFamily.SansSerif,
@@ -7482,7 +7535,7 @@ fun VlogScreenContent(
 
                     // Horizontal row of small smileys showing the pals sent to vlog menu count (spaced 12.5dp below capsule, filled with boundary/accentColor, with active ring)
                     Row(
-                        modifier = Modifier.offset(y = 32.5.dp), // offset downwards below the non-vlog capsule (shifted up by 7dp from 42dp to 35dp)
+                        modifier = Modifier.offset(y = 27.5.dp), // offset downwards below the non-vlog capsule (shifted up by 7dp from 42dp to 35dp)
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -8195,7 +8248,9 @@ fun VlogScreenContent(
                 val shutterBottomMargin = 67.5.dp
                 val shutterSize = 59.dp * scale
                 val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
-                val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
+                val isVlog = pal.isVlog
+                val exportShift = if (isVlog) 25.dp else 30.dp
+                val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp + exportShift
 
                 val cameraWidth = screenWidth - 15.dp
                 val cameraHeight = cameraWidth * (16f / 9f)
@@ -8426,6 +8481,7 @@ fun VlogScreenContent(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .height(cardBottomPadding)
+                        .offset(y = -exportShift)
                         .fillMaxWidth()
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
