@@ -441,7 +441,7 @@ fun PalGroupGridScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(start = if (isVlogSent) 0.dp else 12.dp)
-                                .offset(y = (-10).dp),
+                                .offset(y = (-17.5).dp),
                             textAlign = if (isVlogSent) TextAlign.Center else TextAlign.Start
                         )
 
@@ -450,7 +450,7 @@ fun PalGroupGridScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .offset(y = (-18).dp),
+                                .offset(y = (-25.5).dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Row(
@@ -624,7 +624,7 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(54.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-15).dp),
+                                .offset(y = (-25).dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
@@ -675,7 +675,7 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(64.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-19).dp),
+                                .offset(y = (-26.5).dp),
                             contentScale = ContentScale.Fit
                         )
                     }
