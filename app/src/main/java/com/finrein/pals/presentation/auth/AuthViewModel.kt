@@ -17,8 +17,19 @@ import java.util.UUID
 import javax.inject.Inject
 import dagger.hilt.android.lifecycle.HiltViewModel
 import com.finrein.pals.PALApplication
+import com.finrein.pals.BuildConfig
+import io.ktor.client.HttpClient
+import io.ktor.client.request.post
+import io.ktor.client.request.header
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 @HiltViewModel
 class AuthViewModel @Inject constructor() : ViewModel() {
@@ -106,6 +117,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
                 supabaseAuth.signInWith(IDToken) {
                     idToken = idTokenStr
                     provider = Google
+                    nonce = null
                 }
                 val user = com.finrein.pals.domain.model.User(
                     id = supabaseAuth.currentUserOrNull()?.id ?: UUID.randomUUID().toString(),

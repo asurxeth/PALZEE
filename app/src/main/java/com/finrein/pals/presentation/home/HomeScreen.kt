@@ -5419,7 +5419,7 @@ fun GroupMemberCard(
             Text(
                 text = timeText,
                 fontFamily = DelaGothicOneFontFamily,
-                fontSize = if (isGrid) 16.sp else 22.sp,
+                fontSize = if (isGrid) 12.5.sp else 18.5.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 modifier = Modifier.align(Alignment.Center)
@@ -5771,7 +5771,7 @@ fun GroupMemberCard(
                 Text(
                     text = roundedHourStr,
                     fontFamily = DelaGothicOneFontFamily,
-                    fontSize = if (isGrid) 16.sp else 22.sp,
+                    fontSize = if (isGrid) 12.5.sp else 18.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = userEmptyTextColor,
                     modifier = Modifier.offset(y = 2.5.dp)
@@ -5963,7 +5963,7 @@ fun GroupMemberCard(
             Text(
                 text = displayTimeText,
                 fontFamily = DelaGothicOneFontFamily,
-                fontSize = if (isGrid) 16.sp else 22.sp,
+                fontSize = if (isGrid) 12.5.sp else 18.5.sp,
                 fontWeight = FontWeight.Bold,
                 color = actualMemberTextColor,
                 modifier = Modifier.align(Alignment.Center)
@@ -8980,9 +8980,8 @@ fun VlogScreenContent(
                     val buttonColor = if (isDark) Color(0xFFB39DDB) else Color(0xFF7C4DFF)
                     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
                     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-
                     LaunchedEffect(Unit) {
-                        kotlinx.coroutines.delay(100)
+                        kotlinx.coroutines.delay(300)
                         focusRequester.requestFocus()
                         keyboardController?.show()
                     }
@@ -9013,11 +9012,21 @@ fun VlogScreenContent(
                                     color = dialogTextColor
                                 )
 
-                                var textVal by remember { mutableStateOf(tempMissedText) }
+                                var textVal by remember {
+                                    mutableStateOf(
+                                        androidx.compose.ui.text.input.TextFieldValue(
+                                            text = tempMissedText,
+                                            selection = androidx.compose.ui.text.TextRange(tempMissedText.length)
+                                        )
+                                    )
+                                }
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     androidx.compose.foundation.text.BasicTextField(
                                         value = textVal,
-                                        onValueChange = { textVal = it },
+                                        onValueChange = {
+                                            textVal = it
+                                            exportMissedText = it.text
+                                        },
                                         textStyle = androidx.compose.ui.text.TextStyle(
                                             fontFamily = RobotoFontFamily,
                                             fontSize = 18.sp,
@@ -9026,7 +9035,12 @@ fun VlogScreenContent(
                                         ),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .focusRequester(focusRequester),
+                                            .focusRequester(focusRequester)
+                                            .onFocusChanged { focusState ->
+                                                if (focusState.isFocused) {
+                                                    keyboardController?.show()
+                                                }
+                                            },
                                         cursorBrush = androidx.compose.ui.graphics.SolidColor(buttonColor)
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
@@ -9050,7 +9064,10 @@ fun VlogScreenContent(
                                         fontWeight = FontWeight.Bold,
                                         color = buttonColor,
                                         modifier = Modifier
-                                            .clickable { showMissedTextDialog = false }
+                                            .clickable {
+                                                exportMissedText = tempMissedText
+                                                showMissedTextDialog = false
+                                            }
                                             .padding(8.dp)
                                     )
                                     Spacer(modifier = Modifier.width(16.dp))
@@ -9062,7 +9079,7 @@ fun VlogScreenContent(
                                         color = buttonColor,
                                         modifier = Modifier
                                             .clickable {
-                                                exportMissedText = textVal
+                                                exportMissedText = textVal.text
                                                 showMissedTextDialog = false
                                             }
                                             .padding(8.dp)
@@ -11004,6 +11021,7 @@ fun JoinPalDialogOverlay(
         }
 
         val localScope = rememberCoroutineScope()
+        val context = LocalContext.current
         var isFocused by remember { mutableStateOf(false) }
         val verticalBias by animateFloatAsState(
             targetValue = if (isFocused) 0f else 1f,
@@ -11181,7 +11199,7 @@ fun JoinPalDialogOverlay(
                                 )
                                 .clickable(enabled = isCodeValid) {
                                     val code = joinPalCode.trim()
-                                    localScope.launch {
+                                    localScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
                                             val matchedPalDb = supabaseClient.postgrest.from("pals")
                                                 .select {
@@ -11192,11 +11210,22 @@ fun JoinPalDialogOverlay(
                                                 .decodeSingleOrNull<PalDbItem>()
 
                                             if (matchedPalDb != null) {
-                                                val newMapping = UserPalMapping(
-                                                    userId = currentUserId,
-                                                    palCode = code
-                                                )
-                                                supabaseClient.postgrest.from("user_pals").insert(newMapping)
+                                                val existingMapping = supabaseClient.postgrest.from("user_pals")
+                                                    .select {
+                                                        filter {
+                                                            eq("user_id", currentUserId)
+                                                            eq("pal_code", code)
+                                                        }
+                                                    }
+                                                    .decodeSingleOrNull<UserPalMapping>()
+
+                                                if (existingMapping == null) {
+                                                    val newMapping = UserPalMapping(
+                                                        userId = currentUserId,
+                                                        palCode = code
+                                                    )
+                                                    supabaseClient.postgrest.from("user_pals").insert(newMapping)
+                                                }
 
                                                 val matchedItem = PalItem(
                                                     name = matchedPalDb.name,
@@ -11206,14 +11235,24 @@ fun JoinPalDialogOverlay(
                                                     isCreator = matchedPalDb.creatorId == currentUserId
                                                 )
 
-                                                if (!createdPals.any { it.code == code }) {
-                                                    onCreatedPalsChange(createdPals + matchedItem)
+                                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                    if (!createdPals.any { it.code == code }) {
+                                                        onCreatedPalsChange(createdPals + matchedItem)
+                                                    }
+                                                    refreshPals()
+                                                    onShowJoinPalFlowChange(false)
+                                                    android.widget.Toast.makeText(context, "Successfully joined ${matchedPalDb.name}!", android.widget.Toast.LENGTH_SHORT).show()
                                                 }
-                                                refreshPals()
-                                                onShowJoinPalFlowChange(false)
+                                            } else {
+                                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                    android.widget.Toast.makeText(context, "Pal code not found", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
                                             }
                                         } catch (e: Exception) {
                                             e.printStackTrace()
+                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                android.widget.Toast.makeText(context, "Error joining pal: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
                                         }
                                     }
                                 },
@@ -13016,7 +13055,7 @@ private fun GroupExportMemberSlot(
             Text(
                 text = showTime,
                 fontFamily = DelaGothicOneFontFamily,
-                fontSize = 20.sp,
+                fontSize = 15.sp,
                 color = Color.White,
                 fontWeight = FontWeight.Bold,
                 style = TextStyle(
@@ -13037,7 +13076,7 @@ private fun GroupExportMemberSlot(
                 Text(
                     text = displayTimeText,
                     fontFamily = DelaGothicOneFontFamily,
-                    fontSize = 20.sp,
+                    fontSize = 15.sp,
                     color = textColor,
                     fontWeight = FontWeight.Bold
                 )

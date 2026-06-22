@@ -215,27 +215,53 @@ fun PalGroupGridScreen(
                                         useController = false
                                         resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
 
+                                        fun applyVideoScale() {
+                                            val videoSize = vlogExoPlayer.videoSize
+                                            val videoWidth = videoSize.width
+                                            val videoHeight = videoSize.height
+                                            val textureView = getVideoSurfaceView() as? android.view.TextureView
+                                            if (textureView == null) {
+                                                postDelayed({ applyVideoScale() }, 100)
+                                                return
+                                            }
+                                            val containerWidth = width.toFloat()
+                                            val containerHeight = height.toFloat()
+                                            if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                                                if (videoHeight > videoWidth) {
+                                                    val scaleX = containerHeight / containerWidth
+                                                    val scaleY = containerWidth / containerHeight
+                                                    textureView.scaleX = scaleX
+                                                    textureView.scaleY = scaleY
+                                                    textureView.rotation = 270f
+                                                } else {
+                                                    textureView.scaleX = 1.0f
+                                                    textureView.scaleY = 1.0f
+                                                    textureView.rotation = 0f
+                                                }
+                                            } else {
+                                                postDelayed({ applyVideoScale() }, 100)
+                                            }
+                                        }
+
+                                        // Apply scaling when layout is determined/changed
+                                        val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                                            applyVideoScale()
+                                        }
+                                        addOnLayoutChangeListener(layoutListener)
+
+                                        // Apply scaling on size change events
                                         vlogExoPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                                 super.onVideoSizeChanged(videoSize)
-                                                val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                                                val containerWidth = width.toFloat()
-                                                val containerHeight = height.toFloat()
-                                                if (containerWidth > 0f && containerHeight > 0f) {
-                                                    if (videoSize.height > videoSize.width) {
-                                                        val scaleX = containerHeight / containerWidth
-                                                        val scaleY = containerWidth / containerHeight
-                                                        textureView.scaleX = scaleX
-                                                        textureView.scaleY = scaleY
-                                                        textureView.rotation = 270f
-                                                    } else {
-                                                        textureView.scaleX = 1.0f
-                                                        textureView.scaleY = 1.0f
-                                                        textureView.rotation = 0f
-                                                    }
-                                                }
+                                                applyVideoScale()
+                                            }
+                                            override fun onPlaybackStateChanged(playbackState: Int) {
+                                                super.onPlaybackStateChanged(playbackState)
+                                                applyVideoScale()
                                             }
                                         })
+
+                                        applyVideoScale()
                                     }
                                 },
                                 modifier = Modifier.fillMaxSize()
@@ -411,7 +437,7 @@ fun PalGroupGridScreen(
             items(nonVlogGroups, span = { GridItemSpan(maxLineSpan) }) { group ->
                 PalGroupCard(
                     pal = group,
-                    modifier = Modifier.offset(y = (-15).dp),
+                    modifier = Modifier.offset(y = (-19.5).dp),
                     allPalsMembers = allPalsMembers,
                     groupMembersUserIds = groupMembersUserIds,
                     allPalsSubmissions = allPalsSubmissions,

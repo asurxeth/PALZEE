@@ -16,9 +16,16 @@ val envProperties = Properties().apply {
     }
 }
 
+val localProperties = Properties().apply {
+    val localFile = project.rootProject.file("local.properties")
+    if (localFile.exists()) {
+        localFile.inputStream().use { load(it) }
+    }
+}
+
 val supabaseUrl = (envProperties.getProperty("SUPABASE_URL") ?: System.getenv("SUPABASE_URL") ?: "https://placeholder-url.supabase.co").trim('"')
 val supabaseAnonKey = (envProperties.getProperty("SUPABASE_ANON_KEY") ?: System.getenv("SUPABASE_ANON_KEY") ?: "placeholder-anon-key").trim('"')
-val googleWebClientId = (envProperties.getProperty("GOOGLE_WEB_CLIENT_ID") ?: System.getenv("GOOGLE_WEB_CLIENT_ID") ?: "placeholder-google-client-id").trim('"')
+val googleWebClientId = (localProperties.getProperty("google.web.client.id") ?: envProperties.getProperty("GOOGLE_WEB_CLIENT_ID") ?: System.getenv("GOOGLE_WEB_CLIENT_ID") ?: "").trim('"')
 
 android {
     namespace = "com.finrein.pals"
