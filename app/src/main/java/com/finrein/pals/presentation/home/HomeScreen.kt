@@ -2279,6 +2279,7 @@ fun HomeScreen(
                     firstName = firstName,
                     allPalsSubmissions = todaySubmissionsMap,
                     currentUserId = currentUserId,
+                    currentDisplayName = currentDisplayName,
                     circleNumBg = circleNumBg,
                     circleNumText = circleNumText,
                     onPlusClick = { showPlusMenu = !showPlusMenu },
@@ -3669,7 +3670,7 @@ fun CameraScreenContent(
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 54.dp * scale)
+                            .padding(bottom = 59.dp * scale)
                             .fillMaxWidth()
                             .padding(horizontal = 48.dp * scale),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -3686,7 +3687,7 @@ fun CameraScreenContent(
                                 Text(
                                     text = slot.toString(),
                                     color = if (isSelected) selectedProfileColor else Color.White,
-                                    fontSize = (15 * scale).sp,
+                                    fontSize = (18 * scale).sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.rotate(-90f)
                                 )
@@ -3958,7 +3959,7 @@ fun CameraScreenContent(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(x = (-64).dp * scale)
-                .padding(bottom = cameraFrameBottomPadding + 30.dp - (36.dp * scale / 2f))
+                .padding(bottom = cameraFrameBottomPadding + 27.5.dp - (36.dp * scale / 2f))
                 .size(36.dp * scale)
                 .clip(CircleShape) // circular shape for soft click ripple!
                 .clickable {
@@ -4688,39 +4689,75 @@ fun CapturedPreviewScreen(
                     factory = { ctx ->
                         val view = android.view.LayoutInflater.from(ctx)
                             .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                        view.layoutParams = android.view.ViewGroup.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                        )
                         view.apply {
                             player = exoPlayer
                             useController = false
                             resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                            
+                            fun applyVideoScale() {
+                                val videoSize = exoPlayer.videoSize
+                                val videoWidth = videoSize.width
+                                val videoHeight = videoSize.height
+                                val textureView = getVideoSurfaceView() as? android.view.TextureView
+                                if (textureView == null) {
+                                    postDelayed({ applyVideoScale() }, 100)
+                                    return
+                                }
+                                val containerWidth = width.toFloat()
+                                val containerHeight = height.toFloat()
+                                if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                                    val isPortrait = videoHeight > videoWidth
+                                    val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
+                                    val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                                    
+                                    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                    
+                                    val calculatedScaleX: Float
+                                    val calculatedScaleY: Float
+                                    val calculatedRotation: Float
+                                    if (isPortrait) {
+                                        calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                        calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                        calculatedRotation = 270f
+                                    } else {
+                                        calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                        calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                        calculatedRotation = 0f
+                                    }
+                                    
+                                    android.util.Log.d("PalVideoScale", "Reverted scale for exoPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                                    
+                                    textureView.pivotX = containerWidth / 2f
+                                    textureView.pivotY = containerHeight / 2f
+                                    textureView.scaleX = calculatedScaleX
+                                    textureView.scaleY = calculatedScaleY
+                                    textureView.rotation = calculatedRotation
+                                } else {
+                                    postDelayed({ applyVideoScale() }, 100)
+                                }
+                            }
+
+                            val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                                applyVideoScale()
+                            }
+                            addOnLayoutChangeListener(layoutListener)
 
                             exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                 override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                     super.onVideoSizeChanged(videoSize)
-                                    
-                                    val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                                    
-                                    val containerWidth = width.toFloat()
-                                    val containerHeight = height.toFloat()
-                                    if (containerWidth > 0f && containerHeight > 0f) {
-                                        if (videoSize.height > videoSize.width) {
-                                            android.util.Log.d("PalMatrixFix", "Portrait Clip detected. Applying anti-compression scaling matrix transformations.")
-                                            
-                                            val scaleX = containerHeight / containerWidth
-                                            val scaleY = containerWidth / containerHeight
-
-                                            textureView.scaleX = scaleX
-                                            textureView.scaleY = scaleY
-                                            textureView.rotation = 270f
-                                        } else {
-                                            android.util.Log.d("PalMatrixFix", "Landscape Clip detected. Restoring clean un-modified layout boundaries.")
-                                            
-                                            textureView.scaleX = 1.0f
-                                            textureView.scaleY = 1.0f
-                                            textureView.rotation = 0f
-                                        }
-                                    }
+                                    applyVideoScale()
+                                }
+                                override fun onPlaybackStateChanged(playbackState: Int) {
+                                    super.onPlaybackStateChanged(playbackState)
+                                    applyVideoScale()
                                 }
                             })
+
+                            applyVideoScale()
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -5345,27 +5382,66 @@ fun GroupMemberCard(
                         useController = false
                         resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
 
+                        fun applyVideoScale() {
+                            val videoSize = localPlayer.videoSize
+                            val videoWidth = videoSize.width
+                            val videoHeight = videoSize.height
+                            val textureView = getVideoSurfaceView() as? android.view.TextureView
+                            if (textureView == null) {
+                                postDelayed({ applyVideoScale() }, 100)
+                                return
+                            }
+                            val containerWidth = width.toFloat()
+                            val containerHeight = height.toFloat()
+                            if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                                val isPortrait = videoHeight > videoWidth
+                                val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
+                                val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                                
+                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                
+                                val calculatedScaleX: Float
+                                val calculatedScaleY: Float
+                                val calculatedRotation: Float
+                                if (isPortrait) {
+                                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                    calculatedRotation = 270f
+                                } else {
+                                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                    calculatedRotation = 0f
+                                }
+                                
+                                android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                                
+                                textureView.pivotX = containerWidth / 2f
+                                textureView.pivotY = containerHeight / 2f
+                                textureView.scaleX = calculatedScaleX
+                                textureView.scaleY = calculatedScaleY
+                                textureView.rotation = calculatedRotation
+                            } else {
+                                postDelayed({ applyVideoScale() }, 100)
+                            }
+                        }
+
+                        val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                            applyVideoScale()
+                        }
+                        addOnLayoutChangeListener(layoutListener)
+
                         localPlayer.addListener(object : androidx.media3.common.Player.Listener {
                             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                 super.onVideoSizeChanged(videoSize)
-                                val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                                val containerWidth = width.toFloat()
-                                val containerHeight = height.toFloat()
-                                if (containerWidth > 0f && containerHeight > 0f) {
-                                    if (videoSize.height > videoSize.width) {
-                                        val scaleX = containerHeight / containerWidth
-                                        val scaleY = containerWidth / containerHeight
-                                        textureView.scaleX = scaleX
-                                        textureView.scaleY = scaleY
-                                        textureView.rotation = 270f
-                                    } else {
-                                        textureView.scaleX = 1.0f
-                                        textureView.scaleY = 1.0f
-                                        textureView.rotation = 0f
-                                    }
-                                }
+                                applyVideoScale()
+                            }
+                            override fun onPlaybackStateChanged(playbackState: Int) {
+                                super.onPlaybackStateChanged(playbackState)
+                                applyVideoScale()
                             }
                         })
+
+                        applyVideoScale()
                     }
                 },
                 modifier = Modifier.fillMaxSize()
@@ -5871,27 +5947,66 @@ fun GroupMemberCard(
                             useController = false
                             resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
 
+                            fun applyVideoScale() {
+                                val videoSize = localPlayer.videoSize
+                                val videoWidth = videoSize.width
+                                val videoHeight = videoSize.height
+                                val textureView = getVideoSurfaceView() as? android.view.TextureView
+                                if (textureView == null) {
+                                    postDelayed({ applyVideoScale() }, 100)
+                                    return
+                                }
+                                val containerWidth = width.toFloat()
+                                val containerHeight = height.toFloat()
+                                if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                                    val isPortrait = videoHeight > videoWidth
+                                    val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
+                                    val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                                    
+                                    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                    
+                                    val calculatedScaleX: Float
+                                    val calculatedScaleY: Float
+                                    val calculatedRotation: Float
+                                    if (isPortrait) {
+                                        calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                        calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                        calculatedRotation = 270f
+                                    } else {
+                                        calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                        calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                        calculatedRotation = 0f
+                                    }
+                                    
+                                    android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                                    
+                                    textureView.pivotX = containerWidth / 2f
+                                    textureView.pivotY = containerHeight / 2f
+                                    textureView.scaleX = calculatedScaleX
+                                    textureView.scaleY = calculatedScaleY
+                                    textureView.rotation = calculatedRotation
+                                } else {
+                                    postDelayed({ applyVideoScale() }, 100)
+                                }
+                            }
+
+                            val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                                applyVideoScale()
+                            }
+                            addOnLayoutChangeListener(layoutListener)
+
                             localPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                 override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                     super.onVideoSizeChanged(videoSize)
-                                    val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                                    val containerWidth = width.toFloat()
-                                    val containerHeight = height.toFloat()
-                                    if (containerWidth > 0f && containerHeight > 0f) {
-                                        if (videoSize.height > videoSize.width) {
-                                            val scaleX = containerHeight / containerWidth
-                                            val scaleY = containerWidth / containerHeight
-                                            textureView.scaleX = scaleX
-                                            textureView.scaleY = scaleY
-                                            textureView.rotation = 270f
-                                        } else {
-                                            textureView.scaleX = 1.0f
-                                            textureView.scaleY = 1.0f
-                                            textureView.rotation = 0f
-                                        }
-                                    }
+                                    applyVideoScale()
+                                }
+                                override fun onPlaybackStateChanged(playbackState: Int) {
+                                    super.onPlaybackStateChanged(playbackState)
+                                    applyVideoScale()
                                 }
                             })
+
+                            applyVideoScale()
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -6865,32 +6980,75 @@ fun VlogScreenContent(
                                         factory = { ctx ->
                                             val view = android.view.LayoutInflater.from(ctx)
                                                 .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                                            view.layoutParams = android.view.ViewGroup.LayoutParams(
+                                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                            )
                                             view.apply {
                                                 player = localPlayer
                                                 useController = false
                                                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
 
+                                                fun applyVideoScale() {
+                                                    val videoSize = localPlayer.videoSize
+                                                    val videoWidth = videoSize.width
+                                                    val videoHeight = videoSize.height
+                                                    val textureView = getVideoSurfaceView() as? android.view.TextureView
+                                                    if (textureView == null) {
+                                                        postDelayed({ applyVideoScale() }, 100)
+                                                        return
+                                                    }
+                                                    val containerWidth = width.toFloat()
+                                                    val containerHeight = height.toFloat()
+                                                    if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                                                        val isPortrait = videoHeight > videoWidth
+                                                        val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
+                                                        val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                                                        
+                                                        val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                                        
+                                                        val calculatedScaleX: Float
+                                                        val calculatedScaleY: Float
+                                                        val calculatedRotation: Float
+                                                        if (isPortrait) {
+                                                            calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                                            calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                                            calculatedRotation = 270f
+                                                        } else {
+                                                            calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                                            calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                                            calculatedRotation = 0f
+                                                        }
+                                                        
+                                                        android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                                                        
+                                                        textureView.pivotX = containerWidth / 2f
+                                                        textureView.pivotY = containerHeight / 2f
+                                                        textureView.scaleX = calculatedScaleX
+                                                        textureView.scaleY = calculatedScaleY
+                                                        textureView.rotation = calculatedRotation
+                                                    } else {
+                                                        postDelayed({ applyVideoScale() }, 100)
+                                                    }
+                                                }
+
+                                                val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                                                    applyVideoScale()
+                                                }
+                                                addOnLayoutChangeListener(layoutListener)
+
                                                 localPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                                         super.onVideoSizeChanged(videoSize)
-                                                        val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                                                        val containerWidth = width.toFloat()
-                                                        val containerHeight = height.toFloat()
-                                                        if (containerWidth > 0f && containerHeight > 0f) {
-                                                            if (videoSize.height > videoSize.width) {
-                                                                val scaleX = containerHeight / containerWidth
-                                                                val scaleY = containerWidth / containerHeight
-                                                                textureView.scaleX = scaleX
-                                                                textureView.scaleY = scaleY
-                                                                textureView.rotation = 270f
-                                                            } else {
-                                                                textureView.scaleX = 1.0f
-                                                                textureView.scaleY = 1.0f
-                                                                textureView.rotation = 0f
-                                                            }
-                                                        }
+                                                        applyVideoScale()
+                                                    }
+                                                    override fun onPlaybackStateChanged(playbackState: Int) {
+                                                        super.onPlaybackStateChanged(playbackState)
+                                                        applyVideoScale()
                                                     }
                                                 })
+
+                                                applyVideoScale()
                                             }
                                         },
                                         modifier = Modifier.fillMaxSize()
@@ -8433,7 +8591,8 @@ fun VlogScreenContent(
         
         // --- Export Dialog Overlay ---
         if (showExportDialog) {
-            var isExportSaving by remember { mutableStateOf(false) }
+            var isExportSavingVideo by remember { mutableStateOf(false) }
+            var isExportSharingVideo by remember { mutableStateOf(false) }
             var isExportSaved by remember { mutableStateOf(false) }
             val localCoroutineScope = rememberCoroutineScope()
             
@@ -8442,6 +8601,11 @@ fun VlogScreenContent(
             var exportMissedText by remember { mutableStateOf("💤") }
             var showMissedTextDialog by remember { mutableStateOf(false) }
             var tempMissedText by remember { mutableStateOf("💤") }
+            val missedTextFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+            val exportKeyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+            
+
+
 
             androidx.activity.compose.BackHandler {
                 onShowExportDialogChange(false)
@@ -8520,32 +8684,76 @@ fun VlogScreenContent(
                                             factory = { ctx ->
                                                 val view = android.view.LayoutInflater.from(ctx)
                                                     .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                                                view.layoutParams = android.view.ViewGroup.LayoutParams(
+                                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                                )
                                                 view.apply {
-                                                    player = vlogExoPlayer
+                                                    val localPlayer = vlogExoPlayer
+                                                    player = localPlayer
                                                     useController = false
                                                     resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                                                     
+                                                    fun applyVideoScale() {
+                                                        val videoSize = localPlayer.videoSize
+                                                        val videoWidth = videoSize.width
+                                                        val videoHeight = videoSize.height
+                                                        val textureView = getVideoSurfaceView() as? android.view.TextureView
+                                                        if (textureView == null) {
+                                                            postDelayed({ applyVideoScale() }, 100)
+                                                            return
+                                                        }
+                                                        val containerWidth = width.toFloat()
+                                                        val containerHeight = height.toFloat()
+                                                        if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                                                            val isPortrait = videoHeight > videoWidth
+                                                            val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
+                                                            val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                                                            
+                                                            val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                                            
+                                                            val calculatedScaleX: Float
+                                                            val calculatedScaleY: Float
+                                                            val calculatedRotation: Float
+                                                            if (isPortrait) {
+                                                                calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                                                calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                                                calculatedRotation = 270f
+                                                            } else {
+                                                                calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                                                calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                                                calculatedRotation = 0f
+                                                            }
+                                                            
+                                                            android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                                                            
+                                                            textureView.pivotX = containerWidth / 2f
+                                                            textureView.pivotY = containerHeight / 2f
+                                                            textureView.scaleX = calculatedScaleX
+                                                            textureView.scaleY = calculatedScaleY
+                                                            textureView.rotation = calculatedRotation
+                                                        } else {
+                                                            postDelayed({ applyVideoScale() }, 100)
+                                                        }
+                                                    }
+
+                                                    val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                                                        applyVideoScale()
+                                                    }
+                                                    addOnLayoutChangeListener(layoutListener)
+
                                                     vlogExoPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                                         override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                                             super.onVideoSizeChanged(videoSize)
-                                                            val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                                                            val containerWidth = width.toFloat()
-                                                            val containerHeight = height.toFloat()
-                                                            if (containerWidth > 0f && containerHeight > 0f) {
-                                                                if (videoSize.height > videoSize.width) {
-                                                                    val scaleX = containerHeight / containerWidth
-                                                                    val scaleY = containerWidth / containerHeight
-                                                                    textureView.scaleX = scaleX
-                                                                    textureView.scaleY = scaleY
-                                                                    textureView.rotation = 270f
-                                                                } else {
-                                                                    textureView.scaleX = 1.0f
-                                                                    textureView.scaleY = 1.0f
-                                                                    textureView.rotation = 0f
-                                                                }
-                                                            }
+                                                            applyVideoScale()
+                                                        }
+                                                        override fun onPlaybackStateChanged(playbackState: Int) {
+                                                            super.onPlaybackStateChanged(playbackState)
+                                                            applyVideoScale()
                                                         }
                                                     })
+
+                                                    applyVideoScale()
                                                 }
                                             },
                                             modifier = Modifier.fillMaxSize()
@@ -8748,7 +8956,7 @@ fun VlogScreenContent(
 
                         ExportMenuButton(
                             icon = {
-                                if (isExportSaving) {
+                                if (isExportSavingVideo) {
                                     CircularProgressIndicator(
                                         color = if (isDark) Color.White else Color.Black,
                                         modifier = Modifier.size(24.dp),
@@ -8767,8 +8975,8 @@ fun VlogScreenContent(
                             isDark = isDark,
                             onClick = {
                                 val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else filteredPaths.isNotEmpty()
-                                if (!isExportSaving && !isExportSaved && hasItemsToExport) {
-                                    isExportSaving = true
+                                if (!isExportSavingVideo && !isExportSharingVideo && !isExportSaved && hasItemsToExport) {
+                                    isExportSavingVideo = true
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_save_${System.currentTimeMillis()}.mp4")
                                         val pathsToProcess = if (pal.isVlog) capturedVlogsPaths.reversed() else filteredPaths
@@ -8801,7 +9009,7 @@ fun VlogScreenContent(
                                                 }
                                             }
                                             try { tempOut.delete() } catch(e: Exception) {}
-                                            isExportSaving = false
+                                            isExportSavingVideo = false
                                         }
                                     }
                                 }
@@ -8810,7 +9018,7 @@ fun VlogScreenContent(
 
                         ExportMenuButton(
                             icon = {
-                                if (isExportSaving) {
+                                if (isExportSharingVideo) {
                                     CircularProgressIndicator(
                                         color = if (isDark) Color.Black else Color.White,
                                         modifier = Modifier.size(24.dp),
@@ -8828,8 +9036,8 @@ fun VlogScreenContent(
                             isDark = isDark,
                             onClick = {
                                 val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else filteredPaths.isNotEmpty()
-                                if (!isExportSaving && hasItemsToExport) {
-                                    isExportSaving = true
+                                if (!isExportSavingVideo && !isExportSharingVideo && hasItemsToExport) {
+                                    isExportSharingVideo = true
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_share_${System.currentTimeMillis()}.mp4")
                                         val pathsToProcess = if (pal.isVlog) capturedVlogsPaths.reversed() else filteredPaths
@@ -8870,7 +9078,7 @@ fun VlogScreenContent(
                                                     e.printStackTrace()
                                                 }
                                             }
-                                            isExportSaving = false
+                                            isExportSharingVideo = false
                                         }
                                     }
                                 }
@@ -8975,16 +9183,20 @@ fun VlogScreenContent(
 
                 // Missed Text Input Dialog Overlay
                 if (showMissedTextDialog) {
+                    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+                    LaunchedEffect(Unit) {
+                        kotlinx.coroutines.delay(150)
+                        try {
+                            missedTextFocusRequester.requestFocus()
+                            keyboardController?.show()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+
                     val dialogBg = if (isDark) Color(0xFF2C2B30) else Color(0xFFF5F3EB)
                     val dialogTextColor = if (isDark) Color.White else Color.Black
                     val buttonColor = if (isDark) Color(0xFFB39DDB) else Color(0xFF7C4DFF)
-                    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-                    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-                    LaunchedEffect(Unit) {
-                        kotlinx.coroutines.delay(300)
-                        focusRequester.requestFocus()
-                        keyboardController?.show()
-                    }
 
                     Box(
                         modifier = Modifier
@@ -9020,7 +9232,17 @@ fun VlogScreenContent(
                                         )
                                     )
                                 }
-                                Column(modifier = Modifier.fillMaxWidth()) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(
+                                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                            indication = null
+                                        ) {
+                                            missedTextFocusRequester.requestFocus()
+                                            keyboardController?.show()
+                                        }
+                                ) {
                                     androidx.compose.foundation.text.BasicTextField(
                                         value = textVal,
                                         onValueChange = {
@@ -9035,7 +9257,7 @@ fun VlogScreenContent(
                                         ),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .focusRequester(focusRequester)
+                                            .focusRequester(missedTextFocusRequester)
                                             .onFocusChanged { focusState ->
                                                 if (focusState.isFocused) {
                                                     keyboardController?.show()
@@ -9815,27 +10037,66 @@ fun VideoPlayerItem(videoPath: String, modifier: Modifier = Modifier) {
                     useController = false
                     resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
 
+                    fun applyVideoScale() {
+                        val videoSize = localPlayer.videoSize
+                        val videoWidth = videoSize.width
+                        val videoHeight = videoSize.height
+                        val textureView = getVideoSurfaceView() as? android.view.TextureView
+                        if (textureView == null) {
+                            postDelayed({ applyVideoScale() }, 100)
+                            return
+                        }
+                        val containerWidth = width.toFloat()
+                        val containerHeight = height.toFloat()
+                        if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                            val isPortrait = videoHeight > videoWidth
+                            val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
+                            val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                            
+                            val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                            
+                            val calculatedScaleX: Float
+                            val calculatedScaleY: Float
+                            val calculatedRotation: Float
+                            if (isPortrait) {
+                                calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                calculatedRotation = 270f
+                            } else {
+                                calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                calculatedRotation = 0f
+                            }
+                            
+                            android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                            
+                            textureView.pivotX = containerWidth / 2f
+                            textureView.pivotY = containerHeight / 2f
+                            textureView.scaleX = calculatedScaleX
+                            textureView.scaleY = calculatedScaleY
+                            textureView.rotation = calculatedRotation
+                        } else {
+                            postDelayed({ applyVideoScale() }, 100)
+                        }
+                    }
+
+                    val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                        applyVideoScale()
+                    }
+                    addOnLayoutChangeListener(layoutListener)
+
                     localPlayer.addListener(object : androidx.media3.common.Player.Listener {
                         override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                             super.onVideoSizeChanged(videoSize)
-                            val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                            val containerWidth = width.toFloat()
-                            val containerHeight = height.toFloat()
-                            if (containerWidth > 0f && containerHeight > 0f) {
-                                if (videoSize.height > videoSize.width) {
-                                    val scaleX = containerHeight / containerWidth
-                                    val scaleY = containerWidth / containerHeight
-                                    textureView.scaleX = scaleX
-                                    textureView.scaleY = scaleY
-                                    textureView.rotation = 270f
-                                } else {
-                                    textureView.scaleX = 1.0f
-                                    textureView.scaleY = 1.0f
-                                    textureView.rotation = 0f
-                                }
-                            }
+                            applyVideoScale()
+                        }
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            super.onPlaybackStateChanged(playbackState)
+                            applyVideoScale()
                         }
                     })
+
+                    applyVideoScale()
                 }
             },
             modifier = Modifier.fillMaxSize()
@@ -12370,6 +12631,7 @@ fun PalsTabScreenContent(
     firstName: String,
     allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
     currentUserId: String,
+    currentDisplayName: String,
     circleNumBg: Color,
     circleNumText: Color,
     onPlusClick: () -> Unit,
@@ -12398,6 +12660,7 @@ fun PalsTabScreenContent(
         firstName = firstName,
         allPalsSubmissions = allPalsSubmissions,
         currentUserId = currentUserId,
+        currentDisplayName = currentDisplayName,
         circleNumBg = circleNumBg,
         circleNumText = circleNumText,
         onPlusClick = onPlusClick,
@@ -13024,27 +13287,66 @@ private fun GroupExportMemberSlot(
                         useController = false
                         resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                         
+                        fun applyVideoScale() {
+                            val videoSize = localPlayer.videoSize
+                            val videoWidth = videoSize.width
+                            val videoHeight = videoSize.height
+                            val textureView = getVideoSurfaceView() as? android.view.TextureView
+                            if (textureView == null) {
+                                postDelayed({ applyVideoScale() }, 100)
+                                return
+                            }
+                            val containerWidth = width.toFloat()
+                            val containerHeight = height.toFloat()
+                            if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                                val isPortrait = videoHeight > videoWidth
+                                val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
+                                val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                                
+                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                
+                                val calculatedScaleX: Float
+                                val calculatedScaleY: Float
+                                val calculatedRotation: Float
+                                if (isPortrait) {
+                                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                    calculatedRotation = 270f
+                                } else {
+                                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                    calculatedRotation = 0f
+                                }
+                                
+                                android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                                
+                                textureView.pivotX = containerWidth / 2f
+                                textureView.pivotY = containerHeight / 2f
+                                textureView.scaleX = calculatedScaleX
+                                textureView.scaleY = calculatedScaleY
+                                textureView.rotation = calculatedRotation
+                            } else {
+                                postDelayed({ applyVideoScale() }, 100)
+                            }
+                        }
+
+                        val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                            applyVideoScale()
+                        }
+                        addOnLayoutChangeListener(layoutListener)
+
                         localPlayer.addListener(object : androidx.media3.common.Player.Listener {
                             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                 super.onVideoSizeChanged(videoSize)
-                                val textureView = getVideoSurfaceView() as? android.view.TextureView ?: return
-                                val containerWidth = width.toFloat()
-                                val containerHeight = height.toFloat()
-                                if (containerWidth > 0f && containerHeight > 0f) {
-                                    if (videoSize.height > videoSize.width) {
-                                        val scaleX = containerHeight / containerWidth
-                                        val scaleY = containerWidth / containerHeight
-                                        textureView.scaleX = scaleX
-                                        textureView.scaleY = scaleY
-                                        textureView.rotation = 270f
-                                    } else {
-                                        textureView.scaleX = 1.0f
-                                        textureView.scaleY = 1.0f
-                                        textureView.rotation = 0f
-                                    }
-                                }
+                                applyVideoScale()
+                            }
+                            override fun onPlaybackStateChanged(playbackState: Int) {
+                                super.onPlaybackStateChanged(playbackState)
+                                applyVideoScale()
                             }
                         })
+
+                        applyVideoScale()
                     }
                 },
                 modifier = Modifier.fillMaxSize()

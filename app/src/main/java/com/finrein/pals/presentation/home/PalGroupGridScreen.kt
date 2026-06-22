@@ -56,6 +56,7 @@ fun PalGroupGridScreen(
     firstName: String,
     allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
     currentUserId: String,
+    currentDisplayName: String,
     circleNumBg: Color,
     circleNumText: Color,
     onPlusClick: () -> Unit,
@@ -159,8 +160,8 @@ fun PalGroupGridScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
+                            .offset(y = (-25).dp)
                             .padding(start = 8.dp, bottom = 4.dp)
-                            .offset(y = (-15).dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -199,173 +200,202 @@ fun PalGroupGridScreen(
 
                         Box(
                             modifier = Modifier
+                                .offset(y = (-25).dp)
                                 .fillMaxWidth()
-                                .aspectRatio(16f / 9f)
-                                .clip(RoundedCornerShape(28.dp))
-                                .background(Color.Black)
-                                .clickable { onPalClick(vlogPal) }
-                                .offset(y = (-15).dp)
                         ) {
-                            androidx.compose.ui.viewinterop.AndroidView(
-                                factory = { ctx ->
-                                    val view = android.view.LayoutInflater.from(ctx)
-                                        .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                    view.apply {
-                                        player = vlogExoPlayer
-                                        useController = false
-                                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-
-                                        fun applyVideoScale() {
-                                            val videoSize = vlogExoPlayer.videoSize
-                                            val videoWidth = videoSize.width
-                                            val videoHeight = videoSize.height
-                                            val textureView = getVideoSurfaceView() as? android.view.TextureView
-                                            if (textureView == null) {
-                                                postDelayed({ applyVideoScale() }, 100)
-                                                return
-                                            }
-                                            val containerWidth = width.toFloat()
-                                            val containerHeight = height.toFloat()
-                                            if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                                if (videoHeight > videoWidth) {
-                                                    val scaleX = containerHeight / containerWidth
-                                                    val scaleY = containerWidth / containerHeight
-                                                    textureView.scaleX = scaleX
-                                                    textureView.scaleY = scaleY
-                                                    textureView.rotation = 270f
-                                                } else {
-                                                    textureView.scaleX = 1.0f
-                                                    textureView.scaleY = 1.0f
-                                                    textureView.rotation = 0f
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(16f / 9f)
+                                    .clip(RoundedCornerShape(28.dp))
+                                    .background(Color.Black)
+                                    .clickable { onPalClick(vlogPal) }
+                            ) {
+                                androidx.compose.ui.viewinterop.AndroidView(
+                                    factory = { ctx ->
+                                        val view = android.view.LayoutInflater.from(ctx)
+                                            .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                                        view.layoutParams = android.view.ViewGroup.LayoutParams(
+                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                        )
+                                        view.apply {
+                                            player = vlogExoPlayer
+                                            useController = false
+                                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+    
+                                            fun applyVideoScale() {
+                                                val videoSize = vlogExoPlayer.videoSize
+                                                val videoWidth = videoSize.width
+                                                val videoHeight = videoSize.height
+                                                val textureView = getVideoSurfaceView() as? android.view.TextureView
+                                                if (textureView == null) {
+                                                    postDelayed({ applyVideoScale() }, 100)
+                                                    return
                                                 }
-                                            } else {
-                                                postDelayed({ applyVideoScale() }, 100)
+                                                val containerWidth = width.toFloat()
+                                                val containerHeight = height.toFloat()
+                                                if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                                                    val isPortrait = videoHeight > videoWidth
+                                                    val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
+                                                    val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                                                    
+                                                    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                                    
+                                                    val calculatedScaleX: Float
+                                                    val calculatedScaleY: Float
+                                                    val calculatedRotation: Float
+                                                    if (isPortrait) {
+                                                        calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                                        calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                                        calculatedRotation = 270f
+                                                    } else {
+                                                        calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                                        calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                                        calculatedRotation = 0f
+                                                    }
+                                                    
+                                                    android.util.Log.d("PalVideoScale", "Reverted scale for vlogExoPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                                                    
+                                                    textureView.pivotX = containerWidth / 2f
+                                                    textureView.pivotY = containerHeight / 2f
+                                                    textureView.scaleX = calculatedScaleX
+                                                    textureView.scaleY = calculatedScaleY
+                                                    textureView.rotation = calculatedRotation
+                                                } else {
+                                                    postDelayed({ applyVideoScale() }, 100)
+                                                }
                                             }
-                                        }
-
-                                        // Apply scaling when layout is determined/changed
-                                        val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+    
+                                            // Apply scaling when layout is determined/changed
+                                            val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                                                applyVideoScale()
+                                            }
+                                            addOnLayoutChangeListener(layoutListener)
+    
+                                            // Apply scaling on size change events
+                                            vlogExoPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                                                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                                    super.onVideoSizeChanged(videoSize)
+                                                    applyVideoScale()
+                                                }
+                                                override fun onPlaybackStateChanged(playbackState: Int) {
+                                                    super.onPlaybackStateChanged(playbackState)
+                                                    applyVideoScale()
+                                                }
+                                            })
+    
                                             applyVideoScale()
                                         }
-                                        addOnLayoutChangeListener(layoutListener)
-
-                                        // Apply scaling on size change events
-                                        vlogExoPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                                            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                                super.onVideoSizeChanged(videoSize)
-                                                applyVideoScale()
-                                            }
-                                            override fun onPlaybackStateChanged(playbackState: Int) {
-                                                super.onPlaybackStateChanged(playbackState)
-                                                applyVideoScale()
-                                            }
-                                        })
-
-                                        applyVideoScale()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
-
-                            Text(
-                                text = "vlog",
-                                fontFamily = BricolageVariableFontFamily,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                modifier = Modifier
-                                    .align(Alignment.CenterStart)
-                                    .padding(start = 12.dp),
-                                style = TextStyle(
-                                    shadow = androidx.compose.ui.graphics.Shadow(
-                                        color = Color.Black.copy(alpha = 0.5f),
-                                        offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                        blurRadius = 3f
-                                    )
+                                    },
+                                    modifier = Modifier.fillMaxSize()
                                 )
-                            )
 
-                            Text(
-                                text = currentTime,
-                                fontFamily = RobotoFontFamily,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Normal,
-                                color = Color.White,
-                                modifier = Modifier
-                                    .align(Alignment.CenterEnd)
-                                    .padding(end = 12.dp),
-                                style = TextStyle(
-                                    shadow = androidx.compose.ui.graphics.Shadow(
-                                        color = Color.Black.copy(alpha = 0.5f),
-                                        offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                        blurRadius = 3f
-                                    )
-                                )
-                            )
 
-                            if (currentCaption.isNotEmpty()) {
-                                Text(
-                                    text = currentCaption,
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = Color.White,
+                                // Overlay 2: vlog name (left center) and time text (right center), time text size to perfect 12.5sp
+                                Row(
                                     modifier = Modifier
+                                        .fillMaxWidth()
                                         .align(Alignment.Center)
-                                        .padding(horizontal = 48.dp),
-                                    textAlign = TextAlign.Center,
-                                    style = TextStyle(
-                                        shadow = androidx.compose.ui.graphics.Shadow(
-                                            color = Color.Black.copy(alpha = 0.5f),
-                                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                            blurRadius = 3f
+                                        .padding(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = vlogPal.name,
+                                        fontFamily = BricolageVariableFontFamily,
+                                        fontSize = 19.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        style = TextStyle(
+                                            shadow = androidx.compose.ui.graphics.Shadow(
+                                                color = Color.Black.copy(alpha = 0.5f),
+                                                offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                                blurRadius = 3f
+                                            )
                                         )
                                     )
-                                )
-                            }
 
-                            Row(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                capturedVlogsPaths.forEachIndexed { idx, _ ->
-                                    val isActive = idx == activeIndex
-                                    val isCompleted = idx < activeIndex
-
-                                    if (isCompleted) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(4.dp)
-                                                .clip(CircleShape)
-                                                .background(Color.White)
+                                    Text(
+                                        text = currentTime,
+                                        fontFamily = RobotoFontFamily,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = Color.White,
+                                        style = TextStyle(
+                                            shadow = androidx.compose.ui.graphics.Shadow(
+                                                color = Color.Black.copy(alpha = 0.5f),
+                                                offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                                blurRadius = 3f
+                                            )
                                         )
-                                    } else if (isActive) {
-                                        Box(
-                                            modifier = Modifier
-                                                .width(16.dp)
-                                                .height(2.dp)
-                                                .clip(RoundedCornerShape(1.dp))
-                                                .background(Color.White.copy(alpha = 0.4f)),
-                                            contentAlignment = Alignment.CenterStart
-                                        ) {
+                                    )
+                                }
+
+                                if (currentCaption.isNotEmpty()) {
+                                    Text(
+                                        text = currentCaption,
+                                        fontFamily = RobotoFontFamily,
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = Color.White,
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .padding(horizontal = 48.dp),
+                                        textAlign = TextAlign.Center,
+                                        style = TextStyle(
+                                            shadow = androidx.compose.ui.graphics.Shadow(
+                                                color = Color.Black.copy(alpha = 0.5f),
+                                                offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                                blurRadius = 3f
+                                            )
+                                        )
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    capturedVlogsPaths.forEachIndexed { idx, _ ->
+                                        val isActive = idx == activeIndex
+                                        val isCompleted = idx < activeIndex
+
+                                        if (isCompleted) {
                                             Box(
                                                 modifier = Modifier
-                                                    .fillMaxHeight()
-                                                    .fillMaxWidth(vlogPlaybackProgress)
+                                                    .size(4.dp)
+                                                    .clip(CircleShape)
                                                     .background(Color.White)
                                             )
+                                        } else if (isActive) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(16.dp)
+                                                    .height(2.dp)
+                                                    .clip(RoundedCornerShape(1.dp))
+                                                    .background(Color.White.copy(alpha = 0.4f)),
+                                                contentAlignment = Alignment.CenterStart
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxHeight()
+                                                        .fillMaxWidth(vlogPlaybackProgress)
+                                                        .background(Color.White)
+                                                )
+                                            }
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(16.dp)
+                                                    .height(2.dp)
+                                                    .clip(RoundedCornerShape(1.dp))
+                                                    .background(Color.White.copy(alpha = 0.4f))
+                                            )
                                         }
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .width(16.dp)
-                                                .height(2.dp)
-                                                .clip(RoundedCornerShape(1.dp))
-                                                .background(Color.White.copy(alpha = 0.4f))
-                                        )
                                     }
                                 }
                             }
@@ -373,8 +403,8 @@ fun PalGroupGridScreen(
                     } else {
                         GlassmorphicCard(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .offset(y = (-15).dp),
+                                .offset(y = (-25).dp)
+                                .fillMaxWidth(),
                             onClick = { onPalClick(vlogPal) },
                             borderRadius = 28.dp,
                             isDark = isDark,
@@ -437,7 +467,7 @@ fun PalGroupGridScreen(
             items(nonVlogGroups, span = { GridItemSpan(maxLineSpan) }) { group ->
                 PalGroupCard(
                     pal = group,
-                    modifier = Modifier.offset(y = (-19.5).dp),
+                    modifier = Modifier.offset(y = (-15).dp),
                     allPalsMembers = allPalsMembers,
                     groupMembersUserIds = groupMembersUserIds,
                     allPalsSubmissions = allPalsSubmissions,
