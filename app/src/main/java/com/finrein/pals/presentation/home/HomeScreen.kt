@@ -128,7 +128,7 @@ import java.time.LocalTime
 data class PalDbItem(
     val code: String,
     val name: String,
-    val size: String,
+    val size: Int,
     @SerialName("is_vlog") val isVlog: Boolean,
     @SerialName("creator_id") val creatorId: String,
     @SerialName("created_at") val createdAt: String? = null
@@ -753,7 +753,7 @@ fun HomeScreen(
             onboardingFlowStep = 4
         } else if (onboardingFlowStep == 0 && currentUserId.isNotEmpty()) {
             try {
-                val supabase = com.finrein.pals.PALApplication.supabase
+                val supabase = com.finrein.pals.PalApplication.supabase
                 val mappings = supabase.postgrest.from("user_pals")
                     .select {
                         filter {
@@ -809,7 +809,7 @@ fun HomeScreen(
 
     LaunchedEffect(isCreatingPal) {
         if (isCreatingPal) {
-            val supabaseClient = com.finrein.pals.PALApplication.supabase
+            val supabaseClient = com.finrein.pals.PalApplication.supabase
             val startTime = System.currentTimeMillis()
             var uniqueCode = ""
             var isUnique = false
@@ -1278,7 +1278,7 @@ fun HomeScreen(
         }
     }
 
-    val supabaseClient = remember { com.finrein.pals.PALApplication.supabase }
+    val supabaseClient = remember { com.finrein.pals.PalApplication.supabase }
     val coroutineScope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
 
@@ -1957,7 +1957,7 @@ fun HomeScreen(
                                 val palCode = activeVlogPal?.code ?: "vlog"
                                 
                                 if (palCode != "vlog") {
-                                    // GROUP PAL DELETION
+                                    // GROUP Pal DELETION
                                     // 1. Add to local deleted blacklist in sharedPrefs
                                     val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
                                     val currentDeleted = if (savedDeleted.isEmpty()) mutableSetOf<String>() else savedDeleted.split(";;;").toMutableSet()
@@ -2255,7 +2255,8 @@ fun HomeScreen(
                             selectedTab = "pals"
                         },
                         currentUserId = currentUserId,
-                        currentDisplayName = currentDisplayName
+                        currentDisplayName = currentDisplayName,
+                        allPalsSubmissions = allPalsSubmissions
                     )
                 }
             } else {
@@ -2296,7 +2297,7 @@ fun HomeScreen(
                     },
                     onCameraClick = { selectedTab = "camera" },
                     onGlobalSearchTrigger = { query ->
-                        val code = query.trim().removePrefix("#").trim()
+                        val code = query.trim().removePrefix("#").trim().lowercase(java.util.Locale.ROOT)
                         if (code.isNotEmpty()) {
                             coroutineScope.launch {
                                 try {
@@ -2317,7 +2318,7 @@ fun HomeScreen(
 
                                         val matchedItem = PalItem(
                                             name = matchedPalDb.name,
-                                            size = matchedPalDb.size,
+                                            size = matchedPalDb.size.toString(),
                                             code = matchedPalDb.code,
                                             isVlog = matchedPalDb.isVlog,
                                             isCreator = matchedPalDb.creatorId == currentUserId
@@ -2578,7 +2579,7 @@ fun HomeScreen(
             showJoinPalFlow = showJoinPalFlow,
             onShowJoinPalFlowChange = { showJoinPalFlow = it },
             joinPalCode = joinPalCode,
-            onJoinPalCodeChange = { joinPalCode = it },
+            onJoinPalCodeChange = { joinPalCode = it.lowercase(java.util.Locale.ROOT) },
             isDark = isDark,
             accentColor = accentColor,
             currentUserId = currentUserId,
@@ -3073,10 +3074,10 @@ fun saveVideoToGallery(context: android.content.Context, filePath: String): Bool
 
         val resolver = context.contentResolver
         val contentValues = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, "PAL_vlog_${System.currentTimeMillis()}.mp4")
+            put(android.provider.MediaStore.Video.Media.DISPLAY_NAME, "Pal_vlog_${System.currentTimeMillis()}.mp4")
             put(android.provider.MediaStore.Video.Media.MIME_TYPE, "video/mp4")
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/PAL")
+                put(android.provider.MediaStore.Video.Media.RELATIVE_PATH, "Movies/Pal")
                 put(android.provider.MediaStore.Video.Media.IS_PENDING, 1)
             }
         }
@@ -3518,7 +3519,7 @@ fun CameraScreenContent(
 
             val outputFile = java.io.File(
                 context.cacheDir,
-                "PAL_REC_${System.currentTimeMillis()}.mp4"
+                "Pal_REC_${System.currentTimeMillis()}.mp4"
             )
             val fileOutputOptions = FileOutputOptions.Builder(outputFile).build()
 
@@ -4529,7 +4530,8 @@ fun CapturedPreviewScreen(
     onClose: () -> Unit,
     onSend: (String, List<PalItem>) -> Unit,
     currentUserId: String,
-    currentDisplayName: String
+    currentDisplayName: String,
+    allPalsSubmissions: Map<String, List<SubmissionDbItem>>
 ) {
     val context = LocalContext.current
     var isMuted by rememberSaveable { mutableStateOf(false) }
@@ -4554,7 +4556,33 @@ fun CapturedPreviewScreen(
     val coroutineScope = rememberCoroutineScope()
     var selectedPals by remember { mutableStateOf<Set<String>>(emptySet()) }
     val groupMembersMap = remember { mutableStateMapOf<String, List<String>>() }
-    val groupSubmissionsMap = remember { mutableStateMapOf<String, List<SubmissionDbItem>>() }
+    
+    val groupSubmissionsMap = createdPals.associate { pal ->
+        val subs = allPalsSubmissions[pal.code] ?: emptyList()
+        val todaySubs = subs.filter { sub ->
+            var subDate: java.time.LocalDate? = null
+            if (!sub.createdAt.isNullOrEmpty()) {
+                try {
+                    val instant = java.time.Instant.parse(sub.createdAt)
+                    subDate = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                } catch (e: Exception) {}
+            }
+            if (subDate == null) {
+                val parts = sub.imageUrl.split("|||")
+                val path = parts.getOrNull(0) ?: ""
+                val regex = Regex("\\d{13}")
+                val match = regex.find(path)
+                if (match != null) {
+                    try {
+                        val millis = match.value.toLong()
+                        subDate = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+                    } catch (e: Exception) {}
+                }
+            }
+            subDate == java.time.LocalDate.now()
+        }
+        pal.code to todaySubs
+    }
     val userFirstName = remember(currentDisplayName) {
         currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
     }
@@ -4568,10 +4596,10 @@ fun CapturedPreviewScreen(
             } else {
                 coroutineScope.launch {
                     try {
-                        val dbSubs = com.finrein.pals.PALApplication.supabase.postgrest.from("submissions")
+                        val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
                             .select { filter { eq("pal_code", pal.code) } }
                             .decodeList<SubmissionDbItem>()
-                        val dbMsgs = com.finrein.pals.PALApplication.supabase.postgrest.from("messages")
+                        val dbMsgs = com.finrein.pals.PalApplication.supabase.postgrest.from("messages")
                             .select { filter { eq("pal_code", pal.code) } }
                             .decodeList<MessageDbItem>()
                         
@@ -4597,7 +4625,6 @@ fun CapturedPreviewScreen(
                             }
                             subDate == java.time.LocalDate.now()
                         }
-                        groupSubmissionsMap[pal.code] = todaySubs
                         
                         val names = (dbSubs.map { it.userDisplayName } + dbMsgs.map { it.senderName } + currentDisplayName)
                             .map { name ->
@@ -4823,7 +4850,7 @@ fun CapturedPreviewScreen(
                         fontFamily = FontFamily.SansSerif,
                         textAlign = TextAlign.Center
                     ),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(palTextLogoColor), // cursor color exactly matches top-left PAL color
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(palTextLogoColor), // cursor color exactly matches top-left Pal color
                     singleLine = true,
                     modifier = Modifier
                         .focusRequester(focusRequester)
@@ -6679,14 +6706,14 @@ fun VlogScreenContent(
             groupMembers = listOf("$userFirstName (You)")
         } else {
             try {
-                val dbSubs = com.finrein.pals.PALApplication.supabase.postgrest.from("submissions")
+                val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
                     .select {
                         filter {
                             eq("pal_code", pal.code)
                         }
                     }
                     .decodeList<SubmissionDbItem>()
-                val dbMsgs = com.finrein.pals.PALApplication.supabase.postgrest.from("messages")
+                val dbMsgs = com.finrein.pals.PalApplication.supabase.postgrest.from("messages")
                     .select {
                         filter {
                             eq("pal_code", pal.code)
@@ -8204,7 +8231,7 @@ fun VlogScreenContent(
 
                             // Middle pal Title
                             Text(
-                                text = "PAL",
+                                text = "Pal",
                                 fontFamily = OwnglyphFontFamily,
                                 fontSize = 32.sp,
                                 fontWeight = FontWeight.Bold,
@@ -9348,7 +9375,7 @@ fun NameInputScreen(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.onboarding_logo_small),
-                contentDescription = "PAL Small Yellow Cloud Logo",
+                contentDescription = "Pal Small Yellow Cloud Logo",
                 modifier = Modifier.size(40.dp)
             )
             Text(
@@ -9501,7 +9528,7 @@ fun NameConfirmScreen(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.onboarding_logo_small),
-                contentDescription = "PAL Small Yellow Cloud Logo",
+                contentDescription = "Pal Small Yellow Cloud Logo",
                 modifier = Modifier.size(40.dp)
             )
             Text(
@@ -9607,7 +9634,7 @@ fun CreatingAccountScreen(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.onboarding_logo_small),
-                contentDescription = "PAL Small Yellow Cloud Logo",
+                contentDescription = "Pal Small Yellow Cloud Logo",
                 modifier = Modifier.size(40.dp)
             )
             Text(
@@ -9792,7 +9819,7 @@ fun PermissionsScreen(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.onboarding_logo_small),
-                contentDescription = "PAL Small Yellow Cloud Logo",
+                contentDescription = "Pal Small Yellow Cloud Logo",
                 modifier = Modifier.size(40.dp)
             )
         }
@@ -11415,7 +11442,7 @@ fun JoinPalDialogOverlay(
                         val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
                         TextField(
                             value = joinPalCode,
-                            onValueChange = onJoinPalCodeChange,
+                            onValueChange = { onJoinPalCodeChange(it.lowercase(java.util.Locale.ROOT)) },
                             textStyle = LocalTextStyle.current.copy(
                                 fontFamily = RobotoFontFamily,
                                 fontSize = 16.sp,
@@ -11459,7 +11486,7 @@ fun JoinPalDialogOverlay(
                                     if (isCodeValid) accentColor else (if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.1f))
                                 )
                                 .clickable(enabled = isCodeValid) {
-                                    val code = joinPalCode.trim()
+                                    val code = joinPalCode.trim().lowercase(java.util.Locale.ROOT)
                                     localScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
                                             val matchedPalDb = supabaseClient.postgrest.from("pals")
@@ -11490,7 +11517,7 @@ fun JoinPalDialogOverlay(
 
                                                 val matchedItem = PalItem(
                                                     name = matchedPalDb.name,
-                                                    size = matchedPalDb.size,
+                                                    size = matchedPalDb.size.toString(),
                                                     code = matchedPalDb.code,
                                                     isVlog = matchedPalDb.isVlog,
                                                     isCreator = matchedPalDb.creatorId == currentUserId
@@ -11822,9 +11849,9 @@ fun CreatePalDialogOverlay(
                         )
                     }
 
-                    // Center PAL Text logo (same color as top left on pals menu, Ownglyph font)
+                    // Center Pal Text logo (same color as top left on pals menu, Ownglyph font)
                     Text(
-                        text = "PAL",
+                        text = "Pal",
                         fontFamily = OwnglyphFontFamily,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
@@ -12065,7 +12092,7 @@ fun CreatePalDialogOverlay(
                                         val newPalDb = PalDbItem(
                                             code = generatedPalCode,
                                             name = newPalName,
-                                            size = newPalSize,
+                                            size = newPalSize.toIntOrNull() ?: 3,
                                             isVlog = false,
                                             creatorId = currentUserId
                                         )

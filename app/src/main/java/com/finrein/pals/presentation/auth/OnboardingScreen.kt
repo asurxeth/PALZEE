@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.finrein.pals.R
 import com.finrein.pals.presentation.theme.*
 import kotlinx.coroutines.launch
-import com.finrein.pals.PALApplication
+import com.finrein.pals.PalApplication
 import com.finrein.pals.BuildConfig
 import android.os.Build
 import androidx.compose.ui.platform.LocalDensity
@@ -257,7 +257,7 @@ fun OnboardingScreen(
                 // Cloud Logo in the middle
                 Image(
                     painter = painterResource(id = R.drawable.onboarding_logo),
-                    contentDescription = "PAL Yellow Cloud Logo",
+                    contentDescription = "Pal Yellow Cloud Logo",
                     modifier = Modifier.size(130.dp).offset(y = 30.dp),
                     contentScale = ContentScale.Fit
                 )
@@ -303,7 +303,7 @@ fun OnboardingScreen(
 
             // 2. Title Section (using OwnglyphFontFamily for thin line weight)
             Text(
-                text = "PAL",
+                text = "Pal",
                 fontFamily = OwnglyphFontFamily,
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Normal,

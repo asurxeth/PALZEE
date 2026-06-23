@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PAL"
+rootProject.name = "Pal"
 include(":app")

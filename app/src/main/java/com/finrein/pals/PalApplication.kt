@@ -11,14 +11,14 @@ import io.github.jan.supabase.compose.auth.googleNativeLogin
 import io.github.jan.supabase.postgrest.Postgrest
 
 @HiltAndroidApp
-class PALApplication : Application() {
+class PalApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
     }
 
     companion object {
-        lateinit var instance: PALApplication
+        lateinit var instance: PalApplication
             private set
 
         val supabase: SupabaseClient by lazy {
@@ -36,4 +36,4 @@ class PALApplication : Application() {
     }
 }
 
-typealias PalApplication = PALApplication
+typealias PALApplication = PalApplication

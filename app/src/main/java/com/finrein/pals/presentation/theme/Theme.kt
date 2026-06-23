@@ -36,7 +36,7 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun PALTheme(
+fun PalTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {

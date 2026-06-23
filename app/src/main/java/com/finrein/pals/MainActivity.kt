@@ -18,7 +18,7 @@ import com.finrein.pals.presentation.home.HomeScreen
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import io.github.jan.supabase.gotrue.auth
-import com.finrein.pals.presentation.theme.PALTheme
+import com.finrein.pals.presentation.theme.PalTheme
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.credentials.CredentialManager
 import androidx.credentials.ClearCredentialStateRequest
@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
         val sessionManager = com.finrein.pals.data.local.SessionManager(applicationContext)
 
         setContent {
-            PALTheme {
+            PalTheme {
                 var currentUser by remember { 
                     mutableStateOf<com.finrein.pals.domain.model.User?>(sessionManager.getUser()) 
                 }
@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
                                         // Ignore credential manager clearing exception
                                     }
                                     try {
-                                        PALApplication.supabase.auth.signOut()
+                                        PalApplication.supabase.auth.signOut()
                                     } catch (e: Exception) {
                                         // Ignore session/network exception on signout
                                     }

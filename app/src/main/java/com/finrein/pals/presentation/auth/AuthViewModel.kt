@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 import dagger.hilt.android.lifecycle.HiltViewModel
-import com.finrein.pals.PALApplication
+import com.finrein.pals.PalApplication
 import com.finrein.pals.BuildConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.request.post
@@ -42,7 +42,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
     }
 
     // Global handle to our initialized Supabase client instance
-    private val supabaseAuth = PALApplication.supabase.auth
+    private val supabaseAuth = PalApplication.supabase.auth
 
     // Step A: Request the 6-Digit code to be delivered to the user's email inbox
     fun sendEmailVerificationCode(emailAddress: String) {

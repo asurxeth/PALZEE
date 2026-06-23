@@ -36,7 +36,7 @@ val PalThemeColors = listOf(
     Theme5Color
 )
 
-// Colorful Brand Accents for PAL Text (Light Mode)
+// Colorful Brand Accents for Pal Text (Light Mode)
 val Theme1TextColor = Color(0xFFE9B7CE)
 val Theme2TextColor = Color(0xFFE9B7CE)
 val Theme3TextColor = Color(0xFFE8BDF9)
@@ -51,7 +51,7 @@ val PalLightTextColors = listOf(
     Theme5TextColor
 )
 
-// Dark Shades of Brand Accents for PAL Text (Dark Mode)
+// Dark Shades of Brand Accents for Pal Text (Dark Mode)
 val Theme1TextColorDark = Color(0xFF9E3E64)
 val Theme2TextColorDark = Color(0xFF9E3E64)
 val Theme3TextColorDark = Color(0xFF863A9A)

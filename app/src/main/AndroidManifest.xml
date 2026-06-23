@@ -10,10 +10,10 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
     <application
-        android:name=".PALApplication"
+        android:name=".PalApplication"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher_custom"
-        android:label="PAL"
+        android:label="Pal"
         android:roundIcon="@drawable/ic_launcher_custom"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">

@@ -72,13 +72,13 @@ android {
             isShrinkResources = false
         }
         getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false      // Turn this OFF to stop R8 from stripping code
+            isShrinkResources = false   // Turn this OFF to keep all assets intact
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName("release") // Keeps your working Palls.jks signature
         }
     }
     compileOptions {
