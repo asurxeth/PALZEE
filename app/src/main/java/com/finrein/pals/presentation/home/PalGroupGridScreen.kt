@@ -871,17 +871,10 @@ fun PalGroupCard(
                 val memberUserIds = groupMembersUserIds[pal.code] ?: emptyList()
                 val hasUserSubmitted = groupSubs.any { it.userId == currentUserId }
 
-                GroupMembersSmileysRow(
-                    members = members,
+                GroupHoursSmileysRow(
                     submissions = groupSubs,
                     isDark = isDark,
-                    accentColor = accentColor,
-                    palTextLogoColor = palTextLogoColor,
-                    currentUserId = currentUserId,
-                    userFirstName = firstName,
-                    smileySize = 22.dp,
-                    innerSize = 14.dp,
-                    unlitAlpha = 1.0f
+                    accentColor = accentColor
                 )
 
                 if (!hasUserSubmitted) {

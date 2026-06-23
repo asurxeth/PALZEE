@@ -9,6 +9,7 @@ import io.github.jan.supabase.compose.auth.ComposeAuth
 import io.github.jan.supabase.compose.auth.googleNativeLogin
 
 import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.storage.Storage
 
 @HiltAndroidApp
 class PalApplication : Application() {
@@ -31,6 +32,7 @@ class PalApplication : Application() {
                     googleNativeLogin(serverClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID)
                 }
                 install(Postgrest)
+                install(Storage)
             }
         }
     }

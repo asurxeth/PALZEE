@@ -12,7 +12,6 @@ class SessionManager(context: Context) {
             putString("user_email", user.email)
             putString("user_display_name", user.displayName)
             putBoolean("user_is_passkey_registered", user.isPasskeyRegistered)
-            putBoolean("has_logged_in_before", true)
             apply()
         }
     }

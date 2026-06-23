@@ -142,6 +142,7 @@ dependencies {
     implementation(libs.supabase.gotrue)
     implementation(libs.supabase.compose.auth)
     implementation(libs.supabase.postgrest)
+    implementation(libs.supabase.storage)
 
     // Core Credential Manager Library
     implementation("androidx.credentials:credentials:1.2.2")

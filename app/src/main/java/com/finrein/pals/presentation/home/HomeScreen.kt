@@ -102,6 +102,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import androidx.compose.ui.viewinterop.AndroidView
@@ -124,6 +125,47 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import java.time.LocalTime
 
+fun parseUserDisplayName(userDisplayName: String): Pair<String, String?> {
+    val parts = userDisplayName.split("|||")
+    val rawName = parts.getOrNull(0) ?: ""
+    val cleanName = rawName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+    val avatar = parts.getOrNull(1)
+    return Pair(cleanName, if (avatar.isNullOrEmpty()) null else avatar)
+}
+
+suspend fun uploadFileToSupabase(context: android.content.Context, uriString: String, bucketName: String): String {
+    try {
+        val uri = android.net.Uri.parse(uriString)
+        val inputStream = if (uri.scheme == "content" || uri.scheme == "file") {
+            context.contentResolver.openInputStream(uri)
+        } else {
+            val cleanPath = if (uriString.startsWith("file://")) uriString.substring(7) else uriString
+            val file = java.io.File(cleanPath)
+            if (file.exists()) {
+                java.io.FileInputStream(file)
+            } else {
+                context.contentResolver.openInputStream(uri)
+            }
+        }
+        if (inputStream == null) {
+            android.util.Log.e("SupabaseUpload", "Could not open input stream for $uriString")
+            return uriString
+        }
+        val bytes = inputStream.use { it.readBytes() }
+        val extension = if (bucketName == "pals") "mp4" else "jpg"
+        val fileName = "${java.util.UUID.randomUUID()}.$extension"
+        val storageBucket = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+        storageBucket.upload(fileName, bytes, upsert = true)
+        val publicUrl = storageBucket.publicUrl(fileName)
+        android.util.Log.d("SupabaseUpload", "Uploaded successfully! Public URL: $publicUrl")
+        return publicUrl
+    } catch (e: Exception) {
+        e.printStackTrace()
+        android.util.Log.e("SupabaseUpload", "Upload failed for $uriString: ${e.message}")
+        return uriString
+    }
+}
+
 @Serializable
 data class PalDbItem(
     val code: String,
@@ -136,7 +178,7 @@ data class PalDbItem(
 
 @Serializable
 data class UserPalMapping(
-    val id: Long? = null,
+    val id: String? = null,
     @SerialName("user_id") val userId: String,
     @SerialName("pal_code") val palCode: String,
     @SerialName("created_at") val createdAt: String? = null
@@ -277,9 +319,24 @@ fun UriImage(
     LaunchedEffect(uriString) {
         try {
             val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                val uri = android.net.Uri.parse(uriString)
-                context.contentResolver.openInputStream(uri).use { inputStream ->
-                    android.graphics.BitmapFactory.decodeStream(inputStream)
+                if (uriString.startsWith("http")) {
+                    try {
+                        val url = java.net.URL(uriString)
+                        val connection = url.openConnection() as java.net.HttpURLConnection
+                        connection.doInput = true
+                        connection.connect()
+                        connection.inputStream.use { inputStream ->
+                            android.graphics.BitmapFactory.decodeStream(inputStream)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        null
+                    }
+                } else {
+                    val uri = android.net.Uri.parse(uriString)
+                    context.contentResolver.openInputStream(uri).use { inputStream ->
+                        android.graphics.BitmapFactory.decodeStream(inputStream)
+                    }
                 }
             }
             if (bitmap != null) {
@@ -618,7 +675,7 @@ fun HomeScreen(
             } else if (sessionManager.hasLoggedInBefore()) {
                 4
             } else {
-                0
+                -1
             }
         )
     }
@@ -639,12 +696,20 @@ fun HomeScreen(
     val editNameFocusRequester = remember { FocusRequester() }
 
     var customAvatarUriString by remember { mutableStateOf(sessionManager.getAvatarUri()) }
+    val avatarScope = rememberCoroutineScope()
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
         if (uri != null) {
             sessionManager.saveAvatarUri(uri.toString())
             customAvatarUriString = uri.toString()
+            avatarScope.launch {
+                val uploadedUrl = uploadFileToSupabase(context, uri.toString(), "avatars")
+                if (uploadedUrl.startsWith("http")) {
+                    sessionManager.saveAvatarUri(uploadedUrl)
+                    customAvatarUriString = uploadedUrl
+                }
+            }
         }
     }
     var isLoadingPals by remember { mutableStateOf(sessionManager.isFirstLogin()) }
@@ -751,7 +816,7 @@ fun HomeScreen(
         if (onboardingFlowStep == 3) {
             kotlinx.coroutines.delay(2000)
             onboardingFlowStep = 4
-        } else if (onboardingFlowStep == 0 && currentUserId.isNotEmpty()) {
+        } else if (onboardingFlowStep == -1 && currentUserId.isNotEmpty()) {
             try {
                 val supabase = com.finrein.pals.PalApplication.supabase
                 val mappings = supabase.postgrest.from("user_pals")
@@ -771,14 +836,35 @@ fun HomeScreen(
                     .decodeList<SubmissionDbItem>()
 
                 if (mappings.isNotEmpty() || dbSubmissions.isNotEmpty()) {
-                    val firstSub = dbSubmissions.firstOrNull { it.userDisplayName.isNotEmpty() }
-                    if (firstSub != null) {
-                        val restoredName = firstSub.userDisplayName
-                        currentDisplayName = restoredName
-                        user?.let {
-                            sessionManager.saveUser(it.copy(displayName = restoredName))
+                    var restoredName = ""
+                    var restoredAvatar: String? = null
+                    
+                    dbSubmissions.forEach { sub ->
+                        if (sub.userDisplayName.isNotEmpty()) {
+                            val parsed = parseUserDisplayName(sub.userDisplayName)
+                            if (parsed.first.isNotEmpty()) {
+                                restoredName = parsed.first
+                            }
+                            if (!parsed.second.isNullOrEmpty()) {
+                                restoredAvatar = parsed.second
+                            }
                         }
                     }
+                    
+                    if (restoredName.isEmpty()) {
+                        restoredName = user?.displayName ?: user?.email?.substringBefore("@") ?: "apple_user"
+                    }
+                    
+                    currentDisplayName = restoredName
+                    customAvatarUriString = restoredAvatar
+                    
+                    user?.let {
+                        sessionManager.saveUser(it.copy(displayName = restoredName))
+                    }
+                    if (!restoredAvatar.isNullOrEmpty()) {
+                        sessionManager.saveAvatarUri(restoredAvatar)
+                    }
+                    
                     sessionManager.setHasLoggedInBefore(true)
                     sessionManager.setFirstLogin(false)
                     onboardingFlowStep = 4
@@ -1321,7 +1407,7 @@ fun HomeScreen(
                     val mappedPals = palsFromDb.map { dbPal ->
                         PalItem(
                             name = dbPal.name,
-                            size = dbPal.size,
+                            size = dbPal.size.toString(),
                             code = dbPal.code,
                             isVlog = dbPal.isVlog,
                             isCreator = dbPal.creatorId == currentUserId
@@ -1444,7 +1530,7 @@ fun HomeScreen(
                 val filteredSubmissions = dbSubmissions.filterNot { sub ->
                     val parts = sub.imageUrl.split("|||")
                     val path = parts.getOrNull(0) ?: ""
-                    path in currentDeleted || sub.imageUrl in currentDeleted
+                    path in currentDeleted || sub.imageUrl in currentDeleted || sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR")
                 }
                 allPalsSubmissions[palCode] = filteredSubmissions
                 
@@ -1456,19 +1542,83 @@ fun HomeScreen(
                     }
                     .decodeList<MessageDbItem>()
                 allPalsMessages[palCode] = dbMessages
-                
-                val userFirstName = currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                val names = (filteredSubmissions.map { it.userDisplayName } + dbMessages.map { it.senderName } + listOf(currentDisplayName))
-                    .map { name ->
-                        if (name == currentDisplayName) {
-                            userFirstName
-                        } else {
-                            name.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+
+                // If user doesn't have a submission (either profile or active vlog) in dbSubmissions, insert a profile submission in the background
+                val hasUserSub = dbSubmissions.any { it.userId == currentUserId }
+                if (!hasUserSub) {
+                    coroutineScope.launch {
+                        try {
+                            var avatarUrl = ""
+                            customAvatarUriString?.let { uriStr ->
+                                if (uriStr.startsWith("http")) {
+                                    avatarUrl = uriStr
+                                } else if (uriStr.isNotEmpty()) {
+                                    val uploaded = uploadFileToSupabase(context, uriStr, "avatars")
+                                    if (uploaded.startsWith("http")) {
+                                        avatarUrl = uploaded
+                                        sessionManager.saveAvatarUri(uploaded)
+                                        customAvatarUriString = uploaded
+                                    }
+                                }
+                            }
+                            val profileDisplayName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
+                            val profileSub = SubmissionDbItem(
+                                palCode = palCode,
+                                userId = currentUserId,
+                                userDisplayName = profileDisplayName,
+                                imageUrl = "PROFILE_AVATAR"
+                            )
+                            supabaseClient.postgrest.from("submissions").insert(profileSub)
+                            refreshActivePalDetails(palCode)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }
-                    .distinct()
-                    .filter { it.isNotEmpty() }
-                allPalsMembers[palCode] = names
+                }
+                
+                val mappings = supabaseClient.postgrest.from("user_pals")
+                    .select {
+                        filter {
+                            eq("pal_code", palCode)
+                        }
+                    }
+                    .decodeList<UserPalMapping>()
+                    .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
+
+                val userFirstName = currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                
+                val memberList = mutableListOf<String>()
+                val addedUserIds = mutableSetOf<String>()
+
+                mappings.forEach { mapping ->
+                    if (mapping.userId.isNotEmpty() && !addedUserIds.contains(mapping.userId)) {
+                        val sub = dbSubmissions.firstOrNull { it.userId == mapping.userId }
+                        val (displayName, avatarUrl) = if (sub != null) {
+                            parseUserDisplayName(sub.userDisplayName)
+                        } else {
+                            if (mapping.userId == currentUserId) {
+                                val localAvatar = if (customAvatarUriString?.startsWith("http") == true) customAvatarUriString else null
+                                Pair(userFirstName, localAvatar)
+                            } else {
+                                Pair("Pal", null)
+                            }
+                        }
+                        val formatted = "${mapping.userId}|||$displayName|||${avatarUrl ?: ""}"
+                        memberList.add(formatted)
+                        addedUserIds.add(mapping.userId)
+                    }
+                }
+
+                dbSubmissions.forEach { sub ->
+                    if (sub.userId.isNotEmpty() && !addedUserIds.contains(sub.userId)) {
+                        val (displayName, avatarUrl) = parseUserDisplayName(sub.userDisplayName)
+                        val formatted = "${sub.userId}|||$displayName|||${avatarUrl ?: ""}"
+                        memberList.add(formatted)
+                        addedUserIds.add(sub.userId)
+                    }
+                }
+
+                allPalsMembers[palCode] = memberList
                 palPalsCount[palCode] = filteredSubmissions.map { it.userId }.distinct().size
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1499,6 +1649,16 @@ fun HomeScreen(
         if (currentUserId.isNotEmpty()) {
             refreshPals()
             refreshVlogs()
+            try {
+                val serviceIntent = android.content.Intent(context, com.finrein.pals.BackgroundSyncService::class.java)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -1516,9 +1676,10 @@ fun HomeScreen(
             refreshActivePalDetails(pal.code)
             refreshMessages(pal.code)
             
-            if (showVlogChatScreen) {
-                while (true) {
-                    delay(3000)
+            while (true) {
+                delay(3000)
+                refreshActivePalDetails(pal.code)
+                if (showVlogChatScreen) {
                     refreshMessages(pal.code)
                 }
             }
@@ -1544,13 +1705,50 @@ fun HomeScreen(
             }
             activeVlogPal?.let { pal ->
                 palPalsCount[pal.code] = (palPalsCount[pal.code] ?: 0) + 1
+                if (pal.code != "vlog") {
+                    val localSubmission = SubmissionDbItem(
+                        palCode = pal.code,
+                        userId = currentUserId,
+                        userDisplayName = if (!customAvatarUriString.isNullOrEmpty()) "$firstName|||$customAvatarUriString" else firstName,
+                        imageUrl = "$capturedVideoPath|||||2000",
+                        createdAt = java.time.Instant.now().toString()
+                    )
+                    val currentList = allPalsSubmissions[pal.code] ?: emptyList()
+                    allPalsSubmissions[pal.code] = currentList.filterNot { it.userId == currentUserId } + localSubmission
+                }
                 coroutineScope.launch {
                     try {
-                        val delimiterString = "${capturedVideoPath ?: "dummy_image"}|||||2000"
+                        val uploadedVideoUrl = if (capturedVideoPath != null) {
+                            uploadFileToSupabase(context, capturedVideoPath!!, "pals")
+                        } else {
+                            "dummy_image"
+                        }
+                        
+                        if (uploadedVideoUrl.startsWith("http") && capturedVideoPath != null) {
+                            sharedPrefs.edit().putString("local_path_$uploadedVideoUrl", capturedVideoPath).apply()
+                        }
+                        
+                        var avatarUrl = ""
+                        customAvatarUriString?.let { uriStr ->
+                            if (uriStr.startsWith("http")) {
+                                avatarUrl = uriStr
+                            } else if (uriStr.isNotEmpty()) {
+                                val uploaded = uploadFileToSupabase(context, uriStr, "avatars")
+                                if (uploaded.startsWith("http")) {
+                                    avatarUrl = uploaded
+                                    sessionManager.saveAvatarUri(uploaded)
+                                    customAvatarUriString = uploaded
+                                }
+                            }
+                        }
+                        
+                        val formattedName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
+
+                        val delimiterString = "$uploadedVideoUrl|||||2000"
                         val newSubmission = SubmissionDbItem(
                             palCode = pal.code,
                             userId = currentUserId,
-                            userDisplayName = currentDisplayName,
+                            userDisplayName = formattedName,
                             imageUrl = delimiterString
                         )
                         supabaseClient.postgrest.from("submissions").insert(newSubmission)
@@ -1759,6 +1957,12 @@ fun HomeScreen(
         val screenContent = @Composable {
             if (onboardingFlowStep < 6) {
                 when (onboardingFlowStep) {
+                    -1 -> Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = accentColor)
+                    }
                     0 -> CreatingAccountScreen(
                         firstName = "",
                         lastName = "",
@@ -1798,6 +2002,7 @@ fun HomeScreen(
                     )
                     4 -> PermissionsScreen(
                         onDone = {
+                            sessionManager.setHasLoggedInBefore(true)
                             sessionManager.setOnboardingCompleted(true)
                             onboardingFlowStep = 6
                         },
@@ -1863,7 +2068,7 @@ fun HomeScreen(
                             if (code != "vlog") {
                                 val newMessage = MessageDbItem(
                                     palCode = code,
-                                    senderName = currentDisplayName,
+                                    senderName = firstName,
                                     content = msg
                                 )
                                 coroutineScope.launch {
@@ -1874,7 +2079,7 @@ fun HomeScreen(
                                         e.printStackTrace()
                                         val localMsg = MessageDbItem(
                                             palCode = code,
-                                            senderName = currentDisplayName,
+                                            senderName = firstName,
                                             content = msg
                                         )
                                         palMessages[code] = (palMessages[code] ?: emptyList()) + localMsg
@@ -1883,7 +2088,7 @@ fun HomeScreen(
                             } else {
                                 val localMsg = MessageDbItem(
                                     palCode = code,
-                                    senderName = currentDisplayName,
+                                    senderName = firstName,
                                     content = msg
                                 )
                                 palMessages[code] = (palMessages[code] ?: emptyList()) + localMsg
@@ -2046,6 +2251,9 @@ fun HomeScreen(
                                         capturedVlogsTimes = updatedTimes
                                         capturedVlogsCaptions = updatedCaptions
                                         capturedVlogsDurations = updatedDurations
+                                        if (updatedPaths.isEmpty()) {
+                                            activeVlogPal = null
+                                        }
                                         
                                         coroutineScope.launch {
                                             try {
@@ -2182,6 +2390,7 @@ fun HomeScreen(
                         capturedVlogsPaths = todayVlogPaths,
                         onClose = { showingCapturedPreview = false },
                         onSend = { caption, targetPals ->
+                            val localVideoPath = capturedVideoPath
                             capturedCaptionText = caption
                             val time = java.time.LocalTime.now()
                             val formattedTime = String.format("%02d:%02d", time.hour, time.minute)
@@ -2190,7 +2399,7 @@ fun HomeScreen(
                             targetPals.forEach { targetPal ->
                                 val targetPalCode = targetPal.code
                                 if (targetPalCode == "vlog") {
-                                    capturedVideoPath?.let { path ->
+                                    localVideoPath?.let { path ->
                                         val cleanPath = when {
                                             path.startsWith("file://") -> path.substring(7)
                                             else -> path
@@ -2230,14 +2439,49 @@ fun HomeScreen(
 
                                 if (targetPalCode != "vlog") {
                                     palPalsCount[targetPalCode] = (palPalsCount[targetPalCode] ?: 0) + 1
+                                    val localSubmission = SubmissionDbItem(
+                                        palCode = targetPalCode,
+                                        userId = currentUserId,
+                                        userDisplayName = if (!customAvatarUriString.isNullOrEmpty()) "$firstName|||$customAvatarUriString" else firstName,
+                                        imageUrl = "${localVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}",
+                                        createdAt = java.time.Instant.now().toString()
+                                    )
+                                    val currentList = allPalsSubmissions[targetPalCode] ?: emptyList()
+                                    allPalsSubmissions[targetPalCode] = currentList.filterNot { it.userId == currentUserId } + localSubmission
                                 }
                                 coroutineScope.launch {
                                     try {
-                                        val delimiterString = "${capturedVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}"
+                                        val uploadedVideoUrl = if (!localVideoPath.isNullOrBlank()) {
+                                            uploadFileToSupabase(context, localVideoPath, "pals")
+                                        } else {
+                                            ""
+                                        }
+                                        
+                                        if (uploadedVideoUrl.startsWith("http") && !localVideoPath.isNullOrBlank()) {
+                                            sharedPrefs.edit().putString("local_path_$uploadedVideoUrl", localVideoPath).apply()
+                                        }
+                                        
+                                        var avatarUrl = ""
+                                        customAvatarUriString?.let { uriStr ->
+                                            if (uriStr.startsWith("http")) {
+                                                avatarUrl = uriStr
+                                            } else if (uriStr.isNotEmpty()) {
+                                                val uploaded = uploadFileToSupabase(context, uriStr, "avatars")
+                                                if (uploaded.startsWith("http")) {
+                                                    avatarUrl = uploaded
+                                                    sessionManager.saveAvatarUri(uploaded)
+                                                    customAvatarUriString = uploaded
+                                                }
+                                            }
+                                        }
+                                        
+                                        val formattedName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
+ 
+                                        val delimiterString = "$uploadedVideoUrl|||${caption}|||${capturedVideoDuration}"
                                         val newSubmission = SubmissionDbItem(
                                             palCode = targetPalCode,
                                             userId = currentUserId,
-                                            userDisplayName = currentDisplayName,
+                                            userDisplayName = formattedName,
                                             imageUrl = delimiterString
                                         )
                                         supabaseClient.postgrest.from("submissions").insert(newSubmission)
@@ -2256,7 +2500,8 @@ fun HomeScreen(
                         },
                         currentUserId = currentUserId,
                         currentDisplayName = currentDisplayName,
-                        allPalsSubmissions = allPalsSubmissions
+                        allPalsSubmissions = allPalsSubmissions,
+                        customAvatarUriString = customAvatarUriString
                     )
                 }
             } else {
@@ -4452,16 +4697,26 @@ fun GroupMembersSmileysRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         for (i in 0 until displayCount) {
-            val memberName = members.getOrNull(i) ?: ""
+            val memberInfo = members.getOrNull(i) ?: ""
+            val memberParts = memberInfo.split("|||")
+            val (memberId, memberName, _) = if (memberParts.size >= 2) {
+                Triple(memberParts[0], memberParts[1], memberParts.getOrNull(2))
+            } else {
+                Triple(null, memberInfo, null)
+            }
             val isLit = if (memberName.isEmpty()) {
                 false
             } else {
-                if (memberName == userFirstName || memberName.contains("(You)") || memberName == "only you") {
-                    submissions.any { it.userId == currentUserId }
+                if (memberId != null) {
+                    submissions.any { it.userId == memberId }
                 } else {
-                    submissions.any { sub ->
-                        val cleanSubName = sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                        cleanSubName.equals(memberName, ignoreCase = true)
+                    if (memberName == userFirstName || memberName.contains("(You)") || memberName == "only you") {
+                        submissions.any { it.userId == currentUserId }
+                    } else {
+                        submissions.any { sub ->
+                            val cleanSubName = sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                            cleanSubName.equals(memberName, ignoreCase = true)
+                        }
                     }
                 }
             }
@@ -4516,6 +4771,115 @@ fun GroupMembersSmileysRow(
 }
 
 @Composable
+fun GroupHoursSmileysRow(
+    submissions: List<SubmissionDbItem>,
+    isDark: Boolean,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val activeHours = remember(submissions) {
+        submissions.filter { it.imageUrl != "PROFILE_AVATAR" && !it.imageUrl.startsWith("PROFILE_AVATAR") }
+            .map { sub ->
+                if (!sub.createdAt.isNullOrEmpty()) {
+                    try {
+                        val instant = java.time.Instant.parse(sub.createdAt)
+                        val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                        zonedDateTime.hour
+                    } catch (e: Exception) {
+                        val parts = sub.imageUrl.split("|||")
+                        val path = parts.getOrNull(0) ?: ""
+                        val regex = Regex("\\d{13}")
+                        val match = regex.find(path)
+                        if (match != null) {
+                            try {
+                                val instant = java.time.Instant.ofEpochMilli(match.value.toLong())
+                                val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                                zonedDateTime.hour
+                            } catch (ex: Exception) { 0 }
+                        } else { 0 }
+                    }
+                } else {
+                    val parts = sub.imageUrl.split("|||")
+                    val path = parts.getOrNull(0) ?: ""
+                    val regex = Regex("\\d{13}")
+                    val match = regex.find(path)
+                    if (match != null) {
+                        try {
+                            val instant = java.time.Instant.ofEpochMilli(match.value.toLong())
+                            val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                            zonedDateTime.hour
+                        } catch (ex: Exception) { 0 }
+                    } else { 0 }
+                }
+            }
+            .distinct()
+            .sorted()
+    }
+
+    val hourCount = activeHours.size
+    if (hourCount == 0) return
+
+    val smileySize = when {
+        hourCount <= 6 -> 22.dp
+        hourCount <= 12 -> 16.dp
+        hourCount <= 18 -> 12.dp
+        else -> 9.dp
+    }
+    val spacing = when {
+        hourCount <= 6 -> 4.dp
+        hourCount <= 12 -> 3.dp
+        else -> 2.dp
+    }
+
+    val shufflingColors = listOf(
+        Color(0xFFFFE600), // Yellow
+        Color(0xFFFF6700), // Orange
+        Color(0xFFFF007F), // Pink
+        Color(0xFF00F0FF), // Blue
+        Color(0xFFB000FF), // Purple
+        Color(0xFFFF073A)  // Red
+    )
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(spacing),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        activeHours.forEachIndexed { i, hour ->
+            val outerColor = shufflingColors[i % 6]
+            val innerColor = shufflingColors[(i + 3) % 6]
+            
+            Box(
+                modifier = Modifier
+                    .size(smileySize)
+                    .border(
+                        width = 1.dp,
+                        color = outerColor,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                val innerCircleSize = smileySize * 0.72f
+                Box(
+                    modifier = Modifier
+                        .size(innerCircleSize)
+                        .clip(CircleShape)
+                        .background(innerColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.smile_small),
+                        contentDescription = "Smiley",
+                        modifier = Modifier.fillMaxSize().rotate(180f),
+                        colorFilter = ColorFilter.tint(Color.Black)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun CapturedPreviewScreen(
     isDark: Boolean,
     accentColor: Color,
@@ -4531,7 +4895,8 @@ fun CapturedPreviewScreen(
     onSend: (String, List<PalItem>) -> Unit,
     currentUserId: String,
     currentDisplayName: String,
-    allPalsSubmissions: Map<String, List<SubmissionDbItem>>
+    allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
+    customAvatarUriString: String?
 ) {
     val context = LocalContext.current
     var isMuted by rememberSaveable { mutableStateOf(false) }
@@ -4590,58 +4955,60 @@ fun CapturedPreviewScreen(
     val deletedVlogsKey = "deleted_vlog_paths_$currentUserId"
 
     LaunchedEffect(createdPals, currentDisplayName) {
-        createdPals.forEach { pal ->
-            if (pal.isVlog) {
-                groupMembersMap[pal.code] = listOf("only you")
-            } else {
-                coroutineScope.launch {
-                    try {
-                        val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
-                            .select { filter { eq("pal_code", pal.code) } }
-                            .decodeList<SubmissionDbItem>()
-                        val dbMsgs = com.finrein.pals.PalApplication.supabase.postgrest.from("messages")
-                            .select { filter { eq("pal_code", pal.code) } }
-                            .decodeList<MessageDbItem>()
-                        
-                        val todaySubs = dbSubs.filter { sub ->
-                            var subDate: java.time.LocalDate? = null
-                            if (!sub.createdAt.isNullOrEmpty()) {
-                                try {
-                                    val instant = java.time.Instant.parse(sub.createdAt)
-                                    subDate = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                                } catch (e: Exception) {}
-                            }
-                            if (subDate == null) {
-                                val parts = sub.imageUrl.split("|||")
-                                val path = parts.getOrNull(0) ?: ""
-                                val regex = Regex("\\d{13}")
-                                val match = regex.find(path)
-                                if (match != null) {
-                                    try {
-                                        val millis = match.value.toLong()
-                                        subDate = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                                    } catch (e: Exception) {}
+        while (true) {
+            createdPals.forEach { pal ->
+                if (pal.isVlog) {
+                    groupMembersMap[pal.code] = listOf("only you")
+                } else {
+                    launch {
+                        try {
+                            val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
+                                .select { filter { eq("pal_code", pal.code) } }
+                                .decodeList<SubmissionDbItem>()
+                            val mappings = com.finrein.pals.PalApplication.supabase.postgrest.from("user_pals")
+                                .select { filter { eq("pal_code", pal.code) } }
+                                .decodeList<UserPalMapping>()
+                                .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
+
+                            val memberList = mutableListOf<String>()
+                            val addedUserIds = mutableSetOf<String>()
+
+                            mappings.forEach { mapping ->
+                                if (mapping.userId.isNotEmpty() && !addedUserIds.contains(mapping.userId)) {
+                                    val sub = dbSubs.firstOrNull { it.userId == mapping.userId }
+                                    val (displayName, avatarUrl) = if (sub != null) {
+                                        parseUserDisplayName(sub.userDisplayName)
+                                    } else {
+                                        if (mapping.userId == currentUserId) {
+                                            val localAvatar = if (customAvatarUriString?.startsWith("http") == true) customAvatarUriString else null
+                                            Pair(userFirstName, localAvatar)
+                                        } else {
+                                            Pair("Pal", null)
+                                        }
+                                    }
+                                    val formatted = "${mapping.userId}|||$displayName|||${avatarUrl ?: ""}"
+                                    memberList.add(formatted)
+                                    addedUserIds.add(mapping.userId)
                                 }
                             }
-                            subDate == java.time.LocalDate.now()
+
+                            dbSubs.forEach { sub ->
+                                if (sub.userId.isNotEmpty() && !addedUserIds.contains(sub.userId)) {
+                                    val (displayName, avatarUrl) = parseUserDisplayName(sub.userDisplayName)
+                                    val formatted = "${sub.userId}|||$displayName|||${avatarUrl ?: ""}"
+                                    memberList.add(formatted)
+                                    addedUserIds.add(sub.userId)
+                                }
+                            }
+
+                            groupMembersMap[pal.code] = memberList
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
-                        
-                        val names = (dbSubs.map { it.userDisplayName } + dbMsgs.map { it.senderName } + currentDisplayName)
-                            .map { name ->
-                                if (name == currentDisplayName) {
-                                    userFirstName
-                                } else {
-                                    name.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                                }
-                            }
-                            .distinct()
-                            .filter { it.isNotEmpty() }
-                        groupMembersMap[pal.code] = names
-                    } catch (e: Exception) {
-                        e.printStackTrace()
                     }
                 }
             }
+            delay(3000)
         }
     }
 
@@ -5046,7 +5413,10 @@ fun CapturedPreviewScreen(
                 val groupName = pal.name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
                 
                 val members = groupMembersMap[pal.code] ?: emptyList()
-                val otherMembers = members.filter { it != userFirstName && !it.contains("(You)") && it != "only you" }
+                val otherMembers = members.map { entry ->
+                    val parts = entry.split("|||")
+                    if (parts.size >= 2) parts[1] else entry
+                }.filter { it != userFirstName && !it.contains("(You)") && it != "only you" }
                 
                 val description = if (pal.isVlog) "only you" else {
                     if (otherMembers.isEmpty()) "only you" else {
@@ -5218,16 +5588,10 @@ fun CapturedPreviewScreen(
                     } else {
                         // For Groups
                         val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
-                        GroupMembersSmileysRow(
-                            members = members,
+                        GroupHoursSmileysRow(
                             submissions = groupSubs,
                             isDark = isDark,
-                            accentColor = accentColor,
-                            palTextLogoColor = palTextLogoColor,
-                            currentUserId = currentUserId,
-                            userFirstName = userFirstName,
-                            smileySize = 24.dp,
-                            innerSize = 18.dp
+                            accentColor = accentColor
                         )
                     }
                 }
@@ -5332,39 +5696,80 @@ fun GroupMemberCard(
 ) {
     val isActualMember = index < groupMembers.size
     val cardShape = if (isGrid) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(28.dp)
-    val memberName = if (isActualMember) groupMembers[index] else null
-    val isUser = index == 0 || (memberName != null && (memberName.contains("(You)") || memberName == userFirstName))
+    val memberInfo = if (isActualMember) groupMembers[index] else null
+    val memberParts = memberInfo?.split("|||")
+    val (memberId, memberRawName, memberAvatar) = if (memberParts != null && memberParts.size >= 2) {
+        Triple(memberParts[0], memberParts[1], memberParts.getOrNull(2))
+    } else {
+        Triple(null, memberInfo, null)
+    }
+    val memberName = remember(memberRawName) {
+        memberRawName?.trim()?.substringBefore(" ")?.substringBefore("_")?.substringBefore(".")
+    }
+    val isUser = if (memberId != null) memberId == currentUserId else (memberName != null && (memberName.contains("(You)") || memberName == userFirstName))
 
-    val memberSub = if (isActualMember) {
-        filteredSubmissions.firstOrNull { sub ->
-            if (isUser) {
-                sub.userId == currentUserId
+    val memberSubs = if (isActualMember) {
+        filteredSubmissions.filter { sub ->
+            if (memberId != null) {
+                sub.userId == memberId
             } else {
-                val cleanSubName = sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                cleanSubName.equals(memberName, ignoreCase = true)
+                if (isUser) {
+                    sub.userId == currentUserId
+                } else {
+                    val cleanSubName = sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                    cleanSubName.equals(memberName, ignoreCase = true)
+                }
             }
         }
     } else {
-        null
+        emptyList()
     }
-    val hasSubmission = memberSub != null
+
+    val sortedMemberSubs = remember(memberSubs) {
+        memberSubs.mapNotNull { sub ->
+            val parts = sub.imageUrl.split("|||")
+            val path = parts.getOrNull(0) ?: ""
+            if (path.isEmpty()) null else {
+                var hour = 12
+                if (!sub.createdAt.isNullOrEmpty()) {
+                    try {
+                        val instant = java.time.Instant.parse(sub.createdAt)
+                        val localDateTime = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                        val rawHour = localDateTime.hour
+                        hour = (rawHour - 4 + 24) % 24
+                    } catch (e: Exception) {}
+                }
+                val timestamp = if (!sub.createdAt.isNullOrEmpty()) {
+                    try { java.time.Instant.parse(sub.createdAt).toEpochMilli() } catch (e: Exception) { 0L }
+                } else 0L
+                Triple(sub, hour, timestamp)
+            }
+        }
+        .groupBy { it.second }
+        .map { entry -> entry.value.maxByOrNull { it.third }!! }
+        .sortedBy { it.third }
+        .map { it.first }
+    }
+
+    val hasSubmission = sortedMemberSubs.isNotEmpty()
     var showDropdownMenu by remember { mutableStateOf(false) }
-    var isLoved by rememberSaveable { mutableStateOf(false) }
     var showEmojiOverlay by remember { mutableStateOf(false) }
     val defaultEmojis = remember { listOf("😂", "❤️", "😭", "✨", "🥺", "🔥", "🥰", "🎉", "💀", "👍", "🙏", "💯", "😎", "👀") }
     var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }
 
-    if (index == selectedMemberIndex && hasSubmission) {
-        // ACTIVE VIDEO CARD PLAYER
-        val videoPath = memberSub!!.imageUrl.split("|||").firstOrNull() ?: ""
-        val caption = memberSub.imageUrl.split("|||").getOrNull(1) ?: ""
-        val timeText = if (!memberSub.createdAt.isNullOrEmpty()) {
+    if (hasSubmission) {
+        // ACTIVE VIDEO CARD PLAYER FOR ANY MEMBER WITH SUBMISSION
+        val firstSub = sortedMemberSubs.first()
+        val videoPaths = sortedMemberSubs.map { it.imageUrl.split("|||").firstOrNull() ?: "" }.filter { it.isNotEmpty() }
+        val videoPath = videoPaths.firstOrNull() ?: ""
+        val caption = firstSub.imageUrl.split("|||").getOrNull(1) ?: ""
+        val timeText = if (!firstSub.createdAt.isNullOrEmpty()) {
             try {
-                val instant = java.time.Instant.parse(memberSub.createdAt)
+                val instant = java.time.Instant.parse(firstSub.createdAt)
                 val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
                 zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
             } catch (e: Exception) {
-                memberSub.createdAt.substringAfter("T").substringBefore(".").take(5)
+                firstSub.createdAt.substringAfter("T").substringBefore(".").take(5)
             }
         } else {
             "12:00"
@@ -5375,103 +5780,12 @@ fun GroupMemberCard(
                 .fillMaxWidth()
                 .height(cardHeightDp)
                 .clip(cardShape)
-                .background(Color.Black)
+                .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE5E5EA))
         ) {
-            val localPlayer = remember(videoPath) {
-                androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                    volume = 0f
-                    val cleanPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
-                    val file = java.io.File(cleanPath)
-                    if (file.exists()) {
-                        setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
-                        prepare()
-                    }
-                }
-            }
-
-            DisposableEffect(localPlayer) {
-                onDispose {
-                    localPlayer.release()
-                }
-            }
-
-            LaunchedEffect(localPlayer) {
-                localPlayer.playWhenReady = true
-            }
-
-            androidx.compose.ui.viewinterop.AndroidView(
-                factory = { ctx ->
-                    val view = android.view.LayoutInflater.from(ctx)
-                        .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                    view.apply {
-                        player = localPlayer
-                        useController = false
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-
-                        fun applyVideoScale() {
-                            val videoSize = localPlayer.videoSize
-                            val videoWidth = videoSize.width
-                            val videoHeight = videoSize.height
-                            val textureView = getVideoSurfaceView() as? android.view.TextureView
-                            if (textureView == null) {
-                                postDelayed({ applyVideoScale() }, 100)
-                                return
-                            }
-                            val containerWidth = width.toFloat()
-                            val containerHeight = height.toFloat()
-                            if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                val isPortrait = videoHeight > videoWidth
-                                val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
-                                val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
-                                
-                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
-                                
-                                val calculatedScaleX: Float
-                                val calculatedScaleY: Float
-                                val calculatedRotation: Float
-                                if (isPortrait) {
-                                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                    calculatedRotation = 270f
-                                } else {
-                                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                    calculatedRotation = 0f
-                                }
-                                
-                                android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
-                                
-                                textureView.pivotX = containerWidth / 2f
-                                textureView.pivotY = containerHeight / 2f
-                                textureView.scaleX = calculatedScaleX
-                                textureView.scaleY = calculatedScaleY
-                                textureView.rotation = calculatedRotation
-                            } else {
-                                postDelayed({ applyVideoScale() }, 100)
-                            }
-                        }
-
-                        val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                            applyVideoScale()
-                        }
-                        addOnLayoutChangeListener(layoutListener)
-
-                        localPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                super.onVideoSizeChanged(videoSize)
-                                applyVideoScale()
-                            }
-                            override fun onPlaybackStateChanged(playbackState: Int) {
-                                super.onPlaybackStateChanged(playbackState)
-                                applyVideoScale()
-                            }
-                        })
-
-                        applyVideoScale()
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
+            VideoPlayerItem(
+                videoPaths = videoPaths,
+                modifier = Modifier.fillMaxSize(),
+                shape = cardShape
             )
 
             // Overlay 1: Avatar and Name (Top Left)
@@ -5482,8 +5796,8 @@ fun GroupMemberCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val userAvatar = if (isUser) customAvatarUriString else null
-                if (userAvatar != null) {
+                val userAvatar = if (isUser) customAvatarUriString else memberAvatar
+                if (!userAvatar.isNullOrEmpty()) {
                     UriImage(
                         uriString = userAvatar,
                         modifier = Modifier
@@ -5593,16 +5907,16 @@ fun GroupMemberCard(
                     }
                 }
             } else {
-                // Reply Icon at middle right
+                // Reply Icon at extreme middle right
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(end = if (isGrid) 10.dp else 16.dp)
+                        .padding(end = 7.5.dp)
                         .clip(CircleShape)
                         .clickable {
                             onReplyClick(videoPath)
                         }
-                        .padding(8.dp),
+                        .padding(4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -5611,27 +5925,27 @@ fun GroupMemberCard(
                         tint = Color.White,
                         modifier = Modifier
                             .graphicsLayer(scaleX = -1f)
-                            .size(if (isGrid) 20.dp else 28.dp)
+                            .size(25.dp)
                     )
                 }
 
-                // Love Icon at bottom right
+                // Love Icon at extreme bottom right
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
+                        .padding(bottom = 7.5.dp, end = 7.5.dp)
                         .clip(CircleShape)
                         .clickable {
                             showEmojiOverlay = !showEmojiOverlay
                         }
-                        .padding(8.dp),
+                        .padding(4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.FavoriteBorder,
                         contentDescription = "Love",
                         tint = Color.White,
-                        modifier = Modifier.size(if (isGrid) 20.dp else 28.dp)
+                        modifier = Modifier.size(25.dp)
                     )
                 }
             }
@@ -5653,7 +5967,6 @@ fun GroupMemberCard(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -5664,17 +5977,14 @@ fun GroupMemberCard(
                 ) {
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(30.dp))
-                            .background(Color.Black.copy(alpha = 0.75f))
-                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(30.dp))
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                            .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        horizontalArrangement = Arrangement.spacedBy(if (isGrid) 8.dp else 14.dp)
                     ) {
                         currentEmojis.forEach { emoji ->
                             Text(
                                 text = emoji,
-                                fontSize = 26.sp,
+                                fontSize = if (isGrid) 20.sp else 26.sp,
                                 modifier = Modifier
                                     .clickable {
                                         onEmojiReacted(videoPath, emoji)
@@ -5688,22 +5998,26 @@ fun GroupMemberCard(
                             width = 3f,
                             pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
                         ) }
+                        val circleColor = if (isDark) Color.White else Color.Black
+                        val backingBg = if (isDark) Color.Black.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.5f)
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(if (isGrid) 24.dp else 32.dp)
                                 .clickable {
                                     currentEmojis = defaultEmojis.shuffled().take(5)
                                 }
+                                .background(backingBg, CircleShape)
                                 .drawBehind {
-                                    drawCircle(color = Color.White.copy(alpha = 0.6f), style = stroke)
-                                },
+                                    drawCircle(color = circleColor, style = stroke)
+                                }
+                                .padding(if (isGrid) 4.dp else 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Refresh,
+                                painter = painterResource(id = R.drawable.smile_medium),
                                 contentDescription = "Shuffle",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                                tint = circleColor,
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
                     }
@@ -5823,8 +6137,8 @@ fun GroupMemberCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val userAvatar = if (isUser) customAvatarUriString else null
-                if (userAvatar != null) {
+                val userAvatar = if (isUser) customAvatarUriString else memberAvatar
+                if (!userAvatar.isNullOrEmpty()) {
                     UriImage(
                         uriString = userAvatar,
                         modifier = Modifier
@@ -5853,7 +6167,7 @@ fun GroupMemberCard(
                 val userEmptyTextColor = if (isDark) Color(0xFF5C5E62) else textColor
                 val userEmptyCaptureColor = if (isDark) Color(0xFF5C5E62) else Color.Black
                 Text(
-                    text = userFirstName,
+                    text = if (isUser) userFirstName else (memberName ?: ""),
                     fontFamily = FontFamily.SansSerif,
                     fontSize = if (isGrid) 12.sp else 15.sp,
                     fontWeight = FontWeight.Normal,
@@ -5920,7 +6234,7 @@ fun GroupMemberCard(
             }
         }
     } else if (isActualMember) {
-        // OTHER MEMBER CARD (either has submission but not active, or doesn't have submission)
+        // OTHER MEMBER CARD WITHOUT SUBMISSION
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -5932,114 +6246,7 @@ fun GroupMemberCard(
                     color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
                     shape = cardShape
                 )
-                .then(
-                    if (hasSubmission) {
-                        Modifier.clickable { onSelectedMemberIndexChange(index) }
-                    } else {
-                        Modifier
-                    }
-                )
         ) {
-            if (hasSubmission) {
-                val videoPath = memberSub!!.imageUrl.split("|||").firstOrNull() ?: ""
-                val localPlayer = remember(videoPath) {
-                    androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-                        repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                        volume = 0f
-                        val cleanPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
-                        val file = java.io.File(cleanPath)
-                        if (file.exists()) {
-                            setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
-                            prepare()
-                        }
-                    }
-                }
-
-                DisposableEffect(localPlayer) {
-                    onDispose {
-                        localPlayer.release()
-                    }
-                }
-
-                LaunchedEffect(localPlayer) {
-                    localPlayer.playWhenReady = true
-                }
-
-                androidx.compose.ui.viewinterop.AndroidView(
-                    factory = { ctx ->
-                        val view = android.view.LayoutInflater.from(ctx)
-                            .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                        view.apply {
-                            player = localPlayer
-                            useController = false
-                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-
-                            fun applyVideoScale() {
-                                val videoSize = localPlayer.videoSize
-                                val videoWidth = videoSize.width
-                                val videoHeight = videoSize.height
-                                val textureView = getVideoSurfaceView() as? android.view.TextureView
-                                if (textureView == null) {
-                                    postDelayed({ applyVideoScale() }, 100)
-                                    return
-                                }
-                                val containerWidth = width.toFloat()
-                                val containerHeight = height.toFloat()
-                                if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                    val isPortrait = videoHeight > videoWidth
-                                    val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
-                                    val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
-                                    
-                                    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
-                                    
-                                    val calculatedScaleX: Float
-                                    val calculatedScaleY: Float
-                                    val calculatedRotation: Float
-                                    if (isPortrait) {
-                                        calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                        calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                        calculatedRotation = 270f
-                                    } else {
-                                        calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                        calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                        calculatedRotation = 0f
-                                    }
-                                    
-                                    android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
-                                    
-                                    textureView.pivotX = containerWidth / 2f
-                                    textureView.pivotY = containerHeight / 2f
-                                    textureView.scaleX = calculatedScaleX
-                                    textureView.scaleY = calculatedScaleY
-                                    textureView.rotation = calculatedRotation
-                                } else {
-                                    postDelayed({ applyVideoScale() }, 100)
-                                }
-                            }
-
-                            val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                                applyVideoScale()
-                            }
-                            addOnLayoutChangeListener(layoutListener)
-
-                            localPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                    super.onVideoSizeChanged(videoSize)
-                                    applyVideoScale()
-                                }
-                                override fun onPlaybackStateChanged(playbackState: Int) {
-                                    super.onPlaybackStateChanged(playbackState)
-                                    applyVideoScale()
-                                }
-                            })
-
-                            applyVideoScale()
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -6047,8 +6254,8 @@ fun GroupMemberCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val userAvatar = if (isUser) customAvatarUriString else null
-                if (userAvatar != null) {
+                val userAvatar = if (isUser) customAvatarUriString else memberAvatar
+                if (!userAvatar.isNullOrEmpty()) {
                     UriImage(
                         uriString = userAvatar,
                         modifier = Modifier
@@ -6069,91 +6276,27 @@ fun GroupMemberCard(
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .rotate(if (hasSubmission) 180f else 0f)
                         )
                     }
                 }
 
-                val actualMemberTextColor = if (hasSubmission) Color.White else textColor
                 Text(
                     text = memberName ?: "",
                     fontFamily = FontFamily.SansSerif,
                     fontSize = if (isGrid) 12.sp else 15.sp,
                     fontWeight = FontWeight.Normal,
-                    color = actualMemberTextColor
+                    color = textColor
                 )
             }
 
-            val displayTimeText = if (hasSubmission) {
-                val sub = memberSub!!
-                if (!sub.createdAt.isNullOrEmpty()) {
-                    try {
-                        val instant = java.time.Instant.parse(sub.createdAt)
-                        val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
-                        zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
-                    } catch (e: Exception) {
-                        sub.createdAt.substringAfter("T").substringBefore(".").take(5)
-                    }
-                } else {
-                    "12:00"
-                }
-            } else {
-                "4:00"
-            }
-
-            val actualMemberTextColor = if (hasSubmission) Color.White else textColor
             Text(
-                text = displayTimeText,
+                text = "4:00",
                 fontFamily = DelaGothicOneFontFamily,
                 fontSize = if (isGrid) 12.5.sp else 18.5.sp,
                 fontWeight = FontWeight.Bold,
-                color = actualMemberTextColor,
+                color = textColor,
                 modifier = Modifier.align(Alignment.Center)
             )
-
-            val outerColor = shufflingColors[index % 6]
-            val innerColor = shufflingColors[(index + 3) % 6]
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = if (isGrid) 10.dp else 24.dp)
-                    .size(if (isGrid) 30.dp else 44.dp)
-                    .then(
-                        if (hasSubmission) {
-                            Modifier.border(2.dp, outerColor, CircleShape)
-                        } else {
-                            Modifier
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                val currentInnerSize = if (hasSubmission) (if (isGrid) 22.dp else 34.dp) else (if (isGrid) 30.dp else 44.dp)
-                Box(
-                    modifier = Modifier
-                        .size(currentInnerSize)
-                        .clip(CircleShape)
-                        .background(
-                            if (hasSubmission) innerColor else (if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA))
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.smile_small),
-                        contentDescription = "Status Smiley",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .rotate(if (hasSubmission) 180f else 0f),
-                        colorFilter = ColorFilter.tint(
-                            if (hasSubmission) {
-                                Color.Black
-                            } else {
-                                if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.3f)
-                            }
-                        )
-                    )
-                }
-            }
         }
     } else {
         // INVITE SLOT (totalSlots > actualMembers)
@@ -6686,54 +6829,110 @@ fun VlogScreenContent(
     val userFirstName = remember(currentDisplayName) {
         currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
     }
+    val cachedMembers = params.allPalsMembers[pal.code] ?: emptyList()
     var groupMembers by remember(pal.code) {
-        val cached = params.allPalsMembers[pal.code]
-        val initialList = if (cached != null) {
-            cached.map { name ->
-                if (name == userFirstName || name == "$userFirstName (You)") {
-                    "$userFirstName (You)"
+        val initialList = if (cachedMembers.isNotEmpty()) {
+            cachedMembers.map { member ->
+                val parts = member.split("|||")
+                if (parts.size >= 2) {
+                    member
                 } else {
-                    name
+                    val clean = member.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                    if (clean == userFirstName || clean == "$userFirstName (You)") {
+                        "$currentUserId|||$userFirstName (You)|||"
+                    } else {
+                        "legacy_id|||$clean|||"
+                    }
                 }
             }
         } else {
-            listOf("$userFirstName (You)")
+            val localAvatar = if (customAvatarUriString?.startsWith("http") == true) customAvatarUriString else null
+            listOf("$currentUserId|||$userFirstName (You)|||${localAvatar ?: ""}")
         }
         mutableStateOf(initialList)
     }
     LaunchedEffect(pal.code, currentDisplayName) {
         if (pal.isVlog) {
-            groupMembers = listOf("$userFirstName (You)")
+            val localAvatar = if (customAvatarUriString?.startsWith("http") == true) customAvatarUriString else null
+            groupMembers = listOf("$currentUserId|||$userFirstName (You)|||${localAvatar ?: ""}")
         } else {
-            try {
-                val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
-                    .select {
-                        filter {
-                            eq("pal_code", pal.code)
+            while (true) {
+                try {
+                    val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
+                        .select {
+                            filter {
+                                eq("pal_code", pal.code)
+                            }
+                        }
+                        .decodeList<SubmissionDbItem>()
+                    val mappings = com.finrein.pals.PalApplication.supabase.postgrest.from("user_pals")
+                        .select {
+                            filter {
+                                eq("pal_code", pal.code)
+                            }
+                        }
+                        .decodeList<UserPalMapping>()
+                        .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
+
+                    val memberList = mutableListOf<String>()
+                    val addedUserIds = mutableSetOf<String>()
+
+                    val localAvatar = if (customAvatarUriString?.startsWith("http") == true) customAvatarUriString else null
+                    memberList.add("$currentUserId|||$userFirstName (You)|||${localAvatar ?: ""}")
+                    addedUserIds.add(currentUserId)
+
+                    mappings.forEach { mapping ->
+                        if (mapping.userId.isNotEmpty() && !addedUserIds.contains(mapping.userId)) {
+                            val sub = dbSubs.firstOrNull { it.userId == mapping.userId }
+                            val (displayName, avatarUrl) = if (sub != null) {
+                                parseUserDisplayName(sub.userDisplayName)
+                            } else {
+                                Pair("Pal", null)
+                            }
+                            memberList.add("${mapping.userId}|||$displayName|||${avatarUrl ?: ""}")
+                            addedUserIds.add(mapping.userId)
                         }
                     }
-                    .decodeList<SubmissionDbItem>()
-                val dbMsgs = com.finrein.pals.PalApplication.supabase.postgrest.from("messages")
-                    .select {
-                        filter {
-                            eq("pal_code", pal.code)
+
+                    dbSubs.forEach { sub ->
+                        if (sub.userId.isNotEmpty() && !addedUserIds.contains(sub.userId)) {
+                            val (displayName, avatarUrl) = parseUserDisplayName(sub.userDisplayName)
+                            memberList.add("${sub.userId}|||$displayName|||${avatarUrl ?: ""}")
+                            addedUserIds.add(sub.userId)
                         }
                     }
-                    .decodeList<MessageDbItem>()
-                val names = (dbSubs.map { it.userDisplayName } + dbMsgs.map { it.senderName } + currentDisplayName)
-                    .map { name ->
-                        if (name == currentDisplayName) {
+
+                    val formattedMembers = memberList.map { memberInfo ->
+                        val parts = memberInfo.split("|||")
+                        val uId = parts.getOrNull(0) ?: ""
+                        val rawName = parts.getOrNull(1) ?: ""
+                        val avatar = parts.getOrNull(2) ?: ""
+                        val cleanName = if (uId == currentUserId) {
                             "$userFirstName (You)"
                         } else {
-                            name.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                            rawName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
                         }
+                        "$uId|||$cleanName|||$avatar"
                     }
-                    .distinct()
-                    .filter { it.isNotEmpty() }
-                groupMembers = names
-            } catch (e: Exception) {
-                e.printStackTrace()
-                groupMembers = listOf("$userFirstName (You)")
+
+                    (allPalsMembers as? MutableMap<String, List<String>>)?.put(pal.code, formattedMembers)
+                    groupMembers = formattedMembers
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                delay(3000)
+            }
+        }
+    }
+
+    LaunchedEffect(cachedMembers, userFirstName) {
+        if (cachedMembers.isNotEmpty()) {
+            groupMembers = cachedMembers.map { name ->
+                if (name == userFirstName || name == "$userFirstName (You)") {
+                    "$userFirstName (You)"
+                } else {
+                    name
+                }
             }
         }
     }
@@ -6741,9 +6940,7 @@ fun VlogScreenContent(
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     var selectedMemberIndex by remember(pal.code) { mutableStateOf(0) }
-    val activePalSubmissions = remember(pal.code, params.allPalsSubmissions) {
-        params.allPalsSubmissions[pal.code] ?: emptyList<SubmissionDbItem>()
-    }
+    val activePalSubmissions = params.allPalsSubmissions[pal.code] ?: emptyList<SubmissionDbItem>()
     val targetDate = remember(selectedDayOffset) {
         java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
     }
@@ -7662,6 +7859,31 @@ fun VlogScreenContent(
         val headerButtonBg = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)
         val headerIconTint = if (isDark) Color.White else Color.Black
 
+        // Dynamic font size calculation based on text length to fit exactly at center and not overlap
+        val displayText = if (selectedDayOffset > 0) {
+            val targetDate = java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
+            targetDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.US)
+        } else {
+            if (showEdit && editName.isNotEmpty()) editName else pal.name
+        }
+        val textLength = displayText.length
+
+        // Vlog font size: base is 19.5f. We reduce it as length increases.
+        val vlogFontSize = when {
+            textLength <= 8 -> 19.5f
+            textLength <= 14 -> 19.5f - (textLength - 8) * 0.8f
+            textLength <= 20 -> 14.7f - (textLength - 14) * 0.5f
+            else -> 11.7f - (textLength - 20) * 0.2f
+        }.coerceAtLeast(10f).sp
+
+        // Group font size: base is 16f. We reduce it as length increases.
+        val groupFontSize = when {
+            textLength <= 8 -> 16.0f
+            textLength <= 14 -> 16.0f - (textLength - 8) * 0.6f
+            textLength <= 20 -> 12.4f - (textLength - 14) * 0.4f
+            else -> 10.0f - (textLength - 20) * 0.15f
+        }.coerceAtLeast(9f).sp
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -7699,6 +7921,7 @@ fun VlogScreenContent(
                     val dayName = remember(targetDate) {
                         targetDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.US)
                     }
+                    val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
                     Row(
                         modifier = Modifier
                             .offset(y = (-6).dp) // moved up by 6dp
@@ -7716,6 +7939,7 @@ fun VlogScreenContent(
                                 val localPos = coordinates.positionInRoot()
                                 capsuleLeftDp = with(density) { localPos.x.toDp() }
                             }
+                            .widthIn(max = (screenWidthDp - 165.dp).coerceAtLeast(100.dp))
                             .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -7723,9 +7947,12 @@ fun VlogScreenContent(
                         Text(
                             text = if (selectedDayOffset > 0) dayName else (if (showEdit && editName.isNotEmpty()) editName else pal.name),
                             fontFamily = BricolageVariableFontFamily,
-                            fontSize = 19.5.sp, // reduced by 1.5sp
+                            fontSize = vlogFontSize,
                             fontWeight = FontWeight.Bold,
-                            color = headerIconTint
+                            color = headerIconTint,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (selectedDayOffset == 0) {
                             Icon(
@@ -7785,6 +8012,7 @@ fun VlogScreenContent(
                     val dayName = remember(targetDate) {
                         targetDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.US)
                     }
+                    val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
                     Row(
                         modifier = Modifier
                             .offset(y = -7.dp)
@@ -7802,6 +8030,7 @@ fun VlogScreenContent(
                                 val localPos = coordinates.positionInRoot()
                                 capsuleLeftDp = with(density) { localPos.x.toDp() }
                             }
+                            .widthIn(max = (screenWidthDp - 165.dp).coerceAtLeast(100.dp))
                             .padding(horizontal = 13.5.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -7809,9 +8038,12 @@ fun VlogScreenContent(
                         Text(
                             text = if (selectedDayOffset > 0) dayName else (if (showEdit && editName.isNotEmpty()) editName else pal.name),
                             fontFamily = BricolageVariableFontFamily,
-                            fontSize = 16.sp,
+                            fontSize = groupFontSize,
                             fontWeight = FontWeight.Bold,
-                            color = headerIconTint
+                            color = headerIconTint,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (selectedDayOffset == 0) {
                             Icon(
@@ -7824,54 +8056,12 @@ fun VlogScreenContent(
                     }
 
                     // Horizontal row of small smileys showing the pals sent to vlog menu count (spaced 12.5dp below capsule, filled with boundary/accentColor, with active ring)
-                    Row(
-                        modifier = Modifier.offset(y = 27.5.dp), // offset downwards below the non-vlog capsule (shifted up by 7dp from 42dp to 35dp)
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val shufflingColors = listOf(
-                            Color(0xFFFFE600), // Yellow
-                            Color(0xFFFF6700), // Orange
-                            Color(0xFFFF007F), // Pink
-                            Color(0xFF00F0FF), // Blue
-                            Color(0xFFB000FF), // Purple
-                            Color(0xFFFF073A)  // Red
-                        )
-                        repeat(palsCount) { index ->
-                            val isActive = index == selectedPageIndex
-                            val outerColor = shufflingColors[index % 6]
-                            val innerColor = shufflingColors[(index + 3) % 6]
-                            Box(
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .then(
-                                        if (isActive) {
-                                            Modifier.border(1.5.dp, outerColor, CircleShape)
-                                        } else {
-                                            Modifier
-                                        }
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isActive) innerColor else innerColor.copy(alpha = 0.35f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Image(
-                                        painter = painterResource(id = R.drawable.smile_small),
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .rotate(if (isActive) 180f else 0f),
-                                        colorFilter = ColorFilter.tint(if (isActive) Color.Black else Color.Black.copy(alpha = 0.5f))
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    GroupHoursSmileysRow(
+                        submissions = activePalSubmissions,
+                        isDark = isDark,
+                        accentColor = accentColor,
+                        modifier = Modifier.offset(y = 27.5.dp)
+                    )
                 }
             }
 
@@ -8052,7 +8242,9 @@ fun VlogScreenContent(
                                 )
                             }
                             
-                            groupMembers.forEach { memberName ->
+                            groupMembers.forEach { memberInfo ->
+                                val memberParts = memberInfo.split("|||")
+                                val memberName = if (memberParts.size >= 2) memberParts[1] else memberInfo
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -8598,7 +8790,8 @@ fun VlogScreenContent(
             onShowChatChange = onShowChatChange,
             onNavigateToCamera = onNavigateToCamera,
             onSendMessage = onSendMessage,
-            onShowExportDialogChange = onShowExportDialogChange
+            onShowExportDialogChange = onShowExportDialogChange,
+            customAvatarUriString = customAvatarUriString
         )
 
         // --- Reply Preview Overlay ---
@@ -10021,22 +10214,85 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier) {
 
 
 @Composable
-fun VideoPlayerItem(videoPath: String, modifier: Modifier = Modifier) {
+fun VideoPlayerItem(
+    videoPath: String,
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(20.dp)
+) {
+    VideoPlayerItem(
+        videoPaths = listOf(videoPath),
+        modifier = modifier,
+        shape = shape
+    )
+}
+
+@Composable
+fun VideoPlayerItem(
+    videoPaths: List<String>,
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(20.dp)
+) {
     val context = LocalContext.current
-    val localPlayer = remember(videoPath) {
+    val sharedPrefs = remember(context) { context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE) }
+    val resolvedPaths = remember(videoPaths) {
+        videoPaths.map { videoPath ->
+            if (videoPath.startsWith("http")) {
+                sharedPrefs.getString("local_path_$videoPath", null) ?: videoPath
+            } else {
+                videoPath
+            }
+        }
+    }
+
+    val localPlayer = remember(resolvedPaths) {
         androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
             repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
             volume = 0f
-            val cleanPath = when {
-                videoPath.startsWith("file://") -> videoPath.substring(7)
-                else -> videoPath
+            resolvedPaths.forEach { resolvedPath ->
+                val uri = android.net.Uri.parse(resolvedPath)
+                if (resolvedPath.startsWith("http") || resolvedPath.startsWith("content://")) {
+                    addMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
+                } else {
+                    val cleanPath = when {
+                        resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
+                        else -> resolvedPath
+                    }
+                    val file = java.io.File(cleanPath)
+                    if (file.exists()) {
+                        addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
+                    } else {
+                        try {
+                            addMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
             }
-            val file = java.io.File(cleanPath)
-            if (file.exists()) {
-                setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
-                prepare()
-            }
+            prepare()
         }
+    }
+
+    var isVideoReady by remember(localPlayer) {
+        mutableStateOf(
+            localPlayer.playbackState == androidx.media3.common.Player.STATE_READY ||
+            localPlayer.isPlaying
+        )
+    }
+
+    LaunchedEffect(localPlayer) {
+        localPlayer.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_READY) {
+                    isVideoReady = true
+                }
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) {
+                    isVideoReady = true
+                }
+            }
+        })
     }
 
     DisposableEffect(localPlayer) {
@@ -10051,12 +10307,13 @@ fun VideoPlayerItem(videoPath: String, modifier: Modifier = Modifier) {
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.Black),
+            .clip(shape)
+            .background(if (isVideoReady) Color.Black else Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
-        androidx.compose.ui.viewinterop.AndroidView(
-            factory = { ctx ->
+        if (isVideoReady) {
+            androidx.compose.ui.viewinterop.AndroidView(
+                factory = { ctx ->
                 val view = android.view.LayoutInflater.from(ctx)
                     .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
                 view.apply {
@@ -10128,6 +10385,7 @@ fun VideoPlayerItem(videoPath: String, modifier: Modifier = Modifier) {
             },
             modifier = Modifier.fillMaxSize()
         )
+        }
     }
 }
 
@@ -10614,7 +10872,8 @@ fun PalChatOverlay(
     onShowChatChange: (Boolean) -> Unit,
     onNavigateToCamera: () -> Unit,
     onSendMessage: (String) -> Unit,
-    onShowExportDialogChange: (Boolean) -> Unit
+    onShowExportDialogChange: (Boolean) -> Unit,
+    customAvatarUriString: String?
 ) {
     if (!showChat) return
 
@@ -10790,7 +11049,8 @@ fun PalChatOverlay(
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                     modifier = Modifier.padding(bottom = 4.dp)
                                                 ) {
-                                                    val cleanName = feedItem.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                                    val (displayName, avatarUrl) = parseUserDisplayName(feedItem.userDisplayName)
+                                                    val cleanName = displayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
                                                     Text(
                                                         text = cleanName,
                                                         color = textColor,
@@ -10798,20 +11058,31 @@ fun PalChatOverlay(
                                                         fontWeight = FontWeight.Bold,
                                                         fontFamily = FontFamily.SansSerif
                                                     )
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(24.dp)
-                                                            .clip(CircleShape)
-                                                            .background(accentColor),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Image(
-                                                            painter = painterResource(id = R.drawable.smile_medium),
-                                                            contentDescription = null,
+                                                    val finalAvatar = if (avatarUrl?.startsWith("http") == true) avatarUrl else customAvatarUriString
+                                                    if (!finalAvatar.isNullOrEmpty()) {
+                                                        UriImage(
+                                                            uriString = finalAvatar,
                                                             modifier = Modifier
-                                                                .fillMaxSize()
-                                                                .rotate(180f)
+                                                                .size(24.dp)
+                                                                .clip(CircleShape)
+                                                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
                                                         )
+                                                    } else {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(24.dp)
+                                                                .clip(CircleShape)
+                                                                .background(accentColor),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Image(
+                                                                painter = painterResource(id = R.drawable.smile_medium),
+                                                                contentDescription = null,
+                                                                modifier = Modifier
+                                                                    .fillMaxSize()
+                                                                    .rotate(180f)
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -10847,22 +11118,33 @@ fun PalChatOverlay(
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                 modifier = Modifier.padding(bottom = 4.dp)
                                             ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(CircleShape)
-                                                        .background(accentColor),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Image(
-                                                        painter = painterResource(id = R.drawable.smile_medium),
-                                                        contentDescription = null,
+                                                val (displayName, avatarUrl) = parseUserDisplayName(feedItem.userDisplayName)
+                                                if (!avatarUrl.isNullOrEmpty()) {
+                                                    UriImage(
+                                                        uriString = avatarUrl,
                                                         modifier = Modifier
-                                                            .fillMaxSize()
-                                                            .rotate(180f)
+                                                            .size(24.dp)
+                                                            .clip(CircleShape)
+                                                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
                                                     )
+                                                } else {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(24.dp)
+                                                            .clip(CircleShape)
+                                                            .background(accentColor),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Image(
+                                                            painter = painterResource(id = R.drawable.smile_medium),
+                                                            contentDescription = null,
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .rotate(180f)
+                                                        )
+                                                    }
                                                 }
-                                                val cleanName = feedItem.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                                val cleanName = displayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
                                                 Text(
                                                     text = cleanName,
                                                     color = textColor,
@@ -10963,21 +11245,18 @@ fun PalChatOverlay(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
                             showEmojiOverlayForPath = null
                         },
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.BottomCenter
                 ) {
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(30.dp))
-                            .background(Color.Black.copy(alpha = 0.75f))
-                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(30.dp))
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                            .padding(bottom = 12.dp)
+                            .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
@@ -11004,15 +11283,15 @@ fun PalChatOverlay(
                                     currentEmojis = defaultEmojis.shuffled().take(5)
                                 }
                                 .drawBehind {
-                                    drawCircle(color = Color.White.copy(alpha = 0.6f), style = stroke)
-                                },
+                                    drawCircle(color = Color.White, style = stroke)
+                                }
+                                .padding(6.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
+                            Image(
+                                painter = painterResource(id = R.drawable.smile_medium),
                                 contentDescription = "Shuffle",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.fillMaxSize()
                             )
                         }
                     }
@@ -11489,6 +11768,25 @@ fun JoinPalDialogOverlay(
                                     val code = joinPalCode.trim().lowercase(java.util.Locale.ROOT)
                                     localScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
+                                            // 1. Insert temporary/tentative mapping first to bypass RLS select membership requirement on pals table
+                                            val existingMapping = supabaseClient.postgrest.from("user_pals")
+                                                .select {
+                                                    filter {
+                                                        eq("user_id", currentUserId)
+                                                        eq("pal_code", code)
+                                                    }
+                                                }
+                                                .decodeSingleOrNull<UserPalMapping>()
+
+                                            if (existingMapping == null) {
+                                                val newMapping = UserPalMapping(
+                                                    userId = currentUserId,
+                                                    palCode = code
+                                                )
+                                                supabaseClient.postgrest.from("user_pals").insert(newMapping)
+                                            }
+
+                                            // 2. Query pals table now that we are mapped as a member in user_pals
                                             val matchedPalDb = supabaseClient.postgrest.from("pals")
                                                 .select {
                                                     filter {
@@ -11498,23 +11796,6 @@ fun JoinPalDialogOverlay(
                                                 .decodeSingleOrNull<PalDbItem>()
 
                                             if (matchedPalDb != null) {
-                                                val existingMapping = supabaseClient.postgrest.from("user_pals")
-                                                    .select {
-                                                        filter {
-                                                            eq("user_id", currentUserId)
-                                                            eq("pal_code", code)
-                                                        }
-                                                    }
-                                                    .decodeSingleOrNull<UserPalMapping>()
-
-                                                if (existingMapping == null) {
-                                                    val newMapping = UserPalMapping(
-                                                        userId = currentUserId,
-                                                        palCode = code
-                                                    )
-                                                    supabaseClient.postgrest.from("user_pals").insert(newMapping)
-                                                }
-
                                                 val matchedItem = PalItem(
                                                     name = matchedPalDb.name,
                                                     size = matchedPalDb.size.toString(),
@@ -11532,12 +11813,30 @@ fun JoinPalDialogOverlay(
                                                     android.widget.Toast.makeText(context, "Successfully joined ${matchedPalDb.name}!", android.widget.Toast.LENGTH_SHORT).show()
                                                 }
                                             } else {
+                                                // 3. Clean up mapping if code doesn't exist
+                                                if (existingMapping == null) {
+                                                    supabaseClient.postgrest.from("user_pals").delete {
+                                                        filter {
+                                                            eq("user_id", currentUserId)
+                                                            eq("pal_code", code)
+                                                        }
+                                                    }
+                                                }
                                                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                                     android.widget.Toast.makeText(context, "Pal code not found", android.widget.Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         } catch (e: Exception) {
                                             e.printStackTrace()
+                                            // Fallback cleanup
+                                            try {
+                                                supabaseClient.postgrest.from("user_pals").delete {
+                                                    filter {
+                                                        eq("user_id", currentUserId)
+                                                        eq("pal_code", code)
+                                                    }
+                                                }
+                                            } catch (ex: Exception) {}
                                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                                 android.widget.Toast.makeText(context, "Error joining pal: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
                                             }
@@ -11803,13 +12102,15 @@ fun CreatePalDialogOverlay(
     supabaseClient: io.github.jan.supabase.SupabaseClient
 ) {
     if (showCreatePalFlow) {
+        val localScope = rememberCoroutineScope()
+        val context = androidx.compose.ui.platform.LocalContext.current
+        var isSaving by remember { mutableStateOf(false) }
+
         androidx.activity.compose.BackHandler {
-            if (!isCreatingPal) {
+            if (!isCreatingPal && !isSaving) {
                 onShowCreatePalFlowChange(false)
             }
         }
-        val localScope = rememberCoroutineScope()
-        val context = androidx.compose.ui.platform.LocalContext.current
 
         Box(
             modifier = Modifier
@@ -11821,21 +12122,19 @@ fun CreatePalDialogOverlay(
                     .fillMaxSize()
                     .padding(horizontal = 24.dp)
             ) {
-                // Header aligned top like Edit Pal Screen (Image 5 style)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 16.dp)
                         .height(64.dp)
                 ) {
-                    // Close button on the left (solid dark circle, size 40.dp)
                     Box(
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .size(40.dp)
                             .clip(CircleShape)
                             .background(if (isDark) Color(0xFF1E1D22) else Color(0xFFE5E5EA))
-                            .clickable {
+                            .clickable(enabled = !isSaving) {
                                 onIsCreatingPalChange(false)
                                 onShowCreatePalFlowChange(false)
                             },
@@ -11849,7 +12148,6 @@ fun CreatePalDialogOverlay(
                         )
                     }
 
-                    // Center Pal Text logo (same color as top left on pals menu, Ownglyph font)
                     Text(
                         text = "Pal",
                         fontFamily = OwnglyphFontFamily,
@@ -11859,7 +12157,6 @@ fun CreatePalDialogOverlay(
                         modifier = Modifier.align(Alignment.Center)
                     )
 
-                    // Top right checkmark exactly as vlog menu's edit pal settings checkmark (filled with accentColor border edge color)
                     if (!isCreatingPal && createPalStep == 1) {
                         val isFormValid = newPalName.trim().isNotEmpty()
                         Box(
@@ -11870,7 +12167,7 @@ fun CreatePalDialogOverlay(
                                 .background(
                                     if (isFormValid) accentColor else accentColor.copy(alpha = 0.5f)
                                 )
-                                .clickable(enabled = isFormValid) {
+                                .clickable(enabled = isFormValid && !isSaving) {
                                     onIsCreatingPalChange(true)
                                 },
                             contentAlignment = Alignment.Center
@@ -11896,7 +12193,6 @@ fun CreatePalDialogOverlay(
                         modifier = Modifier.offset(y = (-25).dp)
                     )
                 } else if (createPalStep == 1) {
-                    // Monospace font style matching the mock image
                     Text(
                         text = "→ create a pal",
                         fontFamily = FontFamily.Monospace,
@@ -11930,6 +12226,7 @@ fun CreatePalDialogOverlay(
                             )
                         },
                         singleLine = true,
+                        enabled = !isSaving,
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
@@ -11960,7 +12257,6 @@ fun CreatePalDialogOverlay(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        // Row 1: 2 to 7
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
@@ -11979,7 +12275,7 @@ fun CreatePalDialogOverlay(
                                             if (isSelected) accentColor else (if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.15f)),
                                             RoundedCornerShape(10.dp)
                                         )
-                                        .clickable { onNewPalSizeChange(size) },
+                                        .clickable(enabled = !isSaving) { onNewPalSizeChange(size) },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -11993,7 +12289,6 @@ fun CreatePalDialogOverlay(
                             }
                         }
 
-                        // Row 2: 8 to 10
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth()
@@ -12012,7 +12307,7 @@ fun CreatePalDialogOverlay(
                                             if (isSelected) accentColor else (if (isDark) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.15f)),
                                             RoundedCornerShape(10.dp)
                                         )
-                                        .clickable { onNewPalSizeChange(size) },
+                                        .clickable(enabled = !isSaving) { onNewPalSizeChange(size) },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -12040,27 +12335,27 @@ fun CreatePalDialogOverlay(
                     Spacer(modifier = Modifier.height(32.dp))
 
                     Text(
-                        text = "# $generatedPalCode",
+                        text = "code: #$generatedPalCode",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Normal,
                         color = textColor
                     )
 
-                    Spacer(modifier = Modifier.height(38.dp))
+                    Spacer(modifier = Modifier.height(48.dp))
 
                     Text(
-                        text = "invite a friend →",
+                        text = "share code →",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Normal,
                         color = textColor,
                         textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
                         modifier = Modifier
-                            .clickable {
+                            .clickable(enabled = !isSaving) {
                                 val sendIntent = android.content.Intent().apply {
                                     action = android.content.Intent.ACTION_SEND
-                                    putExtra(android.content.Intent.EXTRA_TEXT, "Join my pal code: $generatedPalCode")
+                                    putExtra(android.content.Intent.EXTRA_TEXT, "Join my Pal group $newPalName using code #$generatedPalCode !")
                                     type = "text/plain"
                                 }
                                 val shareIntent = android.content.Intent.createChooser(sendIntent, null)
@@ -12072,14 +12367,15 @@ fun CreatePalDialogOverlay(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "done →",
+                        text = if (isSaving) "creating..." else "done →",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Normal,
                         color = textColor,
                         textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
                         modifier = Modifier
-                            .clickable {
+                            .clickable(enabled = !isSaving) {
+                                isSaving = true
                                 val newItem = PalItem(
                                     name = newPalName,
                                     size = newPalSize,
@@ -12109,9 +12405,13 @@ fun CreatePalDialogOverlay(
                                         e.printStackTrace()
                                         onCreatedPalsChange(createdPals + newItem)
                                         groupDatabase[generatedPalCode] = newItem
+                                    } finally {
+                                        isSaving = false
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            onShowCreatePalFlowChange(false)
+                                        }
                                     }
                                 }
-                                onShowCreatePalFlowChange(false)
                             }
                             .padding(vertical = 12.dp)
                     )
@@ -13248,28 +13548,64 @@ private fun GroupExportMemberSlot(
     cardHeightDp: Dp,
     isGrid: Boolean
 ) {
-    val memberNameWithYou = groupMembers.getOrNull(index)
-    val memberName = if (memberNameWithYou != null) {
-        if (memberNameWithYou.contains("(You)")) userFirstName else memberNameWithYou
+    val memberInfo = groupMembers.getOrNull(index)
+    val memberParts = memberInfo?.split("|||")
+    val (memberId, memberNameClean, memberAvatar) = if (memberParts != null && memberParts.size >= 2) {
+        Triple(memberParts[0], memberParts[1], memberParts.getOrNull(2))
+    } else {
+        Triple(null, memberInfo, null)
+    }
+    val memberName = if (memberNameClean != null) {
+        if (memberNameClean.contains("(You)")) userFirstName else memberNameClean
     } else {
         null
     }
-    val isUser = memberNameWithYou != null && (memberNameWithYou.contains("(You)") || memberNameWithYou == userFirstName)
+    val isUser = memberId != null && memberId == currentUserId || 
+                 (memberNameClean != null && (memberNameClean.contains("(You)") || memberNameClean == userFirstName))
     
-    // Find the submission for this member on the active day
-    val submission = if (isUser) {
-        filteredSubmissions.firstOrNull { it.userId == currentUserId }
+    // Find all submissions for this member on the active day
+    val memberSubs = if (isUser) {
+        filteredSubmissions.filter { it.userId == currentUserId }
+    } else if (memberId != null) {
+        filteredSubmissions.filter { it.userId == memberId }
     } else if (memberName != null) {
-        filteredSubmissions.firstOrNull { 
+        filteredSubmissions.filter { 
             val cleanSubName = it.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
             cleanSubName == memberName
         }
     } else {
-        null
+        emptyList()
     }
     
-    val videoPath = submission?.imageUrl?.substringBefore("|||") ?: ""
-    val captureTime = submission?.imageUrl?.substringAfter("|||")?.substringBefore("|||") ?: ""
+    val sortedMemberSubs = remember(memberSubs) {
+        memberSubs.mapNotNull { sub ->
+            val parts = sub.imageUrl.split("|||")
+            val path = parts.getOrNull(0) ?: ""
+            if (path.isEmpty()) null else {
+                var hour = 12
+                if (!sub.createdAt.isNullOrEmpty()) {
+                    try {
+                        val instant = java.time.Instant.parse(sub.createdAt)
+                        val localDateTime = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                        val rawHour = localDateTime.hour
+                        hour = (rawHour - 4 + 24) % 24
+                    } catch (e: Exception) {}
+                }
+                val timestamp = if (!sub.createdAt.isNullOrEmpty()) {
+                    try { java.time.Instant.parse(sub.createdAt).toEpochMilli() } catch (e: Exception) { 0L }
+                } else 0L
+                Triple(sub, hour, timestamp)
+            }
+        }
+        .groupBy { it.second }
+        .map { entry -> entry.value.maxByOrNull { it.third }!! }
+        .sortedBy { it.third }
+        .map { it.first }
+    }
+    
+    val videoPaths = sortedMemberSubs.map { it.imageUrl.split("|||").firstOrNull() ?: "" }.filter { it.isNotEmpty() }
+    val firstSub = sortedMemberSubs.firstOrNull()
+    val captureTime = firstSub?.imageUrl?.substringAfter("|||")?.substringBefore("|||") ?: ""
     val displayTimeText = "4:00"
     
     val cardShape = androidx.compose.ui.graphics.RectangleShape
@@ -13278,23 +13614,24 @@ private fun GroupExportMemberSlot(
         modifier = Modifier
             .fillMaxSize()
             .clip(cardShape)
-            .background(if (videoPath.isNotEmpty()) Color.Black else (if (exportBackground == "white") Color.White else Color.Black)),
+            .background(if (videoPaths.isNotEmpty()) Color.Black else (if (exportBackground == "white") Color.White else Color.Black)),
         contentAlignment = Alignment.Center
     ) {
-        if (videoPath.isNotEmpty()) {
-            val localPlayer = remember(videoPath) {
+        if (videoPaths.isNotEmpty()) {
+            val localPlayer = remember(videoPaths) {
                 androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
                     repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                     volume = 0f
-                    val cleanPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
-                    val file = java.io.File(cleanPath)
-                    if (file.exists()) {
-                        setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
-                        prepare()
-                    } else if (videoPath.startsWith("http")) {
-                        setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(videoPath)))
-                        prepare()
+                    videoPaths.forEach { videoPath ->
+                        val cleanPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
+                        val file = java.io.File(cleanPath)
+                        if (file.exists()) {
+                            addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
+                        } else if (videoPath.startsWith("http")) {
+                            addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(videoPath)))
+                        }
                     }
+                    prepare()
                 }
             }
             DisposableEffect(localPlayer) {
