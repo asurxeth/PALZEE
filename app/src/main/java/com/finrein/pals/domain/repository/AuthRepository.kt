@@ -2,6 +2,8 @@ package com.finrein.pals.domain.repository
 
 import com.finrein.pals.domain.model.User
 
+enum class UserRouteState { NEW_USER, RETURNING_USER, ERROR }
+
 interface AuthRepository {
     suspend fun signInWithGoogle(idToken: String): Result<User>
     
@@ -12,4 +14,12 @@ interface AuthRepository {
     suspend fun registerTemporaryPasskey(firstName: String, lastName: String): Result<Unit>
     
     suspend fun signInWithPasskey(): Result<User>
+
+    suspend fun authenticateAndRouteUser(rawIdToken: String): UserRouteState
+
+    suspend fun verifyOtpAndRouteUser(userEmail: String, otpToken: String): UserRouteState
+
+    suspend fun softDeleteAccount(userId: String)
+
+    suspend fun checkAndReinstateAccount(userId: String): Boolean
 }

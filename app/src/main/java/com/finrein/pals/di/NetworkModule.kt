@@ -30,7 +30,24 @@ abstract class AuthModule {
 
 @Module
 @InstallIn(SingletonComponent::class)
+abstract class GroupModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindGroupRepository(
+        groupRepositoryImpl: com.finrein.pals.data.repository.GroupRepositoryImpl
+    ): com.finrein.pals.domain.repository.GroupRepository
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
 object NetworkModule {
+
+    @Provides
+    @Singleton
+    fun provideSupabaseClient(): io.github.jan.supabase.SupabaseClient {
+        return com.finrein.pals.PalApplication.supabase
+    }
 
     @Provides
     @Singleton

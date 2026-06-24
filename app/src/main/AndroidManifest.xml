@@ -14,9 +14,9 @@
     <application
         android:name=".PalApplication"
         android:allowBackup="false"
-        android:icon="@drawable/ic_launcher_custom"
+        android:icon="@drawable/pal_logo"
         android:label="Pal"
-        android:roundIcon="@drawable/ic_launcher_custom"
+        android:roundIcon="@drawable/pal_circular_logo"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         
@@ -54,7 +54,6 @@
 
         <service
             android:name=".BackgroundSyncService"
-            android:foregroundServiceType="specialUse"
             android:enabled="true"
             android:exported="false" />
     </application>

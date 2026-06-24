@@ -10,6 +10,9 @@ import io.github.jan.supabase.compose.auth.googleNativeLogin
 
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.storage.Storage
+import io.github.jan.supabase.realtime.Realtime
+
+import io.ktor.client.plugins.HttpTimeout
 
 @HiltAndroidApp
 class PalApplication : Application() {
@@ -22,17 +25,26 @@ class PalApplication : Application() {
         lateinit var instance: PalApplication
             private set
 
+        @kotlin.OptIn(io.github.jan.supabase.annotations.SupabaseInternal::class)
         val supabase: SupabaseClient by lazy {
             createSupabaseClient(
                 supabaseUrl = BuildConfig.SUPABASE_URL,
                 supabaseKey = BuildConfig.SUPABASE_ANON_KEY
             ) {
+                httpConfig {
+                    install(HttpTimeout) {
+                        requestTimeoutMillis = 30000
+                        connectTimeoutMillis = 30000
+                        socketTimeoutMillis = 30000
+                    }
+                }
                 install(Auth)
                 install(ComposeAuth) {
                     googleNativeLogin(serverClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID)
                 }
                 install(Postgrest)
                 install(Storage)
+                install(Realtime)
             }
         }
     }

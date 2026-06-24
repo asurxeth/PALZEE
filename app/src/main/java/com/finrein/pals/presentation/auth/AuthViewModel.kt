@@ -32,24 +32,54 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
 @HiltViewModel
-class AuthViewModel @Inject constructor() : ViewModel() {
-
+class AuthViewModel @Inject constructor(
+    private val authRepository: com.finrein.pals.domain.repository.AuthRepository
+) : ViewModel() {
+ 
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val uiState: StateFlow<AuthUiState> = _uiState
 
+    suspend fun authenticateAndRouteUser(rawIdToken: String): com.finrein.pals.domain.repository.UserRouteState {
+        return authRepository.authenticateAndRouteUser(rawIdToken)
+    }
+
+    suspend fun verifyOtpAndRouteUser(userEmail: String, otpToken: String): com.finrein.pals.domain.repository.UserRouteState {
+        return authRepository.verifyOtpAndRouteUser(userEmail, otpToken)
+    }
+
+    suspend fun softDeleteAccount(userId: String) {
+        authRepository.softDeleteAccount(userId)
+    }
+
+    fun setLoading() {
+        _uiState.value = AuthUiState.Loading
+    }
+
+    fun setError(message: String) {
+        _uiState.value = AuthUiState.Error(message)
+    }
+
+    fun setSuccess(message: String, user: com.finrein.pals.domain.model.User) {
+        _uiState.value = AuthUiState.Success(message, user)
+    }
+ 
     fun resetState() {
         _uiState.value = AuthUiState.Idle
     }
 
+    private fun getStableUserId(email: String): String {
+        return UUID.nameUUIDFromBytes(email.trim().lowercase(java.util.Locale.ROOT).toByteArray()).toString()
+    }
+ 
     // Global handle to our initialized Supabase client instance
     private val supabaseAuth = PalApplication.supabase.auth
-
+ 
     // Step A: Request the 6-Digit code to be delivered to the user's email inbox
     fun sendEmailVerificationCode(emailAddress: String) {
         viewModelScope.launch {
             _uiState.value = AuthUiState.Loading
             try {
-                val trimmedEmail = emailAddress.trim()
+                val trimmedEmail = emailAddress.trim().lowercase(java.util.Locale.ROOT)
                 supabaseAuth.signInWith(OTP) {
                     email = trimmedEmail
                     createUser = true // Automatically signs up new temporary accounts
@@ -60,22 +90,22 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             }
         }
     }
-
+ 
     // Step B: Collect the user's 6-digit text input and authenticate the session
     fun verifyEmailCode(emailAddress: String, baseCode: String) {
         viewModelScope.launch {
             _uiState.value = AuthUiState.Loading
             try {
-                val trimmedEmail = emailAddress.trim()
+                val trimmedEmail = emailAddress.trim().lowercase(java.util.Locale.ROOT)
                 val trimmedCode = baseCode.trim()
                 supabaseAuth.verifyEmailOtp(
-                    type = OtpType.Email.EMAIL,
+                    type = OtpType.Email.MAGIC_LINK,
                     email = trimmedEmail,
                     token = trimmedCode
                 )
                 // For backward compatibility, let's create a User model and pass it in Success
                 val user = com.finrein.pals.domain.model.User(
-                    id = supabaseAuth.currentUserOrNull()?.id ?: UUID.randomUUID().toString(),
+                    id = supabaseAuth.currentUserOrNull()?.id ?: getStableUserId(trimmedEmail),
                     email = trimmedEmail,
                     displayName = trimmedEmail.substringBefore("@"),
                     isPasskeyRegistered = false
@@ -86,13 +116,13 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             }
         }
     }
-
+ 
     fun handleGoogleLoginResult(result: NativeSignInResult) {
         viewModelScope.launch {
             when (result) {
                 is NativeSignInResult.Success -> {
                     val user = com.finrein.pals.domain.model.User(
-                        id = supabaseAuth.currentUserOrNull()?.id ?: UUID.randomUUID().toString(),
+                        id = supabaseAuth.currentUserOrNull()?.id ?: getStableUserId("google.user@gmail.com"),
                         email = "google.user@gmail.com",
                         displayName = "Google User",
                         isPasskeyRegistered = false
@@ -109,7 +139,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             }
         }
     }
-
+ 
     fun loginWithGoogleIdToken(idTokenStr: String, emailAddress: String, displayNameStr: String) {
         viewModelScope.launch {
             _uiState.value = AuthUiState.Loading
@@ -120,7 +150,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
                     nonce = null
                 }
                 val user = com.finrein.pals.domain.model.User(
-                    id = supabaseAuth.currentUserOrNull()?.id ?: UUID.randomUUID().toString(),
+                    id = supabaseAuth.currentUserOrNull()?.id ?: getStableUserId(emailAddress),
                     email = emailAddress,
                     displayName = displayNameStr,
                     isPasskeyRegistered = false
@@ -129,7 +159,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             } catch (e: Exception) {
                 // Return local success if online handshake fails to guarantee demo operation
                 val user = com.finrein.pals.domain.model.User(
-                    id = UUID.randomUUID().toString(),
+                    id = getStableUserId(emailAddress),
                     email = emailAddress,
                     displayName = displayNameStr,
                     isPasskeyRegistered = false
@@ -138,18 +168,18 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             }
         }
     }
-
+ 
     fun loginWithLocalPasskey(user: com.finrein.pals.domain.model.User) {
         _uiState.value = AuthUiState.Success("Logged in via device Passkey", user)
     }
-
+ 
     fun registerTemporaryPasskeyUser(name: String, emailAddress: String) {
         viewModelScope.launch {
             _uiState.value = AuthUiState.Loading
             try {
                 // 1. Establish unique anonymous system identities
                 val fallbackSecureSystemPassword = UUID.randomUUID().toString() + "PassKey123!"
-
+ 
                 // 2. Create the shell record containing the local user metadata parameters
                 supabaseAuth.signUpWith(Email) {
                     email = emailAddress
@@ -159,9 +189,9 @@ class AuthViewModel @Inject constructor() : ViewModel() {
                         put("is_temporary", true)
                     }
                 }
-
+ 
                 val user = com.finrein.pals.domain.model.User(
-                    id = supabaseAuth.currentUserOrNull()?.id ?: UUID.randomUUID().toString(),
+                    id = supabaseAuth.currentUserOrNull()?.id ?: getStableUserId(emailAddress),
                     email = emailAddress,
                     displayName = name,
                     isPasskeyRegistered = true
@@ -170,7 +200,7 @@ class AuthViewModel @Inject constructor() : ViewModel() {
             } catch (e: Exception) {
                 // Return local success if online signup fails to guarantee temporary device passkey operation
                 val user = com.finrein.pals.domain.model.User(
-                    id = UUID.randomUUID().toString(),
+                    id = getStableUserId(emailAddress),
                     email = emailAddress,
                     displayName = name,
                     isPasskeyRegistered = true

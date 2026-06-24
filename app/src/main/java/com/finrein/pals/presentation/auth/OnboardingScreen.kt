@@ -53,6 +53,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.ClearCredentialStateRequest
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import io.github.jan.supabase.gotrue.auth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -258,46 +259,46 @@ fun OnboardingScreen(
                 Image(
                     painter = painterResource(id = R.drawable.onboarding_logo),
                     contentDescription = "Pal Yellow Cloud Logo",
-                    modifier = Modifier.size(130.dp).offset(y = 30.dp),
+                    modifier = Modifier.size(130.dp).offset(y = 20.dp),
                     contentScale = ContentScale.Fit
                 )
                 // Envelope on left
                 Image(
                     painter = painterResource(id = R.drawable.dm_envalope),
                     contentDescription = "Envelope with heart",
-                    modifier = Modifier.offset(x = (-100).dp, y = 45.dp).size(50.dp)
+                    modifier = Modifier.offset(x = (-100).dp, y = 35.dp).size(50.dp)
                 )
                 // Moon on right
                 Image(
                     painter = painterResource(id = R.drawable.dm_moon),
                     contentDescription = "Crescent Moon",
-                    modifier = Modifier.offset(x = 100.dp, y = 45.dp).size(55.dp)
+                    modifier = Modifier.offset(x = 100.dp, y = 35.dp).size(55.dp)
                 )
                 // Stars above the cloud, hand-spaced
                 Image(
                     painter = painterResource(id = R.drawable.dm_star_1),
                     contentDescription = "Star 1",
-                    modifier = Modifier.offset(x = (-115).dp, y = (-30).dp).size(36.dp)
+                    modifier = Modifier.offset(x = (-115).dp, y = (-40).dp).size(36.dp)
                 )
                 Image(
                     painter = painterResource(id = R.drawable.dm_star_2),
                     contentDescription = "Star 2",
-                    modifier = Modifier.offset(x = (-55).dp, y = (-55).dp).size(45.dp)
+                    modifier = Modifier.offset(x = (-55).dp, y = (-65).dp).size(45.dp)
                 )
                 Image(
                     painter = painterResource(id = R.drawable.dm_star_3),
                     contentDescription = "Star 3",
-                    modifier = Modifier.offset(x = 15.dp, y = (-65).dp).size(30.dp)
+                    modifier = Modifier.offset(x = 15.dp, y = (-75).dp).size(30.dp)
                 )
                 Image(
                     painter = painterResource(id = R.drawable.dm_star_4),
                     contentDescription = "Star 4",
-                    modifier = Modifier.offset(x = 85.dp, y = (-55).dp).size(45.dp)
+                    modifier = Modifier.offset(x = 85.dp, y = (-65).dp).size(45.dp)
                 )
                 Image(
                     painter = painterResource(id = R.drawable.dm_star_5),
                     contentDescription = "Star 5",
-                    modifier = Modifier.offset(x = 135.dp, y = (-20).dp).size(34.dp)
+                    modifier = Modifier.offset(x = 135.dp, y = (-30).dp).size(34.dp)
                 )
             }
 
@@ -308,7 +309,7 @@ fun OnboardingScreen(
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Normal,
                 color = if (isDark) Color(0xFFFCF6ED) else Color(0xFF1E1C1A),
-                modifier = Modifier.offset(y = 10.dp)
+                modifier = Modifier.offset(y = 0.dp)
             )
 
             // 3. Middle Section Box: Contains Pizza, Orange, and Plant
@@ -316,7 +317,8 @@ fun OnboardingScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(125.dp),
+                    .height(125.dp)
+                    .offset(y = (-10).dp),
                 contentAlignment = Alignment.Center
             ) {
                 // Pizza slice on the left, rotated, placed higher and shifted left by 5dp
@@ -366,6 +368,7 @@ fun OnboardingScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
+                    .offset(y = (-10).dp)
             ) {
                 // Button 1: Continue with Passkey
                 OnboardingButton(
@@ -407,22 +410,47 @@ fun OnboardingScreen(
                                 .build()
 
                             try {
-                                val result = credentialManager.getCredential(
-                                    context = context,
-                                    request = request
-                                )
-                                val credential = result.credential
-                                if (credential is CustomCredential && 
-                                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                                    
-                                    val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                                    val userEmail = googleIdTokenCredential.id
-                                    val displayName = googleIdTokenCredential.displayName ?: "Google User"
-                                    val idToken = googleIdTokenCredential.idToken
-                                    
-                                    viewModel.loginWithGoogleIdToken(idToken, userEmail, displayName)
-                                }
-                            } catch (e: GetCredentialException) {
+                                 val result = credentialManager.getCredential(
+                                     context = context,
+                                     request = request
+                                 )
+                                 val credential = result.credential
+                                 if (credential is CustomCredential && 
+                                     credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                                     
+                                     val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                                     val userEmail = googleIdTokenCredential.id
+                                     val displayName = googleIdTokenCredential.displayName ?: "Google User"
+                                     val idToken = googleIdTokenCredential.idToken
+                                     
+                                     viewModel.setLoading()
+                                     val routeState = viewModel.authenticateAndRouteUser(idToken)
+                                     val sessionManager = com.finrein.pals.data.local.SessionManager(context)
+                                     val currentUserId = com.finrein.pals.PalApplication.supabase.auth.currentUserOrNull()?.id ?: "google_user_12345"
+                                     val user = com.finrein.pals.domain.model.User(
+                                         id = currentUserId,
+                                         email = userEmail,
+                                         displayName = displayName,
+                                         isPasskeyRegistered = false
+                                     )
+                                     
+                                     when (routeState) {
+                                         com.finrein.pals.domain.repository.UserRouteState.RETURNING_USER -> {
+                                            sessionManager.setHasLoggedInBefore(true)
+                                            sessionManager.setFirstLogin(false)
+                                            viewModel.setSuccess("Google handshake complete!", user)
+                                         }
+                                         com.finrein.pals.domain.repository.UserRouteState.NEW_USER -> {
+                                            sessionManager.setHasLoggedInBefore(false)
+                                            sessionManager.setFirstLogin(true)
+                                            viewModel.setSuccess("Google handshake complete!", user)
+                                         }
+                                         com.finrein.pals.domain.repository.UserRouteState.ERROR -> {
+                                            viewModel.setError("Google sign in or database sync failed.")
+                                         }
+                                     }
+                                 }
+                             } catch (e: GetCredentialException) {
                                 android.util.Log.e("AuthError", "Sign in dialog failed: ${e.message}")
                             }
                         }
@@ -702,11 +730,13 @@ fun OnboardingScreen(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            val isEnabled = if (!isOtpSent) {
-                                android.util.Patterns.EMAIL_ADDRESS.matcher(emailInput).matches()
-                            } else {
-                                otpInput.isNotEmpty()
-                            }
+                            val isEnabled = if (uiState is AuthUiState.Loading) {
+                                 false
+                             } else if (!isOtpSent) {
+                                 android.util.Patterns.EMAIL_ADDRESS.matcher(emailInput).matches()
+                             } else {
+                                 otpInput.isNotEmpty()
+                             }
 
                             val buttonBgColor = if (isEnabled) {
                                 if (isDark) PalWhite else Color.Black
@@ -725,7 +755,35 @@ fun OnboardingScreen(
                                     if (!isOtpSent) {
                                         viewModel.sendEmailVerificationCode(emailInput)
                                     } else {
-                                        viewModel.verifyEmailCode(emailInput, otpInput)
+                                        coroutineScope.launch {
+                                            viewModel.setLoading()
+                                            val routeState = viewModel.verifyOtpAndRouteUser(emailInput, otpInput)
+                                            val sessionManager = com.finrein.pals.data.local.SessionManager(context)
+                                            val currentUserId = com.finrein.pals.PalApplication.supabase.auth.currentUserOrNull()?.id ?: "email_user_67890"
+                                            val user = com.finrein.pals.domain.model.User(
+                                                id = currentUserId,
+                                                email = emailInput,
+                                                displayName = emailInput.substringBefore("@"),
+                                                isPasskeyRegistered = false
+                                            )
+                                            when (routeState) {
+                                                com.finrein.pals.domain.repository.UserRouteState.RETURNING_USER -> {
+                                                    sessionManager.setHasLoggedInBefore(true)
+                                                    sessionManager.setFirstLogin(false)
+                                                    showEmailOtpDialog = false
+                                                    onAuthSuccess(user)
+                                                }
+                                                com.finrein.pals.domain.repository.UserRouteState.NEW_USER -> {
+                                                    sessionManager.setHasLoggedInBefore(false)
+                                                    sessionManager.setFirstLogin(true)
+                                                    showEmailOtpDialog = false
+                                                    onAuthSuccess(user)
+                                                }
+                                                com.finrein.pals.domain.repository.UserRouteState.ERROR -> {
+                                                    viewModel.setError("Email verification failed or database is unreachable.")
+                                                }
+                                            }
+                                        }
                                     }
                                 },
                                 enabled = isEnabled,
@@ -1186,7 +1244,9 @@ fun OnboardingScreen(
                         Spacer(modifier = Modifier.height(24.dp))
 
                         // Action Button
-                        val isEnabled = if (backupFlowStep == 1) {
+                        val isEnabled = if (uiState is AuthUiState.Loading) {
+                            false
+                        } else if (backupFlowStep == 1) {
                             android.util.Patterns.EMAIL_ADDRESS.matcher(backupEmailInput).matches()
                         } else {
                             backupOtpInput.isNotEmpty()
@@ -1223,9 +1283,37 @@ fun OnboardingScreen(
                                     } else {
                                         viewModel.sendEmailVerificationCode(backupEmailInput)
                                     }
-                                } else {
-                                    viewModel.verifyEmailCode(backupEmailInput, backupOtpInput)
-                                }
+                                 } else {
+                                     coroutineScope.launch {
+                                         viewModel.setLoading()
+                                         val routeState = viewModel.verifyOtpAndRouteUser(backupEmailInput, backupOtpInput)
+                                         val sessionManager = com.finrein.pals.data.local.SessionManager(context)
+                                         val currentUserId = com.finrein.pals.PalApplication.supabase.auth.currentUserOrNull()?.id ?: "email_user_67890"
+                                         val user = com.finrein.pals.domain.model.User(
+                                             id = currentUserId,
+                                             email = backupEmailInput,
+                                             displayName = backupEmailInput.substringBefore("@"),
+                                             isPasskeyRegistered = false
+                                         )
+                                         when (routeState) {
+                                             com.finrein.pals.domain.repository.UserRouteState.RETURNING_USER -> {
+                                                 sessionManager.setHasLoggedInBefore(true)
+                                                 sessionManager.setFirstLogin(false)
+                                                 showBackupEmailSheet = false
+                                                 onAuthSuccess(user)
+                                             }
+                                             com.finrein.pals.domain.repository.UserRouteState.NEW_USER -> {
+                                                 sessionManager.setHasLoggedInBefore(false)
+                                                 sessionManager.setFirstLogin(true)
+                                                 showBackupEmailSheet = false
+                                                 onAuthSuccess(user)
+                                             }
+                                             com.finrein.pals.domain.repository.UserRouteState.ERROR -> {
+                                                 viewModel.setError("Email verification failed or database is unreachable.")
+                                             }
+                                         }
+                                     }
+                                 }
                             },
                             enabled = isEnabled,
                             colors = ButtonDefaults.buttonColors(

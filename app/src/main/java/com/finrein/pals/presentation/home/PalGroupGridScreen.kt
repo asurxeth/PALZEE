@@ -223,6 +223,7 @@ fun PalGroupGridScreen(
                                             player = vlogExoPlayer
                                             useController = false
                                             resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                            setBackgroundColor(android.graphics.Color.BLACK)
     
                                             fun applyVideoScale() {
                                                 val videoSize = vlogExoPlayer.videoSize
@@ -288,7 +289,15 @@ fun PalGroupGridScreen(
                                             applyVideoScale()
                                         }
                                     },
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
+                                    update = { view ->
+                                        if (view.player != vlogExoPlayer) {
+                                            view.player = vlogExoPlayer
+                                        }
+                                        if (!vlogExoPlayer.isPlaying && vlogExoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+                                            vlogExoPlayer.play()
+                                        }
+                                    }
                                 )
 
 
