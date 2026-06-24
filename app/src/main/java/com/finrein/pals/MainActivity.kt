@@ -22,9 +22,14 @@ import com.finrein.pals.presentation.theme.PalTheme
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.credentials.CredentialManager
 import androidx.credentials.ClearCredentialStateRequest
+import javax.inject.Inject
+import com.finrein.pals.domain.repository.AuthRepository
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var authRepository: AuthRepository
 
     private val authViewModel: AuthViewModel by viewModels()
 
@@ -70,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     } else {
                         HomeScreen(
                             user = currentUser,
+                            authRepository = authRepository,
                             onSignOut = {
                                 lifecycleScope.launch {
                                     try {

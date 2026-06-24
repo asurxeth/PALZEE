@@ -98,6 +98,8 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 import io.github.jan.supabase.postgrest.postgrest
@@ -1008,12 +1010,14 @@ fun OnboardingFlowContainer(
 @Composable
 fun HomeScreen(
     user: com.finrein.pals.domain.model.User?,
+    authRepository: com.finrein.pals.domain.repository.AuthRepository,
     onSignOut: () -> Unit,
     onDeleteAccount: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isDark by rememberUpdatedState(isSystemInDarkTheme())
     val context = LocalContext.current
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
 
     val currentUserId = remember(user) { user?.id ?: "" }
     val deletedVlogsKey = "deleted_vlog_paths_$currentUserId"
@@ -2083,37 +2087,48 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(currentUserId) {
+    LaunchedEffect(currentUserId, lifecycleOwner) {
         if (currentUserId.isNotEmpty()) {
-            try {
-                val channel = supabaseClient.channel("pals_realtime_channel")
-                
-                val userPalsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
-                    table = "user_pals"
-                }
-                val submissionsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
-                    table = "submissions"
-                }
-                
-                channel.subscribe()
-                
-                coroutineScope.launch {
-                    userPalsFlow.collect { action ->
-                        refreshVlogs()
-                        refreshPals()
-                        activeVlogPal?.let { refreshActivePalDetails(it.code) }
+            lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                var channel: io.github.jan.supabase.realtime.RealtimeChannel? = null
+                try {
+                    channel = supabaseClient.channel("pals_realtime_channel")
+                    
+                    val userPalsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                        table = "user_pals"
+                    }
+                    val submissionsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+                        table = "submissions"
+                    }
+                    
+                    channel.subscribe()
+                    
+                    launch {
+                        userPalsFlow.collect { action ->
+                            refreshVlogs()
+                            refreshPals()
+                            activeVlogPal?.let { refreshActivePalDetails(it.code) }
+                        }
+                    }
+                    
+                    launch {
+                        submissionsFlow.collect { action ->
+                            refreshVlogs()
+                            refreshPals()
+                            activeVlogPal?.let { refreshActivePalDetails(it.code) }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    channel?.let {
+                        try {
+                            supabaseClient.realtime.removeChannel(it)
+                        } catch (ex: Exception) {
+                            ex.printStackTrace()
+                        }
                     }
                 }
-                
-                coroutineScope.launch {
-                    submissionsFlow.collect { action ->
-                        refreshVlogs()
-                        refreshPals()
-                        activeVlogPal?.let { refreshActivePalDetails(it.code) }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
     }
@@ -2540,14 +2555,25 @@ fun HomeScreen(
         if (isDark) Color.Black else PalBackground
     }
 
-    Box(
-        modifier = modifier
+    val rootModifier = if (onboardingFlowStep >= 6) {
+        modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(screenCornerRadius))
             .background(currentBackgroundColor)
-            .border(2.dp, currentBorderColor, RoundedCornerShape(screenCornerRadius))
+            .border(4.5.dp, currentBorderColor, RoundedCornerShape(screenCornerRadius))
             .statusBarsPadding()
             .navigationBarsPadding()
+    } else {
+        modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(screenCornerRadius))
+            .background(currentBackgroundColor)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+    }
+
+    Box(
+        modifier = rootModifier
     ) {
         val screenContent = @Composable {
             if (onboardingFlowStep < 6) {
@@ -2661,30 +2687,7 @@ fun HomeScreen(
                                     groupDatabase.remove(p.code)
                                 }
                                 coroutineScope.launch {
-                                    try {
-                                        supabaseClient.postgrest.from("user_pals").delete {
-                                            filter {
-                                                eq("pal_code", p.code)
-                                            }
-                                        }
-                                        supabaseClient.postgrest.from("submissions").delete {
-                                            filter {
-                                                eq("pal_code", p.code)
-                                            }
-                                        }
-                                        supabaseClient.postgrest.from("messages").delete {
-                                            filter {
-                                                eq("pal_code", p.code)
-                                            }
-                                        }
-                                        supabaseClient.postgrest.from("pals").delete {
-                                            filter {
-                                                eq("code", p.code)
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
+                                    authRepository.deletePalsGroupForever(p.code)
                                 }
                                 activeVlogPal = null
                             }
@@ -2694,16 +2697,7 @@ fun HomeScreen(
                             if (p != null) {
                                 createdPals = createdPals.filterNot { it.code == p.code }
                                 coroutineScope.launch {
-                                    try {
-                                        supabaseClient.postgrest.from("user_pals").delete {
-                                            filter {
-                                                eq("pal_code", p.code)
-                                                eq("user_id", currentUserId)
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
+                                    authRepository.leavePalsGroup(p.code, currentUserId)
                                 }
                                 activeVlogPal = null
                             }
@@ -2753,13 +2747,7 @@ fun HomeScreen(
                                                 pathPart == deletedPath || it.imageUrl == deletedPath 
                                             }
                                             if (targetSub != null && targetSub.id != null) {
-                                                supabaseClient.postgrest.from("submissions").update(mapOf(
-                                                    "deleted_at" to java.time.Instant.now().toString()
-                                                )) {
-                                                    filter {
-                                                        eq("id", targetSub.id)
-                                                    }
-                                                }
+                                                authRepository.deleteSpecificPalItem(targetSub.id)
                                             }
                                             deleteVlogPostPermanently(currentUserId, deletedPath, palCode)
                                             refreshActivePalDetails(palCode)
@@ -2915,7 +2903,7 @@ fun HomeScreen(
                                     sub.imageUrl.split("|||").firstOrNull() == path
                                 }
                                 val targetUserId = targetSub?.userId ?: ""
-                                val targetUserDisplayName = targetSub?.userDisplayName ?: "Pal"
+                                val targetUserDisplayName = targetSub?.userDisplayName?.let { parseUserDisplayName(it).first } ?: "Pal"
                                 
                                 val reactionContent = "REACTION|||$targetUserId|||$targetUserDisplayName|||$path|||$emoji"
                                 val newMessage = MessageDbItem(
@@ -2944,7 +2932,7 @@ fun HomeScreen(
                                     sub.imageUrl.split("|||").firstOrNull() == path
                                 }
                                 val targetUserId = targetSub?.userId ?: ""
-                                val targetUserDisplayName = targetSub?.userDisplayName ?: "Pal"
+                                val targetUserDisplayName = targetSub?.userDisplayName?.let { parseUserDisplayName(it).first } ?: "Pal"
                                 
                                 val replyContent = "REPLY|||$targetUserId|||$targetUserDisplayName|||$path|||$text"
                                 val newMessage = MessageDbItem(
@@ -4485,15 +4473,15 @@ fun CameraScreenContent(
                 .padding(bottom = cameraFrameBottomPadding)
                 .width(cameraWidth)
                 .height(cameraHeight)
-                .background(selectedProfileColor.copy(alpha = 0.15f), RoundedCornerShape(29.dp * scale)) // soft glow layer
+                .background(selectedProfileColor.copy(alpha = 0.30f), RoundedCornerShape(29.dp * scale)) // soft glow layer
                 .padding(1.dp * scale) // thin inset
         ) {
             GlassmorphicCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .border(
-                        width = 2.dp * scale,
-                        color = selectedProfileColor.copy(alpha = 0.15f), // barely visible light glow line
+                        width = 3.5.dp * scale,
+                        color = selectedProfileColor.copy(alpha = 0.30f), // visible light glow line
                         shape = RoundedCornerShape(28.dp * scale)
                     ),
                 borderRadius = 28.dp * scale,
@@ -5310,14 +5298,14 @@ fun GroupMembersSmileysRow(
             val isLit = if (memberName.isEmpty()) {
                 false
             } else {
-                if (memberId != null) {
+                if (memberId != null && memberId != "legacy_id") {
                     submissions.any { it.userId == memberId }
                 } else {
                     if (memberName == userFirstName || memberName.contains("(You)") || memberName == "only you") {
                         submissions.any { it.userId == currentUserId }
                     } else {
                         submissions.any { sub ->
-                            val cleanSubName = sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                            val cleanSubName = parseUserDisplayName(sub.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
                             cleanSubName.equals(memberName, ignoreCase = true)
                         }
                     }
@@ -6351,13 +6339,13 @@ fun GroupMemberCard(
 
     val memberSubs = if (isActualMember) {
         filteredSubmissions.filter { sub ->
-            if (memberId != null) {
+            if (memberId != null && memberId != "legacy_id") {
                 sub.userId == memberId
             } else {
                 if (isUser) {
                     sub.userId == currentUserId
                 } else {
-                    val cleanSubName = sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                    val cleanSubName = parseUserDisplayName(sub.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
                     cleanSubName.equals(memberName, ignoreCase = true)
                 }
             }
@@ -7046,7 +7034,7 @@ fun GroupMemberCard(
                     }
                 }
 
-                val memberTextColor = if (isDark) Color(0xFF5C5E62) else textColor
+                val memberTextColor = if (isDark) Color(0xFF5C5E62) else Color(0xFF8E8E93)
                 Text(
                     text = memberName ?: "",
                     fontFamily = FontFamily.SansSerif,
@@ -7059,7 +7047,7 @@ fun GroupMemberCard(
             // Synced current time text in the middle
             val now = java.time.LocalTime.now()
             val roundedHourStr = String.format("%02d:00", now.hour)
-            val memberTimeColor = if (isDark) Color(0xFF8E8E93) else textColor
+            val memberTimeColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
 
             Text(
                 text = roundedHourStr,
@@ -10138,7 +10126,7 @@ fun VlogScreenContent(
                                         val captionsToProcess = if (pal.isVlog) capturedVlogsCaptions.reversed() else filteredCaptions
                                         val vlogsToProcess = if (pal.isVlog) List(resolvedPaths.size) { "vlog" } else {
                                             filteredSubmissions.map { sub ->
-                                                sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                                parseUserDisplayName(sub.userDisplayName).first
                                             }
                                         }
 
@@ -10202,7 +10190,7 @@ fun VlogScreenContent(
                                         val captionsToProcess = if (pal.isVlog) capturedVlogsCaptions.reversed() else filteredCaptions
                                         val vlogsToProcess = if (pal.isVlog) List(resolvedPaths.size) { "vlog" } else {
                                             filteredSubmissions.map { sub ->
-                                                sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                                parseUserDisplayName(sub.userDisplayName).first
                                             }
                                         }
 
@@ -14677,11 +14665,11 @@ private fun GroupExportMemberSlot(
     // Find all submissions for this member on the active day
     val memberSubs = if (isUser) {
         filteredSubmissions.filter { it.userId == currentUserId }
-    } else if (memberId != null) {
+    } else if (memberId != null && memberId != "legacy_id") {
         filteredSubmissions.filter { it.userId == memberId }
     } else if (memberName != null) {
         filteredSubmissions.filter { 
-            val cleanSubName = it.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+            val cleanSubName = parseUserDisplayName(it.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
             cleanSubName == memberName
         }
     } else {

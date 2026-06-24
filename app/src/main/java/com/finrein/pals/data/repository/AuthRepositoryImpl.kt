@@ -297,6 +297,49 @@ class AuthRepositoryImpl @Inject constructor(
         }
         return@withContext false
     }
+
+    override suspend fun deletePalsGroupForever(palCode: String): Unit = withContext(Dispatchers.IO) {
+        try {
+            supabaseClient.postgrest.from("pals")
+                .delete {
+                    filter { eq("code", palCode) }
+                }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override suspend fun leavePalsGroup(palCode: String, userId: String): Unit = withContext(Dispatchers.IO) {
+        try {
+            supabaseClient.postgrest.from("user_pals")
+                .delete {
+                    filter {
+                        eq("pal_code", palCode)
+                        eq("user_id", userId)
+                    }
+                }
+            supabaseClient.postgrest.from("submissions")
+                .delete {
+                    filter {
+                        eq("pal_code", palCode)
+                        eq("user_id", userId)
+                    }
+                }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override suspend fun deleteSpecificPalItem(submissionId: String): Unit = withContext(Dispatchers.IO) {
+        try {
+            supabaseClient.postgrest.from("submissions")
+                .delete {
+                    filter { eq("id", submissionId) }
+                }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
 
 @Serializable

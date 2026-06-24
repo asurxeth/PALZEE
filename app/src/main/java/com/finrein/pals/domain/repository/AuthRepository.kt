@@ -22,4 +22,10 @@ interface AuthRepository {
     suspend fun softDeleteAccount(userId: String)
 
     suspend fun checkAndReinstateAccount(userId: String): Boolean
+
+    suspend fun deletePalsGroupForever(palCode: String)
+
+    suspend fun leavePalsGroup(palCode: String, userId: String)
+
+    suspend fun deleteSpecificPalItem(submissionId: String)
 }

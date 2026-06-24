@@ -234,7 +234,6 @@ fun OnboardingScreen(
             .fillMaxSize()
             .clip(RoundedCornerShape(screenCornerRadius))
             .background(backgroundColor)
-            .border(2.dp, Color(0xFF00E676), RoundedCornerShape(screenCornerRadius))
     ) {
         Column(
             modifier = Modifier
@@ -489,6 +488,7 @@ fun OnboardingScreen(
                     color = if (isDark) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.6f),
                     modifier = Modifier
                         .align(Alignment.TopCenter)
+                        .offset(y = (-10).dp)
                         .padding(top = 10.dp)
                         .clickable {
                             backupEmailInput = ""
@@ -507,7 +507,7 @@ fun OnboardingScreen(
                     contentDescription = "Tea Cup",
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .offset(x = 10.dp, y = 5.dp)
+                        .offset(x = 10.dp, y = (-5).dp)
                         .size(80.dp)
                 )
 
@@ -517,7 +517,7 @@ fun OnboardingScreen(
                     contentDescription = "Flames",
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .offset(y = 12.dp)
+                        .offset(y = (-13).dp)
                         .size(50.dp)
                 )
 
@@ -527,7 +527,7 @@ fun OnboardingScreen(
                     contentDescription = "Bingsu",
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .offset(x = (-10).dp, y = 5.dp)
+                        .offset(x = (-10).dp, y = (-5).dp)
                         .size(80.dp)
                 )
             }
