@@ -986,7 +986,7 @@ fun HomeScreen(
                     .select {
                         filter {
                             eq("user_id", currentUserId)
-                            exact("deleted_at", null)
+                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
                         }
                     }
                     .decodeList<UserPalMapping>()
@@ -995,7 +995,7 @@ fun HomeScreen(
                     .select {
                         filter {
                             eq("user_id", currentUserId)
-                            exact("deleted_at", null)
+                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
                         }
                     }
                     .decodeList<SubmissionDbItem>()
@@ -1534,7 +1534,7 @@ fun HomeScreen(
                     .select {
                         filter {
                             eq("user_id", currentUserId)
-                            exact("deleted_at", null)
+                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
                         }
                     }
                     .decodeList<UserPalMapping>()
@@ -1554,7 +1554,7 @@ fun HomeScreen(
                         .select {
                             filter {
                                 isIn("pal_code", palCodes)
-                                exact("deleted_at", null)
+                                filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
                             }
                         }
                         .decodeList<UserPalMapping>()
@@ -1612,7 +1612,7 @@ fun HomeScreen(
                         filter {
                             eq("pal_code", "vlog")
                             eq("user_id", currentUserId)
-                            exact("deleted_at", null)
+                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
                         }
                     }
                     .decodeList<SubmissionDbItem>()
