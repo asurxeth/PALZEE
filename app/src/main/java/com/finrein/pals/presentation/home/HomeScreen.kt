@@ -131,6 +131,10 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import java.time.LocalTime
 
+fun getVlogPrefs(context: android.content.Context): android.content.SharedPreferences {
+    return context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+}
+
 object VlogPlayerManager {
     private val playerCache = ConcurrentHashMap<String, androidx.media3.exoplayer.ExoPlayer>()
 
@@ -216,6 +220,44 @@ suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: 
         } catch (e: Exception) {
             android.util.Log.e("VIDEO_STORAGE_ERR", "Video upload failed: ${e.localizedMessage}")
             null
+        }
+    }
+}
+
+suspend fun ensureVideoCached(context: android.content.Context, videoPath: String): String {
+    if (!videoPath.startsWith("http")) {
+        return videoPath
+    }
+    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+        val vlogPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+        val cachedLocal = palPrefs.getString("local_path_$videoPath", null)
+            ?: vlogPrefs.getString("local_path_$videoPath", null)
+        if (cachedLocal != null && java.io.File(cachedLocal).exists()) {
+            cachedLocal
+        } else {
+            val fileName = videoPath.substringAfterLast("/")
+            val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
+            if (cacheFile.exists() && cacheFile.length() > 0) {
+                cacheFile.absolutePath
+            } else {
+                try {
+                    val bucketName = if (videoPath.contains("pals_vlogs")) "pals_vlogs" else "pals"
+                    val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+                    val bytes = try {
+                        storage.downloadPublic(fileName)
+                    } catch (e1: Exception) {
+                        storage.downloadAuthenticated(fileName)
+                    }
+                    cacheFile.writeBytes(bytes)
+                    palPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
+                    vlogPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
+                    cacheFile.absolutePath
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    videoPath
+                }
+            }
         }
     }
 }
@@ -723,6 +765,15 @@ fun parseName(email: String?, displayName: String?): Pair<String, String> {
     return Pair("", "")
 }
 
+fun getActiveCycleLocalDate(instant: java.time.Instant): java.time.LocalDate {
+    val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+    return if (zonedDateTime.hour < 4) {
+        zonedDateTime.toLocalDate().minusDays(1)
+    } else {
+        zonedDateTime.toLocalDate()
+    }
+}
+
 fun getVlogLocalDate(path: String): java.time.LocalDate? {
     val regex = Regex("\\d{13}")
     val match = regex.find(path)
@@ -730,7 +781,7 @@ fun getVlogLocalDate(path: String): java.time.LocalDate? {
         try {
             val millis = match.value.toLong()
             val instant = java.time.Instant.ofEpochMilli(millis)
-            return instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            return getActiveCycleLocalDate(instant)
         } catch (e: Exception) {
             // ignore
         }
@@ -740,37 +791,57 @@ fun getVlogLocalDate(path: String): java.time.LocalDate? {
     if (file.exists()) {
         val lastModified = file.lastModified()
         val instant = java.time.Instant.ofEpochMilli(lastModified)
-        return instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+        return getActiveCycleLocalDate(instant)
     }
     return null
 }
 
+fun safeParseInstant(dateStr: String?): java.time.Instant? {
+    if (dateStr.isNullOrEmpty()) return null
+    val cleaned = dateStr.trim().replace(" ", "T")
+    try {
+        return java.time.Instant.parse(cleaned)
+    } catch (e: Exception) {}
+    try {
+        return java.time.OffsetDateTime.parse(cleaned).toInstant()
+    } catch (e: Exception) {}
+    try {
+        return java.time.ZonedDateTime.parse(cleaned).toInstant()
+    } catch (e: Exception) {}
+    try {
+        return java.time.LocalDateTime.parse(cleaned).atZone(java.time.ZoneId.systemDefault()).toInstant()
+    } catch (e: Exception) {}
+    return null
+}
+
+fun isInstantInActiveCycle(instant: java.time.Instant): Boolean {
+    val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+    val target4AMToday = now.withHour(4).withMinute(0).withSecond(0).withNano(0)
+    val startOfCycle = if (now.isBefore(target4AMToday)) {
+        target4AMToday.minusDays(1).toInstant()
+    } else {
+        target4AMToday.toInstant()
+    }
+    val endOfCycle = startOfCycle.plus(24, java.time.temporal.ChronoUnit.HOURS)
+    return !instant.isBefore(startOfCycle) && instant.isBefore(endOfCycle)
+}
+
+fun isInstantInDayCycle(instant: java.time.Instant, targetDate: java.time.LocalDate): Boolean {
+    val systemZone = java.time.ZoneId.systemDefault()
+    val startOfCycle = targetDate.atTime(4, 0).atZone(systemZone).toInstant()
+    val endOfCycle = startOfCycle.plus(24, java.time.temporal.ChronoUnit.HOURS)
+    return !instant.isBefore(startOfCycle) && instant.isBefore(endOfCycle)
+}
+
+fun isSubmissionInActiveCycle(sub: SubmissionDbItem): Boolean {
+    val instant = safeParseInstant(sub.createdAt) ?: return false
+    return isInstantInActiveCycle(instant)
+}
+
 fun getSubmissionLocalDate(sub: SubmissionDbItem): java.time.LocalDate? {
-    if (!sub.createdAt.isNullOrEmpty()) {
-        val cleaned = sub.createdAt.trim().replace(" ", "T")
-        val systemZone = java.time.ZoneId.systemDefault()
-        // 1. Try Instant (parse UTC first)
-        try {
-            return java.time.Instant.parse(cleaned).atZone(systemZone).toLocalDate()
-        } catch (e: Exception) {}
-        // 2. Try OffsetDateTime
-        try {
-            return java.time.OffsetDateTime.parse(cleaned).atZoneSameInstant(systemZone).toLocalDate()
-        } catch (e: Exception) {}
-        // 3. Try ZonedDateTime
-        try {
-            return java.time.ZonedDateTime.parse(cleaned).withZoneSameInstant(systemZone).toLocalDate()
-        } catch (e: Exception) {}
-        // 4. Try LocalDateTime
-        try {
-            return java.time.LocalDateTime.parse(cleaned).atZone(systemZone).toLocalDate()
-        } catch (e: Exception) {}
-        // 5. Try substring "YYYY-MM-DD"
-        if (cleaned.length >= 10 && cleaned[4] == '-' && cleaned[7] == '-') {
-            try {
-                return java.time.LocalDate.parse(cleaned.substring(0, 10))
-            } catch (e: Exception) {}
-        }
+    val instant = safeParseInstant(sub.createdAt)
+    if (instant != null) {
+        return getActiveCycleLocalDate(instant)
     }
     val parts = sub.imageUrl.split("|||")
     val path = parts.getOrNull(0) ?: ""
@@ -778,30 +849,161 @@ fun getSubmissionLocalDate(sub: SubmissionDbItem): java.time.LocalDate? {
     if (localFileDate != null) {
         return localFileDate
     }
-    // Safe fallback: default to today's date rather than returning null (which filters it out)
-    return java.time.LocalDate.now()
+    return getActiveCycleLocalDate(java.time.Instant.now())
 }
 
 fun getSubmissionRelativeHour(sub: SubmissionDbItem): Int {
-    if (!sub.createdAt.isNullOrEmpty()) {
-        try {
-            val cleaned = sub.createdAt.trim().replace(" ", "T")
-            val instant = java.time.Instant.parse(cleaned)
-            val localDateTime = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
-            val rawHour = localDateTime.hour
-            return (rawHour - 4 + 24) % 24
-        } catch (e: Exception) {}
-        try {
-            val cleaned = sub.createdAt.trim().replace(" ", "T")
-            val offsetDateTime = java.time.OffsetDateTime.parse(cleaned)
-            val localDateTime = offsetDateTime.atZoneSameInstant(java.time.ZoneId.systemDefault()).toLocalDateTime()
-            val rawHour = localDateTime.hour
-            return (rawHour - 4 + 24) % 24
-        } catch (e: Exception) {}
-    }
-    return 12
+    val instant = safeParseInstant(sub.createdAt) ?: return 12
+    val localDateTime = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+    val rawHour = localDateTime.hour
+    return (rawHour - 4 + 24) % 24
 }
 
+@Composable
+fun OnboardingFlowContainer(
+    onboardingFlowStep: Int,
+    onOnboardingFlowStepChange: (Int) -> Unit,
+    onboardingFirstName: String,
+    onOnboardingFirstNameChange: (String) -> Unit,
+    onboardingLastName: String,
+    onOnboardingLastNameChange: (String) -> Unit,
+    currentDisplayName: String,
+    onCurrentDisplayNameChange: (String) -> Unit,
+    user: com.finrein.pals.domain.model.User?,
+    sessionManager: com.finrein.pals.data.local.SessionManager,
+    onSignOut: () -> Unit,
+    isDark: Boolean,
+    textColor: Color,
+    mutedTextColor: Color
+) {
+    when (onboardingFlowStep) {
+        -1 -> Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (isDark) Color(0xFF181513) else Color(0xFFFCF6ED)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.onboarding_logo),
+                        contentDescription = "Pal Yellow Cloud Logo",
+                        modifier = Modifier.size(130.dp).offset(y = 30.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.dm_envalope),
+                        contentDescription = "Envelope with heart",
+                        modifier = Modifier.offset(x = (-100).dp, y = 45.dp).size(50.dp)
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.dm_moon),
+                        contentDescription = "Crescent Moon",
+                        modifier = Modifier.offset(x = 100.dp, y = 45.dp).size(55.dp)
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.dm_star_1),
+                        contentDescription = null,
+                        modifier = Modifier.offset(x = (-115).dp, y = (-30).dp).size(36.dp)
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.dm_star_2),
+                        contentDescription = null,
+                        modifier = Modifier.offset(x = (-55).dp, y = (-55).dp).size(45.dp)
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.dm_star_3),
+                        contentDescription = null,
+                        modifier = Modifier.offset(x = 15.dp, y = (-65).dp).size(30.dp)
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.dm_star_4),
+                        contentDescription = null,
+                        modifier = Modifier.offset(x = 85.dp, y = (-55).dp).size(45.dp)
+                    )
+                    Image(
+                        painter = painterResource(id = R.drawable.dm_star_5),
+                        contentDescription = null,
+                        modifier = Modifier.offset(x = 135.dp, y = (-20).dp).size(34.dp)
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                CircularProgressIndicator(
+                    color = Color(0xFF00E676),
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(36.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Text(
+                    text = "Checking account status...",
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 14.sp,
+                    color = if (isDark) Color(0xFFFCF6ED).copy(alpha = 0.6f) else Color(0xFF1E1C1A).copy(alpha = 0.6f),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+        0 -> CreatingAccountScreen(
+            firstName = "",
+            lastName = "",
+            textColor = textColor,
+            mutedTextColor = mutedTextColor
+        )
+        1 -> NameInputScreen(
+            firstName = onboardingFirstName,
+            onFirstNameChange = onOnboardingFirstNameChange,
+            lastName = onboardingLastName,
+            onLastNameChange = onOnboardingLastNameChange,
+            onNext = { onOnboardingFlowStepChange(2) },
+            onCancel = { VlogPlayerManager.clearAll(); onSignOut() },
+            isDark = isDark,
+            textColor = textColor,
+            mutedTextColor = mutedTextColor
+        )
+        2 -> NameConfirmScreen(
+            firstName = onboardingFirstName,
+            lastName = onboardingLastName,
+            onContinue = {
+                val newName = "$onboardingFirstName $onboardingLastName".trim()
+                onCurrentDisplayNameChange(newName)
+                user?.let {
+                    sessionManager.saveUser(it.copy(displayName = newName))
+                }
+                onOnboardingFlowStepChange(3)
+            },
+            textColor = textColor,
+            mutedTextColor = mutedTextColor
+        )
+        3 -> CreatingAccountScreen(
+            firstName = onboardingFirstName,
+            lastName = onboardingLastName,
+            textColor = textColor,
+            mutedTextColor = mutedTextColor
+        )
+        4 -> PermissionsScreen(
+            onDone = {
+                sessionManager.setHasLoggedInBefore(true)
+                sessionManager.setOnboardingCompleted(true)
+                onOnboardingFlowStepChange(6)
+            },
+            textColor = textColor,
+            mutedTextColor = mutedTextColor
+        )
+    }
+}
 
 @Composable
 fun HomeScreen(
@@ -810,9 +1012,8 @@ fun HomeScreen(
     onDeleteAccount: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark by rememberUpdatedState(isSystemInDarkTheme())
     val context = LocalContext.current
-    val sharedPrefs = remember { context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE) }
 
     val currentUserId = remember(user) { user?.id ?: "" }
     val deletedVlogsKey = "deleted_vlog_paths_$currentUserId"
@@ -969,13 +1170,13 @@ fun HomeScreen(
             onboardingFlowStep = 4
         } else if ((onboardingFlowStep == -1 || onboardingFlowStep == 4) && currentUserId.isNotEmpty()) {
             try {
-                val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
+                val savedDeleted = getVlogPrefs(context).getString(deletedVlogsKey, "") ?: ""
                 if (savedDeleted.isNotEmpty()) {
                     val currentDeleted = savedDeleted.split(";;;").toSet()
                     val cleanedDeleted = currentDeleted.filter { path ->
                         path.isNotEmpty() && !path.startsWith("|||")
                     }
-                    sharedPrefs.edit().putString(deletedVlogsKey, cleanedDeleted.joinToString(";;;")).apply()
+                    getVlogPrefs(context).edit().putString(deletedVlogsKey, cleanedDeleted.joinToString(";;;")).apply()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1098,7 +1299,7 @@ fun HomeScreen(
     }
 
     var createdPals by remember(currentUserId) {
-        val saved = sharedPrefs.getString("created_pals", "") ?: ""
+        val saved = getVlogPrefs(context).getString("created_pals", "") ?: ""
         val initialList = if (saved.isEmpty()) {
             listOf(PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true))
         } else {
@@ -1120,7 +1321,7 @@ fun HomeScreen(
 
     LaunchedEffect(createdPals) {
         val serialized = createdPals.joinToString(";;;") { "${it.name.replace(":", "\\:")}:${it.size}:${it.code}:${it.isVlog}:${it.isCreator}" }
-        sharedPrefs.edit().putString("created_pals", serialized).apply()
+        getVlogPrefs(context).edit().putString("created_pals", serialized).apply()
     }
 
     val groupDatabase = remember {
@@ -1187,6 +1388,7 @@ fun HomeScreen(
 
     // Vlog and Group screen states
     var activeVlogPal by remember(currentUserId) { mutableStateOf<PalItem?>(null) }
+    val isStateRestoredRef = remember(currentUserId) { mutableStateOf(false) }
     var showingCapturedPreview by remember(currentUserId) { mutableStateOf(false) }
     var capturedVideoPath by remember(currentUserId) { mutableStateOf<String?>(null) }
     var capturedVideoDuration by remember(currentUserId) { mutableStateOf(2000L) }
@@ -1195,39 +1397,38 @@ fun HomeScreen(
     var isMuted by remember { mutableStateOf(false) }
 
     val initialDeleted = remember(deletedVlogsKey) {
-        val saved = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
-        if (saved.isEmpty()) emptySet<String>() else saved.split(";;;").toSet()
+        emptySet<String>()
     }
 
     var capturedVlogsPaths by remember(deletedVlogsKey) {
-        val savedPaths = sharedPrefs.getString("vlog_paths", "") ?: ""
+        val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
         val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
         val validIndices = paths.indices.filter { idx -> paths[idx] !in initialDeleted }
         val filteredPathsList = validIndices.map { paths[it] }
         mutableStateOf(ArrayList(filteredPathsList))
     }
     var capturedVlogsTimes by remember(deletedVlogsKey) {
-        val savedPaths = sharedPrefs.getString("vlog_paths", "") ?: ""
+        val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
         val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
-        val savedTimes = sharedPrefs.getString("vlog_times", "") ?: ""
+        val savedTimes = getVlogPrefs(context).getString("vlog_times", "") ?: ""
         val times = if (savedTimes.isEmpty()) emptyList() else savedTimes.split(";;;")
         val validIndices = paths.indices.filter { idx -> paths[idx] !in initialDeleted }
         val filteredTimesList = validIndices.map { times.getOrNull(it) ?: "12:00" }
         mutableStateOf(ArrayList(filteredTimesList))
     }
     var capturedVlogsCaptions by remember(deletedVlogsKey) {
-        val savedPaths = sharedPrefs.getString("vlog_paths", "") ?: ""
+        val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
         val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
-        val savedCaptions = sharedPrefs.getString("vlog_captions", "") ?: ""
+        val savedCaptions = getVlogPrefs(context).getString("vlog_captions", "") ?: ""
         val captions = if (savedCaptions.isEmpty()) emptyList() else savedCaptions.split(";;;")
         val validIndices = paths.indices.filter { idx -> paths[idx] !in initialDeleted }
         val filteredCaptionsList = validIndices.map { captions.getOrNull(it) ?: "" }
         mutableStateOf(ArrayList(filteredCaptionsList))
     }
     var capturedVlogsDurations by remember(deletedVlogsKey) {
-        val savedPaths = sharedPrefs.getString("vlog_paths", "") ?: ""
+        val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
         val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
-        val savedDurations = sharedPrefs.getString("vlog_durations", "") ?: ""
+        val savedDurations = getVlogPrefs(context).getString("vlog_durations", "") ?: ""
         val durations = if (savedDurations.isEmpty()) emptyList() else savedDurations.split(";;;")
         val validIndices = paths.indices.filter { idx -> paths[idx] !in initialDeleted }
         val filteredDurationsList = validIndices.map { durations.getOrNull(it) ?: "2000" }
@@ -1253,7 +1454,13 @@ fun HomeScreen(
     var activeReactionPreview by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val targetDate = remember(selectedDayOffset) {
-        java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
+        val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+        val activeLocalDate = if (now.hour < 4) {
+            now.toLocalDate().minusDays(1)
+        } else {
+            now.toLocalDate()
+        }
+        activeLocalDate.minusDays(selectedDayOffset.toLong())
     }
 
     val activePalSubmissions = remember(activeVlogPal, capturedVlogsPaths, capturedVlogsTimes, capturedVlogsCaptions, capturedVlogsDurations, allPalsSubmissions) {
@@ -1262,9 +1469,15 @@ fun HomeScreen(
             capturedVlogsPaths.mapIndexed { idx, path ->
                 val caption = capturedVlogsCaptions.getOrNull(idx) ?: ""
                 val duration = capturedVlogsDurations.getOrNull(idx) ?: "2000"
-                val cleanPath = if (path.startsWith("file://")) path.substring(7) else path
+                val localPath = getVlogPrefs(context).getString("local_path_$path", null)
+                val resolvedPath = localPath ?: path
+                val cleanPath = if (resolvedPath.startsWith("file://")) resolvedPath.substring(7) else resolvedPath
                 val file = java.io.File(cleanPath)
-                val matchingSub = allPalsSubmissions["vlog"]?.firstOrNull { it.imageUrl.startsWith(path) }
+                val filename = java.io.File(path).name
+                val matchingSub = allPalsSubmissions["vlog"]?.firstOrNull { sub ->
+                    val subPath = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                    subPath == path || subPath.endsWith("/$filename") || (subPath.startsWith("http") && path.startsWith("http") && subPath == path)
+                }
                 val createdAtStr = matchingSub?.createdAt ?: if (file.exists()) {
                     java.time.Instant.ofEpochMilli(file.lastModified()).toString()
                 } else {
@@ -1286,7 +1499,12 @@ fun HomeScreen(
 
     val filteredSubmissions = remember(activePalSubmissions, targetDate) {
         activePalSubmissions.filter { sub ->
-            getSubmissionLocalDate(sub) == targetDate
+            if (activeVlogPal == null || activeVlogPal?.code == "vlog") {
+                val instant = safeParseInstant(sub.createdAt)
+                instant != null && isInstantInDayCycle(instant, targetDate)
+            } else {
+                getSubmissionLocalDate(sub) == targetDate
+            }
         }
     }
 
@@ -1297,19 +1515,34 @@ fun HomeScreen(
     }
 
     val todaySubmissionsMap = remember(allPalsSubmissions) {
-        allPalsSubmissions.mapValues { (_, subs) ->
-            subs.filter { sub -> getSubmissionLocalDate(sub) == java.time.LocalDate.now() }
+        val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+        val activeLocalDate = if (now.hour < 4) {
+            now.toLocalDate().minusDays(1)
+        } else {
+            now.toLocalDate()
+        }
+        allPalsSubmissions.mapValues { (palCode, subs) ->
+            if (palCode == "vlog") {
+                subs.filter { sub -> isSubmissionInActiveCycle(sub) }
+            } else {
+                subs.filter { sub -> getSubmissionLocalDate(sub) == activeLocalDate }
+            }
         }
     }
 
     val todayVlogPaths = remember(capturedVlogsPaths, capturedVlogsTimes, capturedVlogsCaptions, capturedVlogsDurations, allPalsSubmissions) {
-        val today = java.time.LocalDate.now()
         capturedVlogsPaths.mapIndexedNotNull { idx, path ->
             val caption = capturedVlogsCaptions.getOrNull(idx) ?: ""
             val duration = capturedVlogsDurations.getOrNull(idx) ?: "2000"
-            val cleanPath = if (path.startsWith("file://")) path.substring(7) else path
+            val localPath = getVlogPrefs(context).getString("local_path_$path", null)
+            val resolvedPath = localPath ?: path
+            val cleanPath = if (resolvedPath.startsWith("file://")) resolvedPath.substring(7) else resolvedPath
             val file = java.io.File(cleanPath)
-            val matchingSub = allPalsSubmissions["vlog"]?.firstOrNull { it.imageUrl.startsWith(path) }
+            val filename = java.io.File(path).name
+            val matchingSub = allPalsSubmissions["vlog"]?.firstOrNull { sub ->
+                val subPath = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                subPath == path || subPath.endsWith("/$filename") || (subPath.startsWith("http") && path.startsWith("http") && subPath == path)
+            }
             val createdAtStr = matchingSub?.createdAt ?: if (file.exists()) {
                 java.time.Instant.ofEpochMilli(file.lastModified()).toString()
             } else {
@@ -1323,7 +1556,7 @@ fun HomeScreen(
                 imageUrl = "$path|||$caption|||$duration",
                 createdAt = createdAtStr
             )
-            if (getSubmissionLocalDate(sub) == today) path else null
+            if (isSubmissionInActiveCycle(sub)) path else null
         }
     }
 
@@ -1331,9 +1564,9 @@ fun HomeScreen(
         filteredSubmissions.map { sub ->
             if (!sub.createdAt.isNullOrEmpty()) {
                 try {
-                    val instant = java.time.Instant.parse(sub.createdAt)
-                    val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
-                    zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
+                    val instant = safeParseInstant(sub.createdAt)
+                    val zonedDateTime = instant?.atZone(java.time.ZoneId.systemDefault())
+                    zonedDateTime?.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US)) ?: "12:00"
                 } catch (e: Exception) {
                     sub.createdAt.substringAfter("T").substringBefore(".").take(5)
                 }
@@ -1382,13 +1615,16 @@ fun HomeScreen(
     LaunchedEffect(filteredPaths) {
         vlogExoPlayer.stop()
         vlogExoPlayer.clearMediaItems()
-        filteredPaths.forEach { path ->
-            if (path.startsWith("http")) {
-                vlogExoPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(path)))
+        val resolved = filteredPaths.map { path ->
+            ensureVideoCached(context, path)
+        }
+        resolved.forEach { resolvedPath ->
+            if (resolvedPath.startsWith("http")) {
+                vlogExoPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(resolvedPath)))
             } else {
                 val cleanPath = when {
-                    path.startsWith("file://") -> path.substring(7)
-                    else -> path
+                    resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
+                    else -> resolvedPath
                 }
                 val fileTarget = java.io.File(cleanPath)
                 if (fileTarget.exists() && fileTarget.length() > 0) {
@@ -1397,7 +1633,7 @@ fun HomeScreen(
                 }
             }
         }
-        if (filteredPaths.isNotEmpty()) {
+        if (resolved.isNotEmpty()) {
             vlogExoPlayer.prepare()
         }
     }
@@ -1617,14 +1853,11 @@ fun HomeScreen(
                     }
                     .decodeList<SubmissionDbItem>()
                 
-                val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
-                val currentDeleted = if (savedDeleted.isEmpty()) emptySet<String>() else savedDeleted.split(";;;").toSet()
-
                 val sorted = dbSubmissions
-                    .filterNot { sub ->
-                        val parts = sub.imageUrl.split("|||")
+                    .filter { submission ->
+                        val parts = submission.imageUrl.split("|||")
                         val path = parts.getOrNull(0) ?: ""
-                        path.isEmpty() || path in currentDeleted || sub.imageUrl in currentDeleted
+                        path.isNotEmpty()
                     }
                     .sortedByDescending { it.id ?: "" }
                 
@@ -1632,28 +1865,64 @@ fun HomeScreen(
                 val times = ArrayList<String>()
                 val captions = ArrayList<String>()
                 val durations = ArrayList<String>()
-                
+
+                // Identify any local unsynced vlogs
+                val unsyncedVlogs = capturedVlogsPaths.mapIndexedNotNull { idx, path ->
+                    if (!path.startsWith("http")) {
+                        val isSynced = sorted.any { sub ->
+                            val subUrl = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                            val mappedLocal = getVlogPrefs(context).getString("local_path_$subUrl", null)
+                            mappedLocal == path
+                        }
+                        if (!isSynced) {
+                            Triple(
+                                path,
+                                capturedVlogsTimes.getOrNull(idx) ?: "12:00",
+                                Triple(
+                                    capturedVlogsCaptions.getOrNull(idx) ?: "",
+                                    capturedVlogsDurations.getOrNull(idx) ?: "2000",
+                                    idx
+                                )
+                            )
+                        } else null
+                    } else null
+                }
+
+                // Add unsynced vlogs first
+                unsyncedVlogs.forEach { item ->
+                    paths.add(item.first)
+                    times.add(item.second)
+                    captions.add(item.third.first)
+                    durations.add(item.third.second)
+                }
+
                 sorted.forEach { sub ->
                     val parts = sub.imageUrl.split("|||")
                     val path = parts.getOrNull(0) ?: ""
                     val caption = parts.getOrNull(1) ?: ""
                     val duration = parts.getOrNull(2) ?: "2000"
                     
-                    paths.add(path)
-                    val timePart = if (!sub.createdAt.isNullOrEmpty()) {
-                        try {
-                            val instant = java.time.Instant.parse(sub.createdAt)
-                            val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
-                            zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
-                        } catch (e: Exception) {
-                            sub.createdAt.substringAfter("T").substringBefore(".").take(5)
-                        }
-                    } else {
-                        "12:00"
+                    // If a database vlog is already represented by an unsynced local vlog in paths (via mapping), do not duplicate it
+                    val isAlreadyAdded = paths.any { existingPath ->
+                        existingPath == path || getVlogPrefs(context).getString("local_path_$path", null) == existingPath
                     }
-                    times.add(timePart)
-                    captions.add(caption)
-                    durations.add(duration)
+                    if (!isAlreadyAdded) {
+                        paths.add(path)
+                        val timePart = if (!sub.createdAt.isNullOrEmpty()) {
+                            try {
+                                val instant = safeParseInstant(sub.createdAt)
+                                val zonedDateTime = instant?.atZone(java.time.ZoneId.systemDefault())
+                                zonedDateTime?.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US)) ?: "12:00"
+                            } catch (e: Exception) {
+                                sub.createdAt.substringAfter("T").substringBefore(".").take(5)
+                            }
+                        } else {
+                            "12:00"
+                        }
+                        times.add(timePart)
+                        captions.add(caption)
+                        durations.add(duration)
+                    }
                 }
                 
                 capturedVlogsPaths = paths
@@ -1663,33 +1932,12 @@ fun HomeScreen(
                 
                 allPalsSubmissions["vlog"] = sorted
                 
-                sharedPrefs.edit().apply {
+                getVlogPrefs(context).edit().apply {
                     putString("vlog_paths", paths.joinToString(";;;"))
                     putString("vlog_times", times.joinToString(";;;"))
                     putString("vlog_captions", captions.joinToString(";;;"))
                     putString("vlog_durations", durations.joinToString(";;;"))
                     apply()
-                }
-                
-                vlogExoPlayer.stop()
-                vlogExoPlayer.clearMediaItems()
-                paths.forEach { path ->
-                    if (path.startsWith("http")) {
-                        vlogExoPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(path)))
-                    } else {
-                        val cleanPath = when {
-                            path.startsWith("file://") -> path.substring(7)
-                            else -> path
-                        }
-                        val fileTarget = java.io.File(cleanPath)
-                        if (fileTarget.exists() && fileTarget.length() > 0) {
-                            val targetUri = android.net.Uri.fromFile(fileTarget)
-                            vlogExoPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
-                        }
-                    }
-                }
-                if (paths.isNotEmpty()) {
-                    vlogExoPlayer.prepare()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1705,15 +1953,12 @@ fun HomeScreen(
                     .select {
                         filter {
                             eq("pal_code", palCode)
+                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
                         }
                     }
                     .decodeList<SubmissionDbItem>()
-                val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
-                val currentDeleted = if (savedDeleted.isEmpty()) emptySet<String>() else savedDeleted.split(";;;").toSet()
                 val filteredSubmissions = dbSubmissions.filterNot { sub ->
-                    val parts = sub.imageUrl.split("|||")
-                    val path = parts.getOrNull(0) ?: ""
-                    path in currentDeleted || sub.imageUrl in currentDeleted || sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR")
+                    sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR")
                 }
                 val oldSubs = allPalsSubmissions[palCode] ?: emptyList()
                 if (oldSubs != filteredSubmissions) {
@@ -1854,106 +2099,17 @@ fun HomeScreen(
                 
                 coroutineScope.launch {
                     userPalsFlow.collect { action ->
-                        when (action) {
-                            is PostgresAction.Delete -> {
-                                val deletedUrl = action.oldRecord["video_url"]?.toString()?.trim('"')
-                                if (!deletedUrl.isNullOrEmpty()) {
-                                    // Remove from capturedVlogsPaths
-                                    if (capturedVlogsPaths.contains(deletedUrl)) {
-                                        val updatedPaths = ArrayList(capturedVlogsPaths).apply { remove(deletedUrl) }
-                                        capturedVlogsPaths = updatedPaths
-                                    }
-                                    
-                                    // Update allPalsSubmissions map
-                                    allPalsSubmissions.keys.forEach { key ->
-                                        val subs = allPalsSubmissions[key]
-                                        if (subs != null) {
-                                            val updatedSubs = subs.filterNot { sub ->
-                                                val pathPart = sub.imageUrl.split("|||").firstOrNull() ?: ""
-                                                pathPart == deletedUrl || sub.imageUrl == deletedUrl
-                                            }
-                                            if (subs != updatedSubs) {
-                                                allPalsSubmissions[key] = updatedSubs
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Add to local deleted blacklist in sharedPrefs
-                                    val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
-                                    val currentDeleted = if (savedDeleted.isEmpty()) mutableSetOf<String>() else savedDeleted.split(";;;").toMutableSet()
-                                    if (deletedUrl !in currentDeleted) {
-                                        currentDeleted.add(deletedUrl)
-                                        sharedPrefs.edit().putString(deletedVlogsKey, currentDeleted.joinToString(";;;")).apply()
-                                    }
-                                }
-                            }
-                            is PostgresAction.Insert -> {
-                                refreshVlogs()
-                                refreshPals()
-                                activeVlogPal?.let { refreshActivePalDetails(it.code) }
-                            }
-                            else -> {}
-                        }
+                        refreshVlogs()
+                        refreshPals()
+                        activeVlogPal?.let { refreshActivePalDetails(it.code) }
                     }
                 }
                 
                 coroutineScope.launch {
                     submissionsFlow.collect { action ->
-                        when (action) {
-                            is PostgresAction.Delete -> {
-                                val rawDeletedPath = action.oldRecord["image_url"]?.toString()?.trim('"').orEmpty()
-                                val deletedUrl = rawDeletedPath.split("|||").firstOrNull().orEmpty()
-                                if (deletedUrl.isNotEmpty()) {
-                                    // Remove from capturedVlogsPaths
-                                    if (capturedVlogsPaths.contains(deletedUrl)) {
-                                        val updatedPaths = ArrayList(capturedVlogsPaths).apply { remove(deletedUrl) }
-                                        capturedVlogsPaths = updatedPaths
-                                    }
-                                    
-                                    // Update allPalsSubmissions map
-                                    allPalsSubmissions.keys.forEach { key ->
-                                        val subs = allPalsSubmissions[key]
-                                        if (subs != null) {
-                                            val updatedSubs = subs.filterNot { sub ->
-                                                val pathPart = sub.imageUrl.split("|||").firstOrNull() ?: ""
-                                                pathPart == deletedUrl || sub.imageUrl == deletedUrl || sub.imageUrl == rawDeletedPath
-                                            }
-                                            if (subs != updatedSubs) {
-                                                allPalsSubmissions[key] = updatedSubs
-                                            }
-                                        }
-                                    }
-                                    
-                                    // Add BOTH rawDeletedPath and deletedUrl to local blacklist in sharedPrefs
-                                    val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
-                                    val currentDeleted = if (savedDeleted.isEmpty()) mutableSetOf<String>() else savedDeleted.split(";;;").toMutableSet()
-                                    var changed = false
-                                    if (deletedUrl.isNotEmpty() && deletedUrl !in currentDeleted) {
-                                        currentDeleted.add(deletedUrl)
-                                        changed = true
-                                    }
-                                    if (rawDeletedPath.isNotEmpty() && rawDeletedPath !in currentDeleted) {
-                                        currentDeleted.add(rawDeletedPath)
-                                        changed = true
-                                    }
-                                    if (changed) {
-                                        sharedPrefs.edit().putString(deletedVlogsKey, currentDeleted.joinToString(";;;")).apply()
-                                    }
-                                }
-                                refreshVlogs()
-                            }
-                            is PostgresAction.Update -> {
-                                refreshVlogs()
-                                refreshPals()
-                                activeVlogPal?.let { refreshActivePalDetails(it.code) }
-                            }
-                            is PostgresAction.Insert -> {
-                                refreshVlogs()
-                                refreshPals()
-                                activeVlogPal?.let { refreshActivePalDetails(it.code) }
-                            }
-                            else -> {}
-                        }
+                        refreshVlogs()
+                        refreshPals()
+                        activeVlogPal?.let { refreshActivePalDetails(it.code) }
                     }
                 }
             } catch (e: Exception) {
@@ -1964,12 +2120,6 @@ fun HomeScreen(
 
     LaunchedEffect(currentUserId) {
         if (currentUserId.isNotEmpty()) {
-            try {
-                val serviceIntent = android.content.Intent(context, com.finrein.pals.BackgroundSyncService::class.java)
-                context.startService(serviceIntent)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
             while (true) {
                 refreshPals()
                 refreshVlogs()
@@ -1982,6 +2132,120 @@ fun HomeScreen(
         createdPals.forEach { pal ->
             if (!pal.isVlog) {
                 refreshActivePalDetails(pal.code)
+            }
+        }
+    }
+
+    LaunchedEffect(currentUserId) {
+        if (currentUserId.isNotEmpty()) {
+            try {
+                val recentSub = supabaseClient.postgrest.from("submissions")
+                    .select {
+                        filter {
+                            eq("user_id", currentUserId)
+                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                        }
+                        order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                        limit(1)
+                    }
+                    .decodeSingleOrNull<SubmissionDbItem>()
+                if (recentSub != null) {
+                    val parts = recentSub.userDisplayName.split("|||")
+                    val name = parts.getOrNull(0) ?: ""
+                    val avatar = parts.getOrNull(1) ?: ""
+                    if (name.isNotEmpty() && (currentDisplayName.isEmpty() || currentDisplayName == "apple_user")) {
+                        currentDisplayName = name
+                    }
+                    if (avatar.isNotEmpty() && customAvatarUriString.isNullOrEmpty()) {
+                        customAvatarUriString = avatar
+                        sessionManager.saveAvatarUri(avatar)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            try {
+                val savedState = supabaseClient.postgrest.from("submissions")
+                    .select {
+                        filter {
+                            eq("pal_code", "user_state")
+                            eq("user_id", currentUserId)
+                        }
+                    }
+                    .decodeSingleOrNull<SubmissionDbItem>()
+                
+                if (savedState != null) {
+                    val parts = savedState.imageUrl.split("|||")
+                    val savedTab = parts.getOrNull(0) ?: "pals"
+                    val savedPalCode = parts.getOrNull(1) ?: ""
+                    
+                    if (savedTab in listOf("pals", "camera", "profile", "home")) {
+                        selectedTab = savedTab
+                    }
+                    
+                    if (savedPalCode.isNotEmpty()) {
+                        val match = createdPals.firstOrNull { it.code == savedPalCode }
+                        if (match != null) {
+                            activeVlogPal = match
+                        } else {
+                            activeVlogPal = PalItem(name = savedPalCode, size = "0", code = savedPalCode, isVlog = (savedPalCode == "vlog"))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                isStateRestoredRef.value = true
+            }
+        }
+    }
+
+    LaunchedEffect(currentUserId, selectedTab, activeVlogPal) {
+        if (currentUserId.isNotEmpty() && isStateRestoredRef.value) {
+            val stateString = "$selectedTab|||${activeVlogPal?.code ?: ""}"
+            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val existing = supabaseClient.postgrest.from("submissions")
+                        .select {
+                            filter {
+                                eq("pal_code", "user_state")
+                                eq("user_id", currentUserId)
+                            }
+                        }
+                        .decodeSingleOrNull<SubmissionDbItem>()
+                    
+                    if (existing != null) {
+                        supabaseClient.postgrest.from("submissions").update(mapOf(
+                            "image_url" to stateString
+                        )) {
+                            filter {
+                                eq("id", existing.id ?: "")
+                            }
+                        }
+                    } else {
+                        val newRecord = SubmissionDbItem(
+                            palCode = "user_state",
+                            userId = currentUserId,
+                            userDisplayName = "",
+                            imageUrl = stateString,
+                            createdAt = java.time.Instant.now().toString()
+                        )
+                        supabaseClient.postgrest.from("submissions").insert(newRecord)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(createdPals, activeVlogPal) {
+        val currentActiveCode = activeVlogPal?.code
+        if (currentActiveCode != null) {
+            val matchingRealPal = createdPals.firstOrNull { it.code == currentActiveCode }
+            if (matchingRealPal != null && (matchingRealPal.name != activeVlogPal?.name || matchingRealPal.size != activeVlogPal?.size)) {
+                activeVlogPal = matchingRealPal
             }
         }
     }
@@ -2051,7 +2315,7 @@ fun HomeScreen(
                         if (uploadedVideoUrl.startsWith("http") && capturedVideoPath != null) {
                             val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
                             palPrefs.edit().putString("local_path_$uploadedVideoUrl", capturedVideoPath).apply()
-                            sharedPrefs.edit().putString("local_path_$uploadedVideoUrl", capturedVideoPath).apply()
+                            getVlogPrefs(context).edit().putString("local_path_$uploadedVideoUrl", capturedVideoPath).apply()
                         }
                         
                         var avatarUrl = ""
@@ -2287,138 +2551,22 @@ fun HomeScreen(
     ) {
         val screenContent = @Composable {
             if (onboardingFlowStep < 6) {
-                when (onboardingFlowStep) {
-                    -1 -> Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(if (isDark) Color(0xFF181513) else Color(0xFFFCF6ED)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center,
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            // Onboarding Collage layout
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(220.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                // Cloud Logo in the middle
-                                Image(
-                                    painter = painterResource(id = R.drawable.onboarding_logo),
-                                    contentDescription = "Pal Yellow Cloud Logo",
-                                    modifier = Modifier.size(130.dp).offset(y = 30.dp),
-                                    contentScale = ContentScale.Fit
-                                )
-                                // Envelope on left
-                                Image(
-                                    painter = painterResource(id = R.drawable.dm_envalope),
-                                    contentDescription = "Envelope with heart",
-                                    modifier = Modifier.offset(x = (-100).dp, y = 45.dp).size(50.dp)
-                                )
-                                // Moon on right
-                                Image(
-                                    painter = painterResource(id = R.drawable.dm_moon),
-                                    contentDescription = "Crescent Moon",
-                                    modifier = Modifier.offset(x = 100.dp, y = 45.dp).size(55.dp)
-                                )
-                                // Stars
-                                Image(
-                                    painter = painterResource(id = R.drawable.dm_star_1),
-                                    contentDescription = null,
-                                    modifier = Modifier.offset(x = (-115).dp, y = (-30).dp).size(36.dp)
-                                )
-                                Image(
-                                    painter = painterResource(id = R.drawable.dm_star_2),
-                                    contentDescription = null,
-                                    modifier = Modifier.offset(x = (-55).dp, y = (-55).dp).size(45.dp)
-                                )
-                                Image(
-                                    painter = painterResource(id = R.drawable.dm_star_3),
-                                    contentDescription = null,
-                                    modifier = Modifier.offset(x = 15.dp, y = (-65).dp).size(30.dp)
-                                )
-                                Image(
-                                    painter = painterResource(id = R.drawable.dm_star_4),
-                                    contentDescription = null,
-                                    modifier = Modifier.offset(x = 85.dp, y = (-55).dp).size(45.dp)
-                                )
-                                Image(
-                                    painter = painterResource(id = R.drawable.dm_star_5),
-                                    contentDescription = null,
-                                    modifier = Modifier.offset(x = 135.dp, y = (-20).dp).size(34.dp)
-                                )
-                            }
-                            
-                            Spacer(modifier = Modifier.height(32.dp))
-                            
-                            CircularProgressIndicator(
-                                color = Color(0xFF00E676),
-                                strokeWidth = 3.dp,
-                                modifier = Modifier.size(36.dp)
-                            )
-                            
-                            Spacer(modifier = Modifier.height(16.dp))
-                            
-                            Text(
-                                text = "Checking account status...",
-                                fontFamily = FontFamily.SansSerif,
-                                fontSize = 14.sp,
-                                color = if (isDark) Color(0xFFFCF6ED).copy(alpha = 0.6f) else Color(0xFF1E1C1A).copy(alpha = 0.6f),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                    0 -> CreatingAccountScreen(
-                        firstName = "",
-                        lastName = "",
-                        textColor = textColor,
-                        mutedTextColor = mutedTextColor
-                    )
-                    1 -> NameInputScreen(
-                        firstName = onboardingFirstName,
-                        onFirstNameChange = { onboardingFirstName = it },
-                        lastName = onboardingLastName,
-                        onLastNameChange = { onboardingLastName = it },
-                        onNext = { onboardingFlowStep = 2 },
-                        onCancel = { VlogPlayerManager.clearAll(); onSignOut() },
-                        isDark = isDark,
-                        textColor = textColor,
-                        mutedTextColor = mutedTextColor
-                    )
-                    2 -> NameConfirmScreen(
-                        firstName = onboardingFirstName,
-                        lastName = onboardingLastName,
-                        onContinue = {
-                            val newName = "$onboardingFirstName $onboardingLastName".trim()
-                            currentDisplayName = newName
-                            user?.let {
-                                sessionManager.saveUser(it.copy(displayName = newName))
-                            }
-                            onboardingFlowStep = 3
-                        },
-                        textColor = textColor,
-                        mutedTextColor = mutedTextColor
-                    )
-                    3 -> CreatingAccountScreen(
-                        firstName = onboardingFirstName,
-                        lastName = onboardingLastName,
-                        textColor = textColor,
-                        mutedTextColor = mutedTextColor
-                    )
-                    4 -> PermissionsScreen(
-                        onDone = {
-                            sessionManager.setHasLoggedInBefore(true)
-                            sessionManager.setOnboardingCompleted(true)
-                            onboardingFlowStep = 6
-                        },
-                        textColor = textColor,
-                        mutedTextColor = mutedTextColor
-                    )
-                }
+                OnboardingFlowContainer(
+                    onboardingFlowStep = onboardingFlowStep,
+                    onOnboardingFlowStepChange = { onboardingFlowStep = it },
+                    onboardingFirstName = onboardingFirstName,
+                    onOnboardingFirstNameChange = { onboardingFirstName = it },
+                    onboardingLastName = onboardingLastName,
+                    onOnboardingLastNameChange = { onboardingLastName = it },
+                    currentDisplayName = currentDisplayName,
+                    onCurrentDisplayNameChange = { currentDisplayName = it },
+                    user = user,
+                    sessionManager = sessionManager,
+                    onSignOut = onSignOut,
+                    isDark = isDark,
+                    textColor = textColor,
+                    mutedTextColor = mutedTextColor
+                )
             } else if (activeVlogPal != null) {
                 VlogScreenContent(
                     params = VlogScreenContentParams(
@@ -2579,22 +2727,7 @@ fun HomeScreen(
                                 
                                 if (palCode != "vlog") {
                                     // GROUP Pal DELETION
-                                    // 1. Add to local deleted blacklist in sharedPrefs
-                                    val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
-                                    val currentDeleted = if (savedDeleted.isEmpty()) mutableSetOf<String>() else savedDeleted.split(";;;").toMutableSet()
-                                    
-                                    val cleanPath = when {
-                                        deletedPath.startsWith("file://") -> deletedPath.substring(7)
-                                        else -> deletedPath
-                                    }
-                                    currentDeleted.add(deletedPath)
-                                    currentDeleted.add(cleanPath)
-                                    if (!deletedPath.startsWith("file://")) {
-                                        currentDeleted.add("file://$deletedPath")
-                                    }
-                                    sharedPrefs.edit().putString(deletedVlogsKey, currentDeleted.joinToString(";;;")).apply()
-
-                                    // 2. Remove from allPalsSubmissions
+                                    // 1. Remove from allPalsSubmissions
                                     val currentSubs = allPalsSubmissions[palCode]
                                     if (currentSubs != null) {
                                         val updatedSubs = currentSubs.filterNot { 
@@ -2604,7 +2737,7 @@ fun HomeScreen(
                                         allPalsSubmissions[palCode] = updatedSubs
                                     }
                                     
-                                    // 3. Delete from Supabase
+                                    // 2. Soft-delete from Supabase by setting deleted_at to now
                                     coroutineScope.launch {
                                         try {
                                             val dbSubs = supabaseClient.postgrest.from("submissions")
@@ -2620,7 +2753,9 @@ fun HomeScreen(
                                                 pathPart == deletedPath || it.imageUrl == deletedPath 
                                             }
                                             if (targetSub != null && targetSub.id != null) {
-                                                supabaseClient.postgrest.from("submissions").delete {
+                                                supabaseClient.postgrest.from("submissions").update(mapOf(
+                                                    "deleted_at" to java.time.Instant.now().toString()
+                                                )) {
                                                     filter {
                                                         eq("id", targetSub.id)
                                                     }
@@ -2641,7 +2776,7 @@ fun HomeScreen(
                                         val updatedCaptions = ArrayList(capturedVlogsCaptions).apply { if (globalIndex < size) removeAt(globalIndex) }
                                         val updatedDurations = ArrayList(capturedVlogsDurations).apply { if (globalIndex < size) removeAt(globalIndex) }
                                         
-                                        sharedPrefs.edit().apply {
+                                        getVlogPrefs(context).edit().apply {
                                             putString("vlog_paths", updatedPaths.joinToString(";;;"))
                                             putString("vlog_times", updatedTimes.joinToString(";;;"))
                                             putString("vlog_captions", updatedCaptions.joinToString(";;;"))
@@ -2649,21 +2784,6 @@ fun HomeScreen(
                                             apply()
                                         }
                                         
-                                        // Add to local deleted blacklist in sharedPrefs
-                                        val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
-                                        val currentDeleted = if (savedDeleted.isEmpty()) mutableSetOf<String>() else savedDeleted.split(";;;").toMutableSet()
-                                        
-                                        val cleanPath = when {
-                                            deletedPath.startsWith("file://") -> deletedPath.substring(7)
-                                            else -> deletedPath
-                                        }
-                                        currentDeleted.add(deletedPath)
-                                        currentDeleted.add(cleanPath)
-                                        if (!deletedPath.startsWith("file://")) {
-                                            currentDeleted.add("file://$deletedPath")
-                                        }
-                                        sharedPrefs.edit().putString(deletedVlogsKey, currentDeleted.joinToString(";;;")).apply()
-
                                         capturedVlogsPaths = updatedPaths
                                         capturedVlogsTimes = updatedTimes
                                         capturedVlogsCaptions = updatedCaptions
@@ -2687,7 +2807,9 @@ fun HomeScreen(
                                                     pathPart == deletedPath || it.imageUrl == deletedPath 
                                                 }
                                                 if (targetSub != null && targetSub.id != null) {
-                                                    supabaseClient.postgrest.from("submissions").delete {
+                                                    supabaseClient.postgrest.from("submissions").update(mapOf(
+                                                        "deleted_at" to java.time.Instant.now().toString()
+                                                    )) {
                                                         filter {
                                                             eq("id", targetSub.id)
                                                         }
@@ -2740,7 +2862,7 @@ fun HomeScreen(
                                     val updatedCaptions = ArrayList(capturedVlogsCaptions)
                                     updatedCaptions[globalIndex] = newCaption
                                     capturedVlogsCaptions = updatedCaptions
-                                    sharedPrefs.edit().putString("vlog_captions", updatedCaptions.joinToString(";;;")).apply()
+                                    getVlogPrefs(context).edit().putString("vlog_captions", updatedCaptions.joinToString(";;;")).apply()
                                 
                                 coroutineScope.launch {
                                     try {
@@ -2885,22 +3007,22 @@ fun HomeScreen(
                                         val updatedPaths = ArrayList(capturedVlogsPaths)
                                         updatedPaths.add(0, persistentPath)
                                         capturedVlogsPaths = updatedPaths
-                                        sharedPrefs.edit().putString("vlog_paths", updatedPaths.joinToString(";;;")).apply()
+                                        getVlogPrefs(context).edit().putString("vlog_paths", updatedPaths.joinToString(";;;")).apply()
 
                                         val updatedTimes = ArrayList(capturedVlogsTimes)
                                         updatedTimes.add(0, formattedTime)
                                         capturedVlogsTimes = updatedTimes
-                                        sharedPrefs.edit().putString("vlog_times", updatedTimes.joinToString(";;;")).apply()
+                                        getVlogPrefs(context).edit().putString("vlog_times", updatedTimes.joinToString(";;;")).apply()
 
                                         val updatedCaptions = ArrayList(capturedVlogsCaptions)
                                         updatedCaptions.add(0, caption)
                                         capturedVlogsCaptions = updatedCaptions
-                                        sharedPrefs.edit().putString("vlog_captions", updatedCaptions.joinToString(";;;")).apply()
+                                        getVlogPrefs(context).edit().putString("vlog_captions", updatedCaptions.joinToString(";;;")).apply()
 
                                         val updatedDurations = ArrayList(capturedVlogsDurations)
                                         updatedDurations.add(0, capturedVideoDuration.toString())
                                         capturedVlogsDurations = updatedDurations
-                                        sharedPrefs.edit().putString("vlog_durations", updatedDurations.joinToString(";;;")).apply()
+                                        getVlogPrefs(context).edit().putString("vlog_durations", updatedDurations.joinToString(";;;")).apply()
                                     }
                                 }
 
@@ -2937,7 +3059,7 @@ fun HomeScreen(
                                         if (uploadedVideoUrl.startsWith("http") && !localVideoPath.isNullOrBlank()) {
                                             val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
                                             palPrefs.edit().putString("local_path_$uploadedVideoUrl", localVideoPath).apply()
-                                            sharedPrefs.edit().putString("local_path_$uploadedVideoUrl", localVideoPath).apply()
+                                            getVlogPrefs(context).edit().putString("local_path_$uploadedVideoUrl", localVideoPath).apply()
                                         }
                                         
                                         var avatarUrl = ""
@@ -6352,17 +6474,7 @@ fun GroupMemberCard(
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
-            ) {
-                GroupHoursSmileysRow(
-                    submissions = memberSubs,
-                    isDark = isDark,
-                    accentColor = accentColor
-                )
-            }
+
 
             // Overlay 2: Time Text (Center)
             Text(
@@ -6723,8 +6835,8 @@ fun GroupMemberCard(
                     }
                 }
 
-                val userEmptyTextColor = if (isDark) Color(0xFF5C5E62) else textColor
-                val userEmptyCaptureColor = if (isDark) Color(0xFF5C5E62) else Color.Black
+                val userEmptyTextColor = if (isDark) Color(0xFF5C5E62) else Color(0xFF8E8E93)
+                val userEmptyCaptureColor = if (isDark) Color(0xFF5C5E62) else Color(0xFF8E8E93)
                 Text(
                     text = if (isUser) userFirstName else (memberName ?: ""),
                     fontFamily = FontFamily.SansSerif,
@@ -6742,8 +6854,8 @@ fun GroupMemberCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(if (isGrid) 4.dp else 6.dp)
             ) {
-                val userEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
-                val userEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color.Black
+                val userEmptyTextColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
+                val userEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
                 Text(
                     text = roundedHourStr,
                     fontFamily = DelaGothicOneFontFamily,
@@ -6788,7 +6900,7 @@ fun GroupMemberCard(
                     text = "•••",
                     fontSize = if (isGrid) 14.sp else 18.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isDark) Color(0xFF5C5E62) else Color.Black.copy(alpha = 0.7f)
+                    color = if (isDark) Color(0xFF5C5E62) else Color(0xFF8E8E93)
                 )
             }
         }
@@ -6981,7 +7093,7 @@ fun GroupMemberCard(
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = "Add Friend",
-                    tint = textColor,
+                    tint = if (isDark) textColor else Color(0xFF8E8E93),
                     modifier = Modifier.size(if (isGrid) 20.dp else 28.dp)
                 )
                 Text(
@@ -6989,7 +7101,7 @@ fun GroupMemberCard(
                     fontFamily = FontFamily.SansSerif,
                     fontSize = if (isGrid) 11.sp else 14.sp,
                     fontWeight = FontWeight.Normal,
-                    color = textColor
+                    color = if (isDark) textColor else Color(0xFF8E8E93)
                 )
             }
         }
@@ -7542,6 +7654,7 @@ fun VlogScreenContent(
                         .select {
                             filter {
                                 eq("pal_code", pal.code)
+                                filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
                             }
                         }
                         .decodeList<SubmissionDbItem>()
@@ -7628,15 +7741,8 @@ fun VlogScreenContent(
                         "$uId|||$cleanName|||${avatar ?: ""}"
                     }
 
-                    val sharedPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
-                    val deletedVlogsKey = "deleted_vlog_paths_$currentUserId"
-                    val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
-                    val currentDeleted = if (savedDeleted.isEmpty()) emptySet<String>() else savedDeleted.split(";;;").toSet()
-
                     val filteredSubmissions = dbSubs.filterNot { sub ->
-                        val parts = sub.imageUrl.split("|||")
-                        val path = parts.getOrNull(0) ?: ""
-                        path in currentDeleted || sub.imageUrl in currentDeleted || sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR")
+                        sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR")
                     }
                     val oldSubs = params.allPalsSubmissions[pal.code] ?: emptyList()
                     if (oldSubs != filteredSubmissions) {
@@ -7674,7 +7780,13 @@ fun VlogScreenContent(
     var selectedMemberIndex by remember(pal.code) { mutableStateOf(0) }
     val activePalSubmissions = params.allPalsSubmissions[pal.code] ?: emptyList<SubmissionDbItem>()
     val targetDate = remember(selectedDayOffset) {
-        java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
+        val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+        val activeLocalDate = if (now.hour < 4) {
+            now.toLocalDate().minusDays(1)
+        } else {
+            now.toLocalDate()
+        }
+        activeLocalDate.minusDays(selectedDayOffset.toLong())
     }
     val filteredSubmissions = remember(activePalSubmissions, targetDate) {
         activePalSubmissions.filter { sub ->
@@ -7907,17 +8019,22 @@ fun VlogScreenContent(
                                     androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
                                         repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                                         volume = 0f
-                                        if (path.startsWith("http")) {
-                                            setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(path)))
+                                        val localPath = getVlogPrefs(context).getString("local_path_$path", null)
+                                        val resolvedPath = localPath ?: path
+                                        if (resolvedPath.startsWith("http")) {
+                                            setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(resolvedPath)))
                                             prepare()
                                         } else {
                                             val cleanPath = when {
-                                                path.startsWith("file://") -> path.substring(7)
-                                                else -> path
+                                                resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
+                                                else -> resolvedPath
                                             }
                                             val file = java.io.File(cleanPath)
                                             if (file.exists()) {
                                                 setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
+                                                prepare()
+                                            } else if (path.startsWith("http")) {
+                                                setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(path)))
                                                 prepare()
                                             }
                                         }
@@ -8409,7 +8526,7 @@ fun VlogScreenContent(
                                     }
                                 }
 
-                                val vlogEmptyTextColor = if (isDark) Color(0xFF5C5E62) else textColor
+                                val vlogEmptyTextColor = if (isDark) Color(0xFF5C5E62) else Color(0xFF8E8E93)
                                 Text(
                                     text = currentDisplayName,
                                     fontFamily = FontFamily.SansSerif,
@@ -8428,7 +8545,7 @@ fun VlogScreenContent(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                val vlogEmptyTextColor = if (isDark) Color(0xFF5C5E62) else textColor
+                                val vlogEmptyTextColor = if (isDark) Color(0xFF5C5E62) else Color(0xFF8E8E93)
                                 Text(
                                     text = if (showEdit && editName.isNotEmpty()) editName else pal.name,
                                     fontFamily = BricolageVariableFontFamily,
@@ -8458,7 +8575,7 @@ fun VlogScreenContent(
                                     .padding(horizontal = 12.dp, vertical = 4.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                val vlogEmptyCaptureColor = if (isDark) Color(0xFF5C5E62) else Color.Black
+                                val vlogEmptyCaptureColor = if (isDark) Color(0xFF5C5E62) else Color(0xFF8E8E93)
                                 Text(
                                     text = "tap to capture",
                                     fontFamily = GoogleSansFontFamily,
@@ -9394,7 +9511,7 @@ fun VlogScreenContent(
                             Spacer(modifier = Modifier.width(8.dp))
 
                             Text(
-                                text = "delete log",
+                                text = "delete",
                                 fontFamily = FontFamily.SansSerif,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
@@ -9642,6 +9759,65 @@ fun VlogScreenContent(
                                             .padding(horizontal = 24.dp * scale)
                                     )
                                 } else {
+                                    val exportLocalPlayer = remember(capturedVlogsPaths) {
+                                        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+                                            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                                            volume = 0f
+                                        }
+                                    }
+
+                                    DisposableEffect(exportLocalPlayer) {
+                                        onDispose {
+                                            exportLocalPlayer.release()
+                                        }
+                                    }
+
+                                    var exportActiveIndex by remember { mutableStateOf(0) }
+                                    
+                                    LaunchedEffect(capturedVlogsPaths, exportLocalPlayer) {
+                                        exportLocalPlayer.stop()
+                                        exportLocalPlayer.clearMediaItems()
+                                        val reversedPaths = capturedVlogsPaths.reversed()
+                                        val resolved = reversedPaths.map { path ->
+                                            ensureVideoCached(context, path)
+                                        }
+                                        resolved.forEach { resolvedPath ->
+                                            if (resolvedPath.startsWith("http")) {
+                                                exportLocalPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(resolvedPath)))
+                                            } else {
+                                                val cleanPath = when {
+                                                    resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
+                                                    else -> resolvedPath
+                                                }
+                                                val fileTarget = java.io.File(cleanPath)
+                                                if (fileTarget.exists() && fileTarget.length() > 0) {
+                                                    val targetUri = android.net.Uri.fromFile(fileTarget)
+                                                    exportLocalPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
+                                                }
+                                            }
+                                        }
+                                        if (resolved.isNotEmpty()) {
+                                            exportLocalPlayer.prepare()
+                                        }
+                                        exportLocalPlayer.playWhenReady = true
+                                        exportLocalPlayer.play()
+                                    }
+
+                                    LaunchedEffect(exportLocalPlayer) {
+                                        exportLocalPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                                            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                                                super.onMediaItemTransition(mediaItem, reason)
+                                                exportActiveIndex = exportLocalPlayer.currentMediaItemIndex
+                                            }
+                                            override fun onPlaybackStateChanged(playbackState: Int) {
+                                                super.onPlaybackStateChanged(playbackState)
+                                                if (playbackState == androidx.media3.common.Player.STATE_READY) {
+                                                    exportLocalPlayer.play()
+                                                }
+                                            }
+                                        })
+                                    }
+
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -9658,7 +9834,7 @@ fun VlogScreenContent(
                                                     android.view.ViewGroup.LayoutParams.MATCH_PARENT
                                                 )
                                                 view.apply {
-                                                    val localPlayer = vlogExoPlayer
+                                                    val localPlayer = exportLocalPlayer
                                                     player = localPlayer
                                                     useController = false
                                                     resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
@@ -9695,7 +9871,7 @@ fun VlogScreenContent(
                                                                 calculatedRotation = 0f
                                                             }
                                                             
-                                                            android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                                                            android.util.Log.d("PalVideoScale", "Reverted scale for exportLocalPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
                                                             
                                                             textureView.pivotX = containerWidth / 2f
                                                             textureView.pivotY = containerHeight / 2f
@@ -9712,7 +9888,7 @@ fun VlogScreenContent(
                                                     }
                                                     addOnLayoutChangeListener(layoutListener)
 
-                                                    vlogExoPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                                                    exportLocalPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                                         override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                                             super.onVideoSizeChanged(videoSize)
                                                             applyVideoScale()
@@ -9728,18 +9904,15 @@ fun VlogScreenContent(
                                             },
                                             modifier = Modifier.fillMaxSize(),
                                             update = { view ->
-                                                if (view.player != vlogExoPlayer) {
-                                                    view.player = vlogExoPlayer
-                                                }
-                                                if (!vlogExoPlayer.isPlaying && vlogExoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
-                                                    vlogExoPlayer.play()
+                                                if (view.player != exportLocalPlayer) {
+                                                    view.player = exportLocalPlayer
                                                 }
                                             }
                                         )
                                         
-                                        val activeIndex = currentPlayingIndex.coerceIn(0, capturedVlogsPaths.lastIndex.coerceAtLeast(0))
-                                        val currentCaption = capturedVlogsCaptions.getOrNull(activeIndex) ?: ""
-                                        val currentTime = capturedVlogsTimes.getOrNull(activeIndex) ?: ""
+                                        val originalIndex = (capturedVlogsPaths.lastIndex - exportActiveIndex).coerceIn(0, capturedVlogsPaths.lastIndex.coerceAtLeast(0))
+                                        val currentCaption = capturedVlogsCaptions.getOrNull(originalIndex) ?: ""
+                                        val currentTime = capturedVlogsTimes.getOrNull(originalIndex) ?: ""
 
                                         // Left center: "vlog" text in BricolageVariableFontFamily
                                         Text(
@@ -9958,9 +10131,12 @@ fun VlogScreenContent(
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_save_${System.currentTimeMillis()}.mp4")
                                         val pathsToProcess = if (pal.isVlog) capturedVlogsPaths.reversed() else filteredPaths
+                                        val resolvedPaths = pathsToProcess.map { path ->
+                                            ensureVideoCached(context, path)
+                                        }
                                         val timesToProcess = if (pal.isVlog) capturedVlogsTimes.reversed() else filteredTimes
                                         val captionsToProcess = if (pal.isVlog) capturedVlogsCaptions.reversed() else filteredCaptions
-                                        val vlogsToProcess = if (pal.isVlog) List(pathsToProcess.size) { "vlog" } else {
+                                        val vlogsToProcess = if (pal.isVlog) List(resolvedPaths.size) { "vlog" } else {
                                             filteredSubmissions.map { sub ->
                                                 sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
                                             }
@@ -9968,7 +10144,7 @@ fun VlogScreenContent(
 
                                         VideoProcessor.processVideoList(
                                             context = context,
-                                            inputPaths = pathsToProcess,
+                                            inputPaths = resolvedPaths,
                                             outputPath = tempOut.absolutePath,
                                             vlogTexts = vlogsToProcess,
                                             timeTexts = timesToProcess,
@@ -10019,9 +10195,12 @@ fun VlogScreenContent(
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_share_${System.currentTimeMillis()}.mp4")
                                         val pathsToProcess = if (pal.isVlog) capturedVlogsPaths.reversed() else filteredPaths
+                                        val resolvedPaths = pathsToProcess.map { path ->
+                                            ensureVideoCached(context, path)
+                                        }
                                         val timesToProcess = if (pal.isVlog) capturedVlogsTimes.reversed() else filteredTimes
                                         val captionsToProcess = if (pal.isVlog) capturedVlogsCaptions.reversed() else filteredCaptions
-                                        val vlogsToProcess = if (pal.isVlog) List(pathsToProcess.size) { "vlog" } else {
+                                        val vlogsToProcess = if (pal.isVlog) List(resolvedPaths.size) { "vlog" } else {
                                             filteredSubmissions.map { sub ->
                                                 sub.userDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
                                             }
@@ -10029,7 +10208,7 @@ fun VlogScreenContent(
 
                                         VideoProcessor.processVideoList(
                                             context = context,
-                                            inputPaths = pathsToProcess,
+                                            inputPaths = resolvedPaths,
                                             outputPath = tempOut.absolutePath,
                                             vlogTexts = vlogsToProcess,
                                             timeTexts = timesToProcess,
@@ -11000,36 +11179,7 @@ fun VideoPlayerItem(
     LaunchedEffect(videoPaths) {
         val list = mutableListOf<String>()
         videoPaths.forEach { videoPath ->
-            if (videoPath.startsWith("http")) {
-                val cachedLocal = palPrefs.getString("local_path_$videoPath", null)
-                    ?: vlogPrefs.getString("local_path_$videoPath", null)
-                if (cachedLocal != null && java.io.File(cachedLocal).exists()) {
-                    list.add(cachedLocal)
-                } else {
-                    val fileName = videoPath.substringAfterLast("/")
-                    val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
-                    if (cacheFile.exists() && cacheFile.length() > 0) {
-                        list.add(cacheFile.absolutePath)
-                    } else {
-                        try {
-                            val storage = com.finrein.pals.PalApplication.supabase.storage.from("pals")
-                            val bytes = try {
-                                storage.downloadPublic(fileName)
-                            } catch (e1: Exception) {
-                                storage.downloadAuthenticated(fileName)
-                            }
-                            cacheFile.writeBytes(bytes)
-                            palPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
-                            list.add(cacheFile.absolutePath)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            list.add(videoPath)
-                        }
-                    }
-                }
-            } else {
-                list.add(videoPath)
-            }
+            list.add(ensureVideoCached(context, videoPath))
         }
         resolvedPaths = list
     }
@@ -11805,7 +11955,9 @@ fun PalChatOverlay(
         val feedItems = remember(pal.code, capturedVlogsPaths, allPalsSubmissions, currentUserId) {
             if (pal.isVlog) {
                 capturedVlogsPaths.mapIndexedNotNull { idx, path ->
-                    val cleanPath = if (path.startsWith("file://")) path.substring(7) else path
+                    val localPath = getVlogPrefs(context).getString("local_path_$path", null)
+                    val resolvedPath = localPath ?: path
+                    val cleanPath = if (resolvedPath.startsWith("file://")) resolvedPath.substring(7) else resolvedPath
                     val file = java.io.File(cleanPath)
                     if (file.exists() || path.startsWith("http")) {
                         val matchingSub = allPalsSubmissions["vlog"]?.firstOrNull { it.imageUrl.startsWith(path) }
@@ -14372,7 +14524,7 @@ fun VlogEmptyStateContent(
                     }
 
                     val firstName = currentDisplayName.substringBefore(" ")
-                    val vlogEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
+                    val vlogEmptyTextColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
                     Text(
                         text = firstName,
                         fontFamily = FontFamily.SansSerif,
@@ -14390,7 +14542,7 @@ fun VlogEmptyStateContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val vlogEmptyTextColor = if (isDark) Color(0xFF8E8E93) else textColor
+                    val vlogEmptyTextColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.offset(y = 2.5.dp)
@@ -14429,7 +14581,7 @@ fun VlogEmptyStateContent(
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        val vlogEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color.Black
+                        val vlogEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
                         Text(
                             text = "tap to capture",
                             fontFamily = GoogleSansFontFamily,
@@ -14592,16 +14744,6 @@ private fun GroupExportMemberSlot(
                 androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
                     repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                     volume = 0f
-                    videoPaths.forEach { videoPath ->
-                        val cleanPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
-                        val file = java.io.File(cleanPath)
-                        if (file.exists()) {
-                            addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
-                        } else if (videoPath.startsWith("http")) {
-                            addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(videoPath)))
-                        }
-                    }
-                    prepare()
                 }
             }
             DisposableEffect(localPlayer) {
@@ -14609,8 +14751,31 @@ private fun GroupExportMemberSlot(
                     localPlayer.release()
                 }
             }
-            LaunchedEffect(localPlayer) {
+            LaunchedEffect(videoPaths, localPlayer) {
+                localPlayer.stop()
+                localPlayer.clearMediaItems()
+                val resolved = videoPaths.map { path ->
+                    ensureVideoCached(context, path)
+                }
+                resolved.forEach { resolvedPath ->
+                    if (resolvedPath.startsWith("http")) {
+                        localPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(resolvedPath)))
+                    } else {
+                        val cleanPath = when {
+                            resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
+                            else -> resolvedPath
+                        }
+                        val file = java.io.File(cleanPath)
+                        if (file.exists()) {
+                            localPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
+                        }
+                    }
+                }
+                if (resolved.isNotEmpty()) {
+                    localPlayer.prepare()
+                }
                 localPlayer.playWhenReady = true
+                localPlayer.play()
             }
             androidx.compose.ui.viewinterop.AndroidView(
                 factory = { ctx ->

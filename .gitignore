@@ -8,6 +8,7 @@ local.properties
 .gradle/
 build/
 app/build/
+gradle-home/
 
 # Android Studio & VS Code layers
 .idea/

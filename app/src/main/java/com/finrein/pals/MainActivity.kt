@@ -45,27 +45,7 @@ class MainActivity : ComponentActivity() {
         }
         super.onCreate(savedInstanceState)
         
-        // Clear user-specific cache on startup to ensure a clean state
-        val sharedPrefs = applicationContext.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
-        sharedPrefs.edit().clear().apply()
-        val palPrefs = applicationContext.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
-        val sessionKeys = setOf(
-            "user_id", "user_email", "user_display_name", 
-            "user_is_passkey_registered", "avatar_uri", 
-            "onboarding_completed", "is_first_login", "has_logged_in_before"
-        )
-        val editor = palPrefs.edit()
-        palPrefs.all.keys.forEach { key ->
-            if (key !in sessionKeys) {
-                editor.remove(key)
-            }
-        }
-        editor.apply()
-        try {
-            applicationContext.cacheDir.deleteRecursively()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+
 
         val sessionManager = com.finrein.pals.data.local.SessionManager(applicationContext)
 
