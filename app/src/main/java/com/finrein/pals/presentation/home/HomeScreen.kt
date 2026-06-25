@@ -2029,32 +2029,34 @@ fun HomeScreen(
                                 imageUrl = "PROFILE_AVATAR",
                                 createdAt = java.time.Instant.now().toString()
                             )
-                            try {
-                                // safety step: check if this group code exists inside the master 'pals' table
-                                val exactGroupMatches = supabaseClient.postgrest.from("pals")
-                                    .select { filter { eq("pal_code", cleanCode) } }
-                                    .decodeList<PalDbItem>()
-                                
-                                // If the group was deleted or missing, recreate it instantly on the fly
-                                if (exactGroupMatches.isEmpty()) {
-                                    android.util.Log.w("FkSafety", "Pal code '$cleanCode' not found on server. Auto-seeding group row...")
-                                    supabaseClient.postgrest.from("pals")
-                                        .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
-                                }
 
-                                supabaseClient.postgrest.from("submissions").insert(profileSub)
-                                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    refreshActivePalDetails(cleanCode)
+                            // Use the mutex lock here so profile generation never cross-fires with real-time events
+                            if (!globalSyncMutex.isLocked) {
+                                globalSyncMutex.withLock {
+                                    // Check if group exists
+                                    val exactGroupMatches = supabaseClient.postgrest.from("pals")
+                                        .select { filter { eq("pal_code", cleanCode) } }
+                                        .decodeList<PalDbItem>()
+                                    
+                                    if (exactGroupMatches.isEmpty()) {
+                                        supabaseClient.postgrest.from("pals")
+                                            .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
+                                    }
+
+                                    // Insert profile token row safely
+                                    supabaseClient.postgrest.from("submissions").insert(profileSub)
+                                    
+                                    // ✅ THE FIX: Do NOT recall refreshActivePalDetails() recursively!
+                                    // Instead, update the local map memory directly on the main thread to break the loop.
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        val currentList = allPalsSubmissions[cleanCode] ?: emptyList()
+                                        allPalsSubmissions[cleanCode] = currentList + profileSub
+                                        pendingProfileInserts.remove(cleanCode)
+                                    }
                                 }
-                            } catch (e: io.github.jan.supabase.exceptions.RestException) {
-                                android.util.Log.e("SubmissionError", "Postgres ForeignKey block: Group $cleanCode might have been deleted.")
-                                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    activeVlogPal = null
-                                }
-                                pendingProfileInserts.remove(cleanCode)
                             }
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            android.util.Log.e("WarpProfileFix", "Profile setup stalled safely: ${e.message}")
                             pendingProfileInserts.remove(palCode)
                         }
                     }
