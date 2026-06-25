@@ -1,6 +1,8 @@
 package com.finrein.pals.presentation.home
 
 import android.os.Build
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.Mutex
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1006,6 +1008,8 @@ fun OnboardingFlowContainer(
     }
 }
 
+private val globalSyncMutex = Mutex()
+
 @Composable
 fun HomeScreen(
     user: com.finrein.pals.domain.model.User?,
@@ -1773,83 +1777,65 @@ fun HomeScreen(
         coroutineScope.launch {
             try {
                 isRefreshing = true
-                val mappings = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    supabaseClient.postgrest.from("user_pals")
-                        .select {
-                            filter {
-                                eq("user_id", currentUserId)
-                            }
-                        }
-                        .decodeList<UserPalMapping>()
-                }
                 
-                val palCodes = mappings.map { it.palCode }
-                val defaultVlog = PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true)
-                if (palCodes.isNotEmpty()) {
-                    val palsFromDb = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        supabaseClient.postgrest.from("pals")
-                            .select {
-                                filter {
-                                    isIn("pal_code", palCodes)
-                                }
-                            }
-                            .decodeList<PalDbItem>()
-                    }
+                // Force operations into a strict single-thread IO pool sequence context
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val mappings = supabaseClient.postgrest.from("user_pals")
+                        .select { filter { eq("user_id", currentUserId) } }
+                        .decodeList<UserPalMapping>()
                     
-                    val allGroupMappings = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        supabaseClient.postgrest.from("user_pals")
-                            .select {
-                                filter {
-                                    isIn("pal_code", palCodes)
-                                }
-                            }
+                    val palCodes = mappings.map { it.palCode }
+                    val defaultVlog = PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true)
+                    
+                    if (palCodes.isNotEmpty()) {
+                        val palsFromDb = supabaseClient.postgrest.from("pals")
+                            .select { filter { isIn("pal_code", palCodes) } }
+                            .decodeList<PalDbItem>()
+                        
+                        val allGroupMappings = supabaseClient.postgrest.from("user_pals")
+                            .select { filter { isIn("pal_code", palCodes) } }
                             .decodeList<UserPalMapping>()
-                    }
-                    val counts = allGroupMappings.groupBy { it.palCode }.mapValues { it.value.size }
-                    counts.forEach { (code, count) ->
-                        palPalsCount[code] = count
-                    }
+                            
+                        val counts = allGroupMappings.groupBy { it.palCode }.mapValues { it.value.size }
+                        counts.forEach { (code, count) -> palPalsCount[code] = count }
 
-                    val validCodes = palsFromDb.map { it.code }.toSet()
-                    val orphanedCodes = palCodes.filter { it !in validCodes }
-                    if (orphanedCodes.isNotEmpty()) {
-                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                            try {
-                                supabaseClient.postgrest.from("user_pals").delete {
-                                    filter {
-                                        eq("user_id", currentUserId)
-                                        isIn("pal_code", orphanedCodes)
-                                    }
+                        val validCodes = palsFromDb.map { it.code }.toSet()
+                        val orphanedCodes = palCodes.filter { it !in validCodes }
+                        
+                        if (orphanedCodes.isNotEmpty()) {
+                            supabaseClient.postgrest.from("user_pals").delete {
+                                filter {
+                                    eq("user_id", currentUserId)
+                                    isIn("pal_code", orphanedCodes)
                                 }
-                            } catch (e: Exception) {
-                                e.printStackTrace()
                             }
                         }
-                    }
 
-                    val creatorMap = allGroupMappings
-                        .groupBy { it.palCode }
-                        .mapValues { entry ->
-                            entry.value.minByOrNull { it.createdAt ?: "" }?.userId
+                        val creatorMap = allGroupMappings
+                            .groupBy { it.palCode }
+                            .mapValues { entry -> entry.value.minByOrNull { it.createdAt ?: "" }?.userId }
+
+                        val mappedPals = palsFromDb.map { dbPal ->
+                            val groupCreatorId = creatorMap[dbPal.code]
+                            PalItem(
+                                name = dbPal.name,
+                                size = palPalsCount[dbPal.code]?.toString() ?: "1",
+                                code = dbPal.code,
+                                isVlog = false,
+                                isCreator = groupCreatorId == currentUserId
+                            )
                         }
-
-                    val mappedPals = palsFromDb.map { dbPal ->
-                        val groupCreatorId = creatorMap[dbPal.code]
-                        PalItem(
-                            name = dbPal.name,
-                            size = palPalsCount[dbPal.code]?.toString() ?: "1",
-                            code = dbPal.code,
-                            isVlog = false,
-                            isCreator = groupCreatorId == currentUserId
-                        )
+                        
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            createdPals = (listOf(defaultVlog) + mappedPals)
+                                .distinctBy { it.code }
+                                .filterNot { locallyDeletedPals.containsKey(it.code) }
+                        }
+                    } else {
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            createdPals = listOf(defaultVlog).filterNot { locallyDeletedPals.containsKey(it.code) }
+                        }
                     }
-                    val combinedList = (listOf(defaultVlog) + mappedPals)
-                        .distinctBy { it.code }
-                        .filterNot { locallyDeletedPals.containsKey(it.code) }
-                    createdPals = combinedList
-                } else {
-                    val combinedList = listOf(defaultVlog).filterNot { locallyDeletedPals.containsKey(it.code) }
-                    createdPals = combinedList
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1881,7 +1867,7 @@ fun HomeScreen(
                         path.isNotEmpty() && !locallyDeletedSubmissions.containsKey(path) &&
                         (submission.id == null || !locallyDeletedSubmissions.containsKey(submission.id.toString()))
                     }
-                    .sortedByDescending { it.id ?: "" }
+                    .sortedByDescending { it.createdAt ?: "" }
                 
                 val paths = ArrayList<String>()
                 val times = ArrayList<String>()
@@ -1894,7 +1880,7 @@ fun HomeScreen(
                         val isSynced = sorted.any { sub ->
                             val subUrl = sub.imageUrl.split("|||").firstOrNull() ?: ""
                             val mappedLocal = getVlogPrefs(context).getString("local_path_$subUrl", null)
-                            mappedLocal == path
+                            mappedLocal == path || (mappedLocal != null && java.io.File(mappedLocal).name == java.io.File(path).name)
                         }
                         if (!isSynced) {
                             Triple(
@@ -1926,7 +1912,11 @@ fun HomeScreen(
                     
                     // If a database vlog is already represented by an unsynced local vlog in paths (via mapping), do not duplicate it
                     val isAlreadyAdded = paths.any { existingPath ->
-                        existingPath == path || getVlogPrefs(context).getString("local_path_$path", null) == existingPath
+                        existingPath == path || 
+                        getVlogPrefs(context).getString("local_path_$path", null) == existingPath ||
+                        (getVlogPrefs(context).getString("local_path_$path", null)?.let { mappedLocal ->
+                            java.io.File(mappedLocal).name == java.io.File(existingPath).name
+                        } ?: false)
                     }
                     if (!isAlreadyAdded) {
                         paths.add(path)
@@ -2147,27 +2137,29 @@ fun HomeScreen(
     }
 
     LaunchedEffect(currentUserId, lifecycleOwner) {
-        if (currentUserId.isNotEmpty()) {
-            lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-                var channel: io.github.jan.supabase.realtime.RealtimeChannel? = null
-                try {
-                    channel = supabaseClient.channel("pals_realtime_channel")
-                    
-                    val userPalsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
-                        table = "user_pals"
-                    }
-                    val submissionsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
-                        table = "submissions"
-                    }
-                    
-                    channel.subscribe()
-                    
-                    launch {
-                        userPalsFlow.collect { action ->
-                            try {
+        if (currentUserId.isEmpty()) return@LaunchedEffect
+        
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            var channel: io.github.jan.supabase.realtime.RealtimeChannel? = null
+            try {
+                channel = supabaseClient.channel("pals_realtime_channel")
+                
+                val userPalsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") { table = "user_pals" }
+                val submissionsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") { table = "submissions" }
+                val messagesFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") { table = "messages" }
+                
+                channel.subscribe()
+                
+                // USER_PALS STREAM WATCHDOG
+                launch {
+                    userPalsFlow.collect { action ->
+                        // Drop internal structural echo events if a refresh is already processing
+                        if (globalSyncMutex.isLocked) return@collect
+                        
+                        try {
+                            globalSyncMutex.withLock {
                                 when (action) {
                                     is PostgresAction.Insert, is PostgresAction.Delete -> {
-                                        android.util.Log.d("LoopGuard", "Valid user_pals structural mutation tracked. Synchronizing state...")
                                         val record = when (action) {
                                             is PostgresAction.Insert -> action.record
                                             is PostgresAction.Delete -> action.oldRecord
@@ -2177,6 +2169,7 @@ fun HomeScreen(
                                         val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
                                         
                                         if (eventUserId == currentUserId) {
+                                            // Run sequentially under a single coroutine job to avoid thread racing
                                             refreshPals()
                                             refreshVlogs()
                                         }
@@ -2184,22 +2177,54 @@ fun HomeScreen(
                                             refreshActivePalDetails(eventPalCode)
                                         }
                                     }
-                                    else -> {
-                                        android.util.Log.d("LoopGuard", "Suppressed user_pals non-structural update event to protect pool.")
-                                    }
+                                    else -> android.util.Log.d("WarpGuard", "Suppressed user_pals update echo.")
                                 }
-                            } catch (e: Exception) {
-                                android.util.Log.e("RealtimeStreamError", "Safely caught user_pals loop execution crash: ${e.message}")
                             }
+                        } catch (e: Exception) {
+                            android.util.Log.e("WarpGuardError", "user_pals collection boundary caught: ${e.message}")
                         }
                     }
-                    
-                    launch {
-                        submissionsFlow.collect { action ->
-                            try {
+                }
+                
+                // SUBMISSIONS STREAM WATCHDOG
+                launch {
+                    submissionsFlow.collect { action ->
+                        if (globalSyncMutex.isLocked) return@collect
+                        
+                        try {
+                            globalSyncMutex.withLock {
                                 when (action) {
                                     is PostgresAction.Insert, is PostgresAction.Delete -> {
-                                        android.util.Log.d("LoopGuard", "Valid submissions structural mutation tracked. Synchronizing state...")
+                                        val record = when (action) {
+                                            is PostgresAction.Insert -> action.record
+                                            is PostgresAction.Delete -> action.oldRecord
+                                            else -> null
+                                        }
+                                        val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
+                                        
+                                        if (eventPalCode != null && eventPalCode == activeVlogPal?.code) {
+                                            refreshActivePalDetails(eventPalCode)
+                                        }
+                                        refreshVlogs()
+                                    }
+                                    else -> android.util.Log.d("WarpGuard", "Suppressed submissions update echo.")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("WarpGuardError", "submissions collection boundary caught: ${e.message}")
+                        }
+                    }
+                }
+
+                // MESSAGES STREAM WATCHDOG
+                launch {
+                    messagesFlow.collect { action ->
+                        if (globalSyncMutex.isLocked) return@collect
+                        
+                        try {
+                            globalSyncMutex.withLock {
+                                when (action) {
+                                    is PostgresAction.Insert, is PostgresAction.Delete -> {
                                         val record = when (action) {
                                             is PostgresAction.Insert -> action.record
                                             is PostgresAction.Delete -> action.oldRecord
@@ -2207,28 +2232,26 @@ fun HomeScreen(
                                         }
                                         val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
                                         if (eventPalCode != null && eventPalCode == activeVlogPal?.code) {
-                                            refreshActivePalDetails(eventPalCode)
+                                            refreshMessages(eventPalCode)
                                         }
-                                        refreshVlogs()
                                     }
-                                    else -> {
-                                        android.util.Log.d("LoopGuard", "Suppressed submissions non-structural update event to protect pool.")
-                                    }
+                                    else -> android.util.Log.d("WarpGuard", "Suppressed messages update echo.")
                                 }
-                            } catch (e: Exception) {
-                                android.util.Log.e("RealtimeStreamError", "Safely caught submissions loop execution crash: ${e.message}")
                             }
+                        } catch (e: Exception) {
+                            android.util.Log.e("WarpGuardError", "messages collection boundary caught: ${e.message}")
                         }
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                } finally {
-                    channel?.let {
-                        try {
-                            supabaseClient.realtime.removeChannel(it)
-                        } catch (ex: Exception) {
-                            ex.printStackTrace()
-                        }
+                }
+                
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                channel?.let {
+                    try {
+                        supabaseClient.realtime.removeChannel(it)
+                    } catch (ex: Exception) {
+                        ex.printStackTrace()
                     }
                 }
             }
@@ -2245,11 +2268,8 @@ fun HomeScreen(
                     // Ignore if already exists or RLS blocks
                 }
             }
-            while (true) {
-                refreshPals()
-                refreshVlogs()
-                delay(10000)
-            }
+            refreshPals()
+            refreshVlogs()
         }
     }
 
@@ -2334,6 +2354,15 @@ fun HomeScreen(
             val stateString = "$selectedTab|||${activeVlogPal?.code ?: ""}"
             coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 try {
+                    val exactGroupMatches = supabaseClient.postgrest.from("pals")
+                        .select { filter { eq("pal_code", "user_state") } }
+                        .decodeList<PalDbItem>()
+                    if (exactGroupMatches.isEmpty()) {
+                        android.util.Log.w("FkSafety", "Pal code 'user_state' not found on server. Auto-seeding group row...")
+                        supabaseClient.postgrest.from("pals")
+                            .upsert(PalDbItem(code = "user_state", name = "User State Group"), onConflict = "pal_code")
+                    }
+
                     val existing = supabaseClient.postgrest.from("submissions")
                         .select {
                             filter {
@@ -2383,12 +2412,6 @@ fun HomeScreen(
         if (pal != null && pal.code != "vlog") {
             refreshActivePalDetails(pal.code)
             refreshMessages(pal.code)
-            
-            while (true) {
-                delay(10000)
-                refreshActivePalDetails(pal.code)
-                refreshMessages(pal.code)
-            }
         }
     }
     var isCapturingPal by remember { mutableStateOf(false) }
@@ -2838,8 +2861,25 @@ fun HomeScreen(
                                 allPalsMessages.remove(p.code)
                                 allPalsMembers.remove(p.code)
                                 pendingProfileInserts.remove(p.code)
-                                coroutineScope.launch {
-                                    authRepository.deletePalsGroupForever(p.code)
+                                if (p.code == "vlog") {
+                                    capturedVlogsPaths = emptyList()
+                                    capturedVlogsTimes = emptyList()
+                                    capturedVlogsCaptions = emptyList()
+                                    capturedVlogsDurations = emptyList()
+                                    getVlogPrefs(context).edit().clear().apply()
+                                }
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    try {
+                                        supabaseClient.postgrest.from("pals")
+                                            .delete {
+                                                filter {
+                                                    eq("pal_code", p.code)
+                                                }
+                                            }
+                                        android.util.Log.d("WarpGuard", "Network drop complete. Database pals cascade finished.")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("WarpGuardError", "Background pals group delete failed: ${e.message}")
+                                    }
                                 }
                                 activeVlogPal = null
                             }
@@ -2855,8 +2895,26 @@ fun HomeScreen(
                                 allPalsMessages.remove(p.code)
                                 allPalsMembers.remove(p.code)
                                 pendingProfileInserts.remove(p.code)
-                                coroutineScope.launch {
-                                    authRepository.leavePalsGroup(p.code, currentUserId)
+                                if (p.code == "vlog") {
+                                    capturedVlogsPaths = emptyList()
+                                    capturedVlogsTimes = emptyList()
+                                    capturedVlogsCaptions = emptyList()
+                                    capturedVlogsDurations = emptyList()
+                                    getVlogPrefs(context).edit().clear().apply()
+                                }
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    try {
+                                        supabaseClient.postgrest.from("user_pals")
+                                            .delete {
+                                                filter {
+                                                    eq("pal_code", p.code)
+                                                    eq("user_id", currentUserId)
+                                                }
+                                            }
+                                        android.util.Log.d("WarpGuard", "Network drop complete. Database user_pals cascade finished.")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("WarpGuardError", "Background user_pals leave failed: ${e.message}")
+                                    }
                                 }
                                 activeVlogPal = null
                             }
@@ -3211,7 +3269,14 @@ fun HomeScreen(
                                         if (uploadedVideoUrl.startsWith("http") && !localVideoPath.isNullOrBlank()) {
                                             val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
                                             palPrefs.edit().putString("local_path_$uploadedVideoUrl", localVideoPath).apply()
-                                            getVlogPrefs(context).edit().putString("local_path_$uploadedVideoUrl", localVideoPath).apply()
+                                            
+                                            val vlogPathValue = if (targetPalCode == "vlog") {
+                                                val cleanPath = if (localVideoPath.startsWith("file://")) localVideoPath.substring(7) else localVideoPath
+                                                java.io.File(context.filesDir, java.io.File(cleanPath).name).absolutePath
+                                            } else {
+                                                localVideoPath
+                                            }
+                                            getVlogPrefs(context).edit().putString("local_path_$uploadedVideoUrl", vlogPathValue).apply()
                                         }
                                         
                                         var avatarUrl = ""
@@ -3338,9 +3403,11 @@ fun HomeScreen(
 
                                     if (matchedPalDb != null) {
                                         val newMapping = UserPalMapping(
-                                            userId = currentUserId,
-                                            palCode = code
-                                        )
+    userId = currentUserId,
+    palCode = code,
+    userDisplayName = currentDisplayName,
+    userAvatarUrl = customAvatarUriString
+)
                                         supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
                                         val matchedItem = PalItem(
                                             name = matchedPalDb.name,
@@ -3604,7 +3671,9 @@ fun HomeScreen(
             mutedTextColor = mutedTextColor,
             palTextLogoColor = palTextLogoColor,
             backgroundColor = backgroundColor,
-            supabaseClient = supabaseClient
+            supabaseClient = supabaseClient,
+            currentDisplayName = currentDisplayName,
+            customAvatarUriString = customAvatarUriString
         )
 
         // Join Pal Dialog Flow (Overlay Card at bottom / center based on focus)
@@ -3619,7 +3688,9 @@ fun HomeScreen(
             createdPals = createdPals,
             onCreatedPalsChange = { createdPals = it },
             refreshPals = { refreshPals() },
-            supabaseClient = supabaseClient
+            supabaseClient = supabaseClient,
+            currentDisplayName = currentDisplayName,
+            customAvatarUriString = customAvatarUriString
         )
 
         // Edit Name Dialog Flow (Centered Screen Overlay)
@@ -5743,62 +5814,59 @@ fun CapturedPreviewScreen(
     val deletedVlogsKey = "deleted_vlog_paths_$currentUserId"
 
     LaunchedEffect(createdPals, currentDisplayName) {
-        while (true) {
-            createdPals.forEach { pal ->
-                if (pal.isVlog) {
-                    groupMembersMap[pal.code] = listOf("only you")
-                } else {
-                    launch(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
-                                .select { filter { eq("pal_code", pal.code) } }
-                                .decodeList<SubmissionDbItem>()
-                            val mappings = com.finrein.pals.PalApplication.supabase.postgrest.from("user_pals")
-                                .select { filter { eq("pal_code", pal.code) } }
-                                .decodeList<UserPalMapping>()
-                                .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
+        createdPals.forEach { pal ->
+            if (pal.isVlog) {
+                groupMembersMap[pal.code] = listOf("only you")
+            } else {
+                launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
+                            .select { filter { eq("pal_code", pal.code) } }
+                            .decodeList<SubmissionDbItem>()
+                        val mappings = com.finrein.pals.PalApplication.supabase.postgrest.from("user_pals")
+                            .select { filter { eq("pal_code", pal.code) } }
+                            .decodeList<UserPalMapping>()
+                            .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
 
-                            val memberList = mutableListOf<String>()
-                            val addedUserIds = mutableSetOf<String>()
+                        val memberList = mutableListOf<String>()
+                        val addedUserIds = mutableSetOf<String>()
 
-                            mappings.forEach { mapping ->
-                                if (mapping.userId.isNotEmpty() && !addedUserIds.contains(mapping.userId)) {
-                                    val sub = dbSubs.firstOrNull { it.userId == mapping.userId }
-                                    val (displayName, avatarUrl) = if (sub != null) {
-                                        parseUserDisplayName(sub.userDisplayName)
+                        mappings.forEach { mapping ->
+                            if (mapping.userId.isNotEmpty() && !addedUserIds.contains(mapping.userId)) {
+                                val sub = dbSubs.firstOrNull { it.userId == mapping.userId }
+                                val (displayName, avatarUrl) = if (sub != null) {
+                                    parseUserDisplayName(sub.userDisplayName)
+                                } else {
+                                    if (mapping.userId == currentUserId) {
+                                        val localAvatar = if (customAvatarUriString?.startsWith("http") == true) customAvatarUriString else null
+                                        Pair(userFirstName, localAvatar)
                                     } else {
-                                        if (mapping.userId == currentUserId) {
-                                            val localAvatar = if (customAvatarUriString?.startsWith("http") == true) customAvatarUriString else null
-                                            Pair(userFirstName, localAvatar)
-                                        } else {
-                                            Pair("Pal", null)
-                                        }
+                                        Pair("Pal", null)
                                     }
-                                    val formatted = "${mapping.userId}|||$displayName|||${avatarUrl ?: ""}"
-                                    memberList.add(formatted)
-                                    addedUserIds.add(mapping.userId)
                                 }
+                                val formatted = "${mapping.userId}|||$displayName|||${avatarUrl ?: ""}"
+                                memberList.add(formatted)
+                                addedUserIds.add(mapping.userId)
                             }
-
-                            dbSubs.forEach { sub ->
-                                if (sub.userId.isNotEmpty() && !addedUserIds.contains(sub.userId)) {
-                                    val (displayName, avatarUrl) = parseUserDisplayName(sub.userDisplayName)
-                                    val formatted = "${sub.userId}|||$displayName|||${avatarUrl ?: ""}"
-                                    memberList.add(formatted)
-                                    addedUserIds.add(sub.userId)
-                                }
-                            }
-
-                            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                groupMembersMap[pal.code] = memberList
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
                         }
+
+                        dbSubs.forEach { sub ->
+                            if (sub.userId.isNotEmpty() && !addedUserIds.contains(sub.userId)) {
+                                val (displayName, avatarUrl) = parseUserDisplayName(sub.userDisplayName)
+                                val formatted = "${sub.userId}|||$displayName|||${avatarUrl ?: ""}"
+                                memberList.add(formatted)
+                                addedUserIds.add(sub.userId)
+                            }
+                        }
+
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            groupMembersMap[pal.code] = memberList
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
             }
-            delay(10000)
         }
     }
 
@@ -12183,7 +12251,7 @@ fun PalChatOverlay(
                         null
                     }
                 }
-                .sortedBy { it.rawInstant }
+                .sortedByDescending { it.rawInstant }
             } else {
                 val subs = allPalsSubmissions[pal.code] ?: emptyList()
                 subs.mapNotNull { sub ->
@@ -12256,7 +12324,8 @@ fun PalChatOverlay(
                         .padding(top = 64.dp, bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    groupedByDay.keys.sorted().forEach { dayDate ->
+                    val sortedKeys = if (pal.isVlog) groupedByDay.keys.sortedDescending() else groupedByDay.keys.sorted()
+                    sortedKeys.forEach { dayDate ->
                         val dayFeed = groupedByDay[dayDate] ?: emptyList()
                         val today = java.time.LocalDate.now()
                         val dayLabel = when (dayDate) {
@@ -12883,7 +12952,9 @@ fun JoinPalDialogOverlay(
     createdPals: List<PalItem>,
     onCreatedPalsChange: (List<PalItem>) -> Unit,
     refreshPals: () -> Unit,
-    supabaseClient: io.github.jan.supabase.SupabaseClient
+    supabaseClient: io.github.jan.supabase.SupabaseClient,
+    currentDisplayName: String,
+    customAvatarUriString: String?
 ) {
     if (showJoinPalFlow) {
         androidx.activity.compose.BackHandler {
@@ -13084,7 +13155,9 @@ fun JoinPalDialogOverlay(
                                             if (existingMapping == null) {
                                                 val newMapping = UserPalMapping(
                                                     userId = currentUserId,
-                                                    palCode = code
+                                                    palCode = code,
+                                                    userDisplayName = currentDisplayName,
+                                                    userAvatarUrl = customAvatarUriString
                                                 )
                                                 // If code is invalid, foreign key constraint will throw exception here
                                                 supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
@@ -13399,7 +13472,9 @@ fun CreatePalDialogOverlay(
     mutedTextColor: Color,
     palTextLogoColor: Color,
     backgroundColor: Color,
-    supabaseClient: io.github.jan.supabase.SupabaseClient
+    supabaseClient: io.github.jan.supabase.SupabaseClient,
+    currentDisplayName: String,
+    customAvatarUriString: String?
 ) {
     if (showCreatePalFlow) {
         val localScope = rememberCoroutineScope()
@@ -13692,9 +13767,11 @@ fun CreatePalDialogOverlay(
                                         supabaseClient.postgrest.from("pals").upsert(newPalDb, onConflict = "pal_code")
                                         
                                         val newMapping = UserPalMapping(
-                                            userId = currentUserId,
-                                            palCode = generatedPalCode
-                                        )
+    userId = currentUserId,
+    palCode = generatedPalCode,
+    userDisplayName = currentDisplayName,
+    userAvatarUrl = customAvatarUriString
+)
                                         supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
                                         
                                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
