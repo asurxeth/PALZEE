@@ -2037,6 +2037,18 @@ fun HomeScreen(
                                 createdAt = java.time.Instant.now().toString()
                             )
                             try {
+                                // safety step: check if this group code exists inside the master 'pals' table
+                                val exactGroupMatches = supabaseClient.postgrest.from("pals")
+                                    .select { filter { eq("pal_code", cleanCode) } }
+                                    .decodeList<PalDbItem>()
+                                
+                                // If the group was deleted or missing, recreate it instantly on the fly
+                                if (exactGroupMatches.isEmpty()) {
+                                    android.util.Log.w("FkSafety", "Pal code '$cleanCode' not found on server. Auto-seeding group row...")
+                                    supabaseClient.postgrest.from("pals")
+                                        .insert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"))
+                                }
+
                                 supabaseClient.postgrest.from("submissions").insert(profileSub)
                                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                                     refreshActivePalDetails(cleanCode)
@@ -2445,6 +2457,18 @@ fun HomeScreen(
                             createdAt = java.time.Instant.now().toString()
                         )
                         try {
+                            // safety step: check if this group code exists inside the master 'pals' table
+                            val exactGroupMatches = supabaseClient.postgrest.from("pals")
+                                .select { filter { eq("pal_code", cleanCode) } }
+                                .decodeList<PalDbItem>()
+                            
+                            // If the group was deleted or missing, recreate it instantly on the fly
+                            if (exactGroupMatches.isEmpty()) {
+                                android.util.Log.w("FkSafety", "Pal code '$cleanCode' not found on server. Auto-seeding group row...")
+                                supabaseClient.postgrest.from("pals")
+                                    .insert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"))
+                            }
+
                             supabaseClient.postgrest.from("submissions").insert(newSubmission)
                             withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 if (cleanCode != "vlog") {
@@ -3185,6 +3209,18 @@ fun HomeScreen(
                                             createdAt = java.time.Instant.now().toString()
                                         )
                                         try {
+                                            // safety step: check if this group code exists inside the master 'pals' table
+                                            val exactGroupMatches = supabaseClient.postgrest.from("pals")
+                                                .select { filter { eq("pal_code", cleanCode) } }
+                                                .decodeList<PalDbItem>()
+                                            
+                                            // If the group was deleted or missing, recreate it instantly on the fly
+                                            if (exactGroupMatches.isEmpty()) {
+                                                android.util.Log.w("FkSafety", "Pal code '$cleanCode' not found on server. Auto-seeding group row...")
+                                                supabaseClient.postgrest.from("pals")
+                                                    .insert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"))
+                                            }
+
                                             supabaseClient.postgrest.from("submissions").insert(newSubmission)
                                             withContext(kotlinx.coroutines.Dispatchers.Main) {
                                                 if (cleanCode != "vlog") {
