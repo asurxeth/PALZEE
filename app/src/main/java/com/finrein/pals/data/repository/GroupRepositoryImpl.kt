@@ -29,7 +29,7 @@ class GroupRepositoryImpl @Inject constructor(
         runCatching {
             supabaseClient.postgrest.from("pals").delete {
                 filter {
-                    eq("code", groupId)
+                    eq("pal_code", groupId)
                 }
             }
             Unit

@@ -794,7 +794,7 @@ fun PalGroupCard(
                 val timestamp = getSubmissionTimestamp(userSub)
                 val durationStr = formatDuration(timestamp)
                 withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
-                    append("sent log ")
+                    append("sent pal ")
                 }
                 val numberPart = durationStr.takeWhile { it.isDigit() }
                 val suffixPart = durationStr.dropWhile { it.isDigit() }

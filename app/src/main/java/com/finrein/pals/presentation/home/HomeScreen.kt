@@ -102,6 +102,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.Lifecycle
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.json.jsonPrimitive
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.storage.storage
@@ -113,6 +114,7 @@ import java.util.concurrent.ConcurrentHashMap
 import io.github.jan.supabase.gotrue.auth
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.camera.view.PreviewView
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -273,8 +275,8 @@ data class VlogRecord(
 )
 
 suspend fun sendVideoPalToVlog(context: android.content.Context, localUri: android.net.Uri, userId: String, palCode: String) {
-    kotlinx.coroutines.coroutineScope {
-        val permanentVideoUrl = uploadPalVideoAndGetUrl(context, localUri, userId) ?: return@coroutineScope
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val permanentVideoUrl = uploadPalVideoAndGetUrl(context, localUri, userId) ?: return@withContext
         
         val newVlogRecord = VlogRecord(
             user_id = userId,
@@ -314,11 +316,8 @@ suspend fun deleteVlogPostPermanently(userId: String, videoUrl: String, palCode:
 
 @Serializable
 data class PalDbItem(
-    val code: String,
+    @SerialName("pal_code") val code: String,
     val name: String,
-    val size: Int,
-    @SerialName("is_vlog") val isVlog: Boolean,
-    @SerialName("creator_id") val creatorId: String,
     @SerialName("created_at") val createdAt: String? = null
 )
 
@@ -327,8 +326,9 @@ data class UserPalMapping(
     val id: String? = null,
     @SerialName("user_id") val userId: String,
     @SerialName("pal_code") val palCode: String,
-    @SerialName("created_at") val createdAt: String? = null,
-    @SerialName("deleted_at") val deletedAt: String? = null
+    @SerialName("user_display_name") val userDisplayName: String? = null,
+    @SerialName("user_avatar_url") val userAvatarUrl: String? = null,
+    @SerialName("joined_at") val createdAt: String? = null
 )
 
 @Serializable
@@ -338,8 +338,7 @@ data class SubmissionDbItem(
     @SerialName("user_id") val userId: String,
     @SerialName("user_display_name") val userDisplayName: String,
     @SerialName("image_url") val imageUrl: String,
-    @SerialName("created_at") val createdAt: String? = null,
-    @SerialName("deleted_at") val deletedAt: String? = null
+    @SerialName("created_at") val createdAt: String? = null
 )
 
 @Serializable
@@ -1187,23 +1186,24 @@ fun HomeScreen(
             }
             try {
                 val supabase = com.finrein.pals.PalApplication.supabase
-                val mappings = supabase.postgrest.from("user_pals")
-                    .select {
-                        filter {
-                            eq("user_id", currentUserId)
-                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                val (mappings, dbSubmissions) = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val m = supabase.postgrest.from("user_pals")
+                        .select {
+                            filter {
+                                eq("user_id", currentUserId)
+                            }
                         }
-                    }
-                    .decodeList<UserPalMapping>()
+                        .decodeList<UserPalMapping>()
 
-                val dbSubmissions = supabase.postgrest.from("submissions")
-                    .select {
-                        filter {
-                            eq("user_id", currentUserId)
-                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                    val s = supabase.postgrest.from("submissions")
+                        .select {
+                            filter {
+                                eq("user_id", currentUserId)
+                            }
                         }
-                    }
-                    .decodeList<SubmissionDbItem>()
+                        .decodeList<SubmissionDbItem>()
+                    Pair(m, s)
+                }
 
                 val userCreatedAt = try {
                     supabase.auth.currentUserOrNull()?.createdAt
@@ -1451,6 +1451,8 @@ fun HomeScreen(
     val allPalsSubmissions = remember { mutableStateMapOf<String, List<SubmissionDbItem>>() }
     val allPalsMessages = remember { mutableStateMapOf<String, List<MessageDbItem>>() }
     val allPalsMembers = remember { mutableStateMapOf<String, List<String>>() }
+    val locallyDeletedPals = remember { mutableStateMapOf<String, Boolean>() }
+    val locallyDeletedSubmissions = remember { mutableStateMapOf<String, Boolean>() }
     var selectedDayOffset by remember { mutableStateOf(0) }
 
     val palReactions = remember { mutableStateMapOf<String, String>() }
@@ -1770,34 +1772,38 @@ fun HomeScreen(
         coroutineScope.launch {
             try {
                 isRefreshing = true
-                val mappings = supabaseClient.postgrest.from("user_pals")
-                    .select {
-                        filter {
-                            eq("user_id", currentUserId)
-                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                val mappings = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    supabaseClient.postgrest.from("user_pals")
+                        .select {
+                            filter {
+                                eq("user_id", currentUserId)
+                            }
                         }
-                    }
-                    .decodeList<UserPalMapping>()
+                        .decodeList<UserPalMapping>()
+                }
                 
                 val palCodes = mappings.map { it.palCode }
                 val defaultVlog = PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true)
                 if (palCodes.isNotEmpty()) {
-                    val palsFromDb = supabaseClient.postgrest.from("pals")
-                        .select {
-                            filter {
-                                isIn("code", palCodes)
+                    val palsFromDb = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        supabaseClient.postgrest.from("pals")
+                            .select {
+                                filter {
+                                    isIn("pal_code", palCodes)
+                                }
                             }
-                        }
-                        .decodeList<PalDbItem>()
+                            .decodeList<PalDbItem>()
+                    }
                     
-                    val allGroupMappings = supabaseClient.postgrest.from("user_pals")
-                        .select {
-                            filter {
-                                isIn("pal_code", palCodes)
-                                filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                    val allGroupMappings = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        supabaseClient.postgrest.from("user_pals")
+                            .select {
+                                filter {
+                                    isIn("pal_code", palCodes)
+                                }
                             }
-                        }
-                        .decodeList<UserPalMapping>()
+                            .decodeList<UserPalMapping>()
+                    }
                     val counts = allGroupMappings.groupBy { it.palCode }.mapValues { it.value.size }
                     counts.forEach { (code, count) ->
                         palPalsCount[code] = count
@@ -1806,7 +1812,7 @@ fun HomeScreen(
                     val validCodes = palsFromDb.map { it.code }.toSet()
                     val orphanedCodes = palCodes.filter { it !in validCodes }
                     if (orphanedCodes.isNotEmpty()) {
-                        coroutineScope.launch {
+                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                             try {
                                 supabaseClient.postgrest.from("user_pals").delete {
                                     filter {
@@ -1820,19 +1826,28 @@ fun HomeScreen(
                         }
                     }
 
+                    val creatorMap = allGroupMappings
+                        .groupBy { it.palCode }
+                        .mapValues { entry ->
+                            entry.value.minByOrNull { it.createdAt ?: "" }?.userId
+                        }
+
                     val mappedPals = palsFromDb.map { dbPal ->
+                        val groupCreatorId = creatorMap[dbPal.code]
                         PalItem(
                             name = dbPal.name,
-                            size = dbPal.size.toString(),
+                            size = palPalsCount[dbPal.code]?.toString() ?: "1",
                             code = dbPal.code,
-                            isVlog = dbPal.isVlog,
-                            isCreator = dbPal.creatorId == currentUserId
+                            isVlog = false,
+                            isCreator = groupCreatorId == currentUserId
                         )
                     }
-                    val combinedList = (listOf(defaultVlog) + mappedPals).distinctBy { it.code }
+                    val combinedList = (listOf(defaultVlog) + mappedPals)
+                        .distinctBy { it.code }
+                        .filterNot { locallyDeletedPals.containsKey(it.code) }
                     createdPals = combinedList
                 } else {
-                    val combinedList = listOf(defaultVlog)
+                    val combinedList = listOf(defaultVlog).filterNot { locallyDeletedPals.containsKey(it.code) }
                     createdPals = combinedList
                 }
             } catch (e: Exception) {
@@ -1847,21 +1862,23 @@ fun HomeScreen(
         if (currentUserId.isEmpty()) return
         coroutineScope.launch {
             try {
-                val dbSubmissions = supabaseClient.postgrest.from("submissions")
-                    .select {
-                        filter {
-                            eq("pal_code", "vlog")
-                            eq("user_id", currentUserId)
-                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                val dbSubmissions = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    supabaseClient.postgrest.from("submissions")
+                        .select {
+                            filter {
+                                eq("pal_code", "vlog")
+                                eq("user_id", currentUserId)
+                            }
                         }
-                    }
-                    .decodeList<SubmissionDbItem>()
+                        .decodeList<SubmissionDbItem>()
+                }
                 
                 val sorted = dbSubmissions
                     .filter { submission ->
                         val parts = submission.imageUrl.split("|||")
                         val path = parts.getOrNull(0) ?: ""
-                        path.isNotEmpty()
+                        path.isNotEmpty() && !locallyDeletedSubmissions.containsKey(path) &&
+                        (submission.id == null || !locallyDeletedSubmissions.containsKey(submission.id.toString()))
                     }
                     .sortedByDescending { it.id ?: "" }
                 
@@ -1953,29 +1970,34 @@ fun HomeScreen(
         if (currentUserId.isEmpty() || palCode == "vlog") return
         coroutineScope.launch {
             try {
-                val dbSubmissions = supabaseClient.postgrest.from("submissions")
-                    .select {
-                        filter {
-                            eq("pal_code", palCode)
-                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                val dbSubmissions = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    supabaseClient.postgrest.from("submissions")
+                        .select {
+                            filter {
+                                eq("pal_code", palCode)
+                            }
                         }
-                    }
-                    .decodeList<SubmissionDbItem>()
+                        .decodeList<SubmissionDbItem>()
+                }
                 val filteredSubmissions = dbSubmissions.filterNot { sub ->
-                    sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR")
+                    sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR") ||
+                    locallyDeletedSubmissions.containsKey(sub.imageUrl.split("|||").firstOrNull()) ||
+                    (sub.id != null && locallyDeletedSubmissions.containsKey(sub.id.toString()))
                 }
                 val oldSubs = allPalsSubmissions[palCode] ?: emptyList()
                 if (oldSubs != filteredSubmissions) {
                     allPalsSubmissions[palCode] = filteredSubmissions
                 }
                 
-                val dbMessages = supabaseClient.postgrest.from("messages")
-                    .select {
-                        filter {
-                            eq("pal_code", palCode)
+                val dbMessages = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    supabaseClient.postgrest.from("messages")
+                        .select {
+                            filter {
+                                eq("pal_code", palCode)
+                            }
                         }
-                    }
-                    .decodeList<MessageDbItem>()
+                        .decodeList<MessageDbItem>()
+                }
                 val oldMsgs = allPalsMessages[palCode] ?: emptyList()
                 if (oldMsgs != dbMessages) {
                     allPalsMessages[palCode] = dbMessages
@@ -1984,7 +2006,7 @@ fun HomeScreen(
                 // If user doesn't have a submission (either profile or active vlog) in dbSubmissions, insert a profile submission in the background
                 val hasUserSub = dbSubmissions.any { it.userId == currentUserId }
                 if (!hasUserSub) {
-                    coroutineScope.launch {
+                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         try {
                             var avatarUrl = ""
                             customAvatarUriString?.let { uriStr ->
@@ -1995,7 +2017,9 @@ fun HomeScreen(
                                     if (uploaded.startsWith("http")) {
                                         avatarUrl = uploaded
                                         sessionManager.saveAvatarUri(uploaded)
-                                        customAvatarUriString = uploaded
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            customAvatarUriString = uploaded
+                                        }
                                     }
                                 }
                             }
@@ -2008,21 +2032,25 @@ fun HomeScreen(
                                 createdAt = java.time.Instant.now().toString()
                             )
                             supabaseClient.postgrest.from("submissions").insert(profileSub)
-                            refreshActivePalDetails(palCode)
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                refreshActivePalDetails(palCode)
+                            }
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
                     }
                 }
                 
-                val mappings = supabaseClient.postgrest.from("user_pals")
-                    .select {
-                        filter {
-                            eq("pal_code", palCode)
+                val mappings = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    supabaseClient.postgrest.from("user_pals")
+                        .select {
+                            filter {
+                                eq("pal_code", palCode)
+                            }
                         }
-                    }
-                    .decodeList<UserPalMapping>()
-                    .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
+                        .decodeList<UserPalMapping>()
+                        .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
+                }
 
                 val userFirstName = currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
                 
@@ -2069,14 +2097,16 @@ fun HomeScreen(
         if (currentUserId.isEmpty() || palCode == "vlog") return
         coroutineScope.launch {
             try {
-                val dbMessages = supabaseClient.postgrest.from("messages")
-                    .select {
-                        filter {
-                            eq("pal_code", palCode)
+                val dbMessages = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    supabaseClient.postgrest.from("messages")
+                        .select {
+                            filter {
+                                eq("pal_code", palCode)
+                            }
+                            order(column = "created_at", order = io.github.jan.supabase.postgrest.query.Order.ASCENDING)
                         }
-                        order(column = "created_at", order = io.github.jan.supabase.postgrest.query.Order.ASCENDING)
-                    }
-                    .decodeList<MessageDbItem>()
+                        .decodeList<MessageDbItem>()
+                }
                 val oldMsgs = palMessages[palCode] ?: emptyList()
                 if (oldMsgs != dbMessages) {
                     palMessages[palCode] = dbMessages
@@ -2105,17 +2135,40 @@ fun HomeScreen(
                     
                     launch {
                         userPalsFlow.collect { action ->
-                            refreshVlogs()
-                            refreshPals()
-                            activeVlogPal?.let { refreshActivePalDetails(it.code) }
+                            if (action is PostgresAction.Insert || action is PostgresAction.Delete) {
+                                val record = when (action) {
+                                    is PostgresAction.Insert -> action.record
+                                    is PostgresAction.Delete -> action.oldRecord
+                                    else -> null
+                                }
+                                val eventUserId = record?.get("user_id")?.jsonPrimitive?.content
+                                val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
+                                
+                                if (eventUserId == currentUserId) {
+                                    refreshPals()
+                                    refreshVlogs()
+                                }
+                                if (eventPalCode != null && eventPalCode == activeVlogPal?.code) {
+                                    refreshActivePalDetails(eventPalCode)
+                                }
+                            }
                         }
                     }
                     
                     launch {
                         submissionsFlow.collect { action ->
-                            refreshVlogs()
-                            refreshPals()
-                            activeVlogPal?.let { refreshActivePalDetails(it.code) }
+                            if (action is PostgresAction.Insert || action is PostgresAction.Delete) {
+                                val record = when (action) {
+                                    is PostgresAction.Insert -> action.record
+                                    is PostgresAction.Delete -> action.oldRecord
+                                    else -> null
+                                }
+                                val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
+                                if (eventPalCode != null && eventPalCode == activeVlogPal?.code) {
+                                    refreshActivePalDetails(eventPalCode)
+                                }
+                                refreshVlogs()
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -2135,6 +2188,14 @@ fun HomeScreen(
 
     LaunchedEffect(currentUserId) {
         if (currentUserId.isNotEmpty()) {
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val vlogPal = PalDbItem(code = "vlog", name = "vlog")
+                    supabaseClient.postgrest.from("pals").insert(vlogPal)
+                } catch (e: Exception) {
+                    // Ignore if already exists or RLS blocks
+                }
+            }
             while (true) {
                 refreshPals()
                 refreshVlogs()
@@ -2154,16 +2215,17 @@ fun HomeScreen(
     LaunchedEffect(currentUserId) {
         if (currentUserId.isNotEmpty()) {
             try {
-                val recentSub = supabaseClient.postgrest.from("submissions")
-                    .select {
-                        filter {
-                            eq("user_id", currentUserId)
-                            filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
+                val recentSub = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    supabaseClient.postgrest.from("submissions")
+                        .select {
+                            filter {
+                                eq("user_id", currentUserId)
+                            }
+                            order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                            limit(1)
                         }
-                        order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
-                        limit(1)
-                    }
-                    .decodeSingleOrNull<SubmissionDbItem>()
+                        .decodeSingleOrNull<SubmissionDbItem>()
+                }
                 if (recentSub != null) {
                     val parts = recentSub.userDisplayName.split("|||")
                     val name = parts.getOrNull(0) ?: ""
@@ -2181,14 +2243,16 @@ fun HomeScreen(
             }
 
             try {
-                val savedState = supabaseClient.postgrest.from("submissions")
-                    .select {
-                        filter {
-                            eq("pal_code", "user_state")
-                            eq("user_id", currentUserId)
+                val savedState = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    supabaseClient.postgrest.from("submissions")
+                        .select {
+                            filter {
+                                eq("pal_code", "user_state")
+                                eq("user_id", currentUserId)
+                            }
                         }
-                    }
-                    .decodeSingleOrNull<SubmissionDbItem>()
+                        .decodeSingleOrNull<SubmissionDbItem>()
+                }
                 
                 if (savedState != null) {
                     val parts = savedState.imageUrl.split("|||")
@@ -2313,7 +2377,7 @@ fun HomeScreen(
                     } + localSubmission
                     allPalsSubmissions[pal.code] = updatedList
                 }
-                coroutineScope.launch {
+                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                     try {
                         val uploadedVideoUrl = if (capturedVideoPath != null) {
                             if (pal.code == "vlog") {
@@ -2342,7 +2406,9 @@ fun HomeScreen(
                                 if (uploaded.startsWith("http")) {
                                     avatarUrl = uploaded
                                     sessionManager.saveAvatarUri(uploaded)
-                                    customAvatarUriString = uploaded
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        customAvatarUriString = uploaded
+                                    }
                                 }
                             }
                         }
@@ -2362,10 +2428,12 @@ fun HomeScreen(
                             createdAt = java.time.Instant.now().toString()
                         )
                         supabaseClient.postgrest.from("submissions").insert(newSubmission)
-                        if (pal.code != "vlog") {
-                            refreshActivePalDetails(pal.code)
-                        } else {
-                            refreshVlogs()
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            if (pal.code != "vlog") {
+                                refreshActivePalDetails(pal.code)
+                            } else {
+                                refreshVlogs()
+                            }
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -2400,14 +2468,14 @@ fun HomeScreen(
                 activeVlogPal = updatedPal
 
                 if (oldPal.code != "vlog") {
-                    coroutineScope.launch {
+                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         try {
                             supabaseClient.postgrest.from("pals").update(mapOf(
                                 "name" to editPalName,
                                 "size" to editPalSize
                             )) {
                                 filter {
-                                    eq("code", oldPal.code)
+                                    eq("pal_code", oldPal.code)
                                 }
                             }
                         } catch (e: Exception) {
@@ -2654,18 +2722,22 @@ fun HomeScreen(
                                     senderName = firstName,
                                     content = msg
                                 )
-                                coroutineScope.launch {
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
                                         supabaseClient.postgrest.from("messages").insert(newMessage)
-                                        refreshMessages(code)
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            refreshMessages(code)
+                                        }
                                     } catch (e: Exception) {
                                         e.printStackTrace()
-                                        val localMsg = MessageDbItem(
-                                            palCode = code,
-                                            senderName = firstName,
-                                            content = msg
-                                        )
-                                        palMessages[code] = (palMessages[code] ?: emptyList()) + localMsg
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            val localMsg = MessageDbItem(
+                                                palCode = code,
+                                                senderName = firstName,
+                                                content = msg
+                                            )
+                                            palMessages[code] = (palMessages[code] ?: emptyList()) + localMsg
+                                        }
                                     }
                                 }
                             } else {
@@ -2682,6 +2754,7 @@ fun HomeScreen(
                         onDeletePal = {
                             val p = activeVlogPal
                             if (p != null) {
+                                locallyDeletedPals[p.code] = true
                                 createdPals = createdPals.filterNot { it.code == p.code }
                                 if (groupDatabase.containsKey(p.code)) {
                                     groupDatabase.remove(p.code)
@@ -2695,6 +2768,7 @@ fun HomeScreen(
                         onLeavePal = {
                             val p = activeVlogPal
                             if (p != null) {
+                                locallyDeletedPals[p.code] = true
                                 createdPals = createdPals.filterNot { it.code == p.code }
                                 coroutineScope.launch {
                                     authRepository.leavePalsGroup(p.code, currentUserId)
@@ -2719,6 +2793,7 @@ fun HomeScreen(
                                 val deletedPath = filteredPaths[indexToDelete]
                                 val palCode = activeVlogPal?.code ?: "vlog"
                                 
+                                locallyDeletedSubmissions[deletedPath] = true
                                 if (palCode != "vlog") {
                                     // GROUP Pal DELETION
                                     // 1. Remove from allPalsSubmissions
@@ -2731,8 +2806,8 @@ fun HomeScreen(
                                         allPalsSubmissions[palCode] = updatedSubs
                                     }
                                     
-                                    // 2. Soft-delete from Supabase by setting deleted_at to now
-                                    coroutineScope.launch {
+                                    // 2. Delete from Supabase
+                                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
                                             val dbSubs = supabaseClient.postgrest.from("submissions")
                                                 .select {
@@ -2750,7 +2825,9 @@ fun HomeScreen(
                                                 authRepository.deleteSpecificPalItem(targetSub.id)
                                             }
                                             deleteVlogPostPermanently(currentUserId, deletedPath, palCode)
-                                            refreshActivePalDetails(palCode)
+                                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                refreshActivePalDetails(palCode)
+                                            }
                                         } catch (e: Exception) {
                                             e.printStackTrace()
                                         }
@@ -2780,7 +2857,7 @@ fun HomeScreen(
                                             activeVlogPal = null
                                         }
                                         
-                                        coroutineScope.launch {
+                                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                             try {
                                                 val dbSubs = supabaseClient.postgrest.from("submissions")
                                                     .select {
@@ -2795,9 +2872,7 @@ fun HomeScreen(
                                                     pathPart == deletedPath || it.imageUrl == deletedPath 
                                                 }
                                                 if (targetSub != null && targetSub.id != null) {
-                                                    supabaseClient.postgrest.from("submissions").update(mapOf(
-                                                        "deleted_at" to java.time.Instant.now().toString()
-                                                    )) {
+                                                    supabaseClient.postgrest.from("submissions").delete {
                                                         filter {
                                                             eq("id", targetSub.id)
                                                         }
@@ -2852,7 +2927,7 @@ fun HomeScreen(
                                     capturedVlogsCaptions = updatedCaptions
                                     getVlogPrefs(context).edit().putString("vlog_captions", updatedCaptions.joinToString(";;;")).apply()
                                 
-                                coroutineScope.launch {
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
                                         val dbSubs = supabaseClient.postgrest.from("submissions").select {
                                             filter {
@@ -2911,10 +2986,12 @@ fun HomeScreen(
                                     senderName = if (!customAvatarUriString.isNullOrEmpty()) "$firstName|||$customAvatarUriString" else firstName,
                                     content = reactionContent
                                 )
-                                coroutineScope.launch {
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
                                         supabaseClient.postgrest.from("messages").insert(newMessage)
-                                        refreshMessages(targetPalCode)
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            refreshMessages(targetPalCode)
+                                        }
                                     } catch (e: Exception) {
                                         e.printStackTrace()
                                     }
@@ -2940,10 +3017,12 @@ fun HomeScreen(
                                     senderName = if (!customAvatarUriString.isNullOrEmpty()) "$firstName|||$customAvatarUriString" else firstName,
                                     content = replyContent
                                 )
-                                coroutineScope.launch {
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
                                         supabaseClient.postgrest.from("messages").insert(newMessage)
-                                        refreshMessages(targetPalCode)
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            refreshMessages(targetPalCode)
+                                        }
                                     } catch (e: Exception) {
                                         e.printStackTrace()
                                     }
@@ -3030,7 +3109,7 @@ fun HomeScreen(
                                     } + localSubmission
                                     allPalsSubmissions[targetPalCode] = updatedList
                                 }
-                                coroutineScope.launch {
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
                                         val uploadedVideoUrl = if (!localVideoPath.isNullOrBlank()) {
                                             if (targetPalCode == "vlog") {
@@ -3059,7 +3138,9 @@ fun HomeScreen(
                                                 if (uploaded.startsWith("http")) {
                                                     avatarUrl = uploaded
                                                     sessionManager.saveAvatarUri(uploaded)
-                                                    customAvatarUriString = uploaded
+                                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                        customAvatarUriString = uploaded
+                                                    }
                                                 }
                                             }
                                         }
@@ -3075,10 +3156,12 @@ fun HomeScreen(
                                             createdAt = java.time.Instant.now().toString()
                                         )
                                         supabaseClient.postgrest.from("submissions").insert(newSubmission)
-                                        if (targetPalCode != "vlog") {
-                                            refreshActivePalDetails(targetPalCode)
-                                        } else {
-                                            refreshVlogs()
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            if (targetPalCode != "vlog") {
+                                                refreshActivePalDetails(targetPalCode)
+                                            } else {
+                                                refreshVlogs()
+                                            }
                                         }
                                     } catch (e: Exception) {
                                         e.printStackTrace()
@@ -3134,12 +3217,12 @@ fun HomeScreen(
                     onGlobalSearchTrigger = { query ->
                         val code = query.trim().removePrefix("#").trim().lowercase(java.util.Locale.ROOT)
                         if (code.isNotEmpty()) {
-                            coroutineScope.launch {
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                 try {
                                     val matchedPalDb = supabaseClient.postgrest.from("pals")
                                         .select {
                                             filter {
-                                                eq("code", code)
+                                                eq("pal_code", code)
                                             }
                                         }
                                         .decodeSingleOrNull<PalDbItem>()
@@ -3150,26 +3233,31 @@ fun HomeScreen(
                                             palCode = code
                                         )
                                         supabaseClient.postgrest.from("user_pals").insert(newMapping)
-
                                         val matchedItem = PalItem(
                                             name = matchedPalDb.name,
-                                            size = matchedPalDb.size.toString(),
+                                            size = "1",
                                             code = matchedPalDb.code,
-                                            isVlog = matchedPalDb.isVlog,
-                                            isCreator = matchedPalDb.creatorId == currentUserId
+                                            isVlog = false,
+                                            isCreator = false
                                         )
 
-                                        if (!createdPals.any { it.code == code }) {
-                                            createdPals = createdPals + matchedItem
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            if (!createdPals.any { it.code == code }) {
+                                                createdPals = createdPals + matchedItem
+                                            }
+                                            refreshPals()
+                                            Toast.makeText(context, "Joined group: ${matchedPalDb.name}", Toast.LENGTH_SHORT).show()
                                         }
-                                        refreshPals()
-                                        Toast.makeText(context, "Joined group: ${matchedPalDb.name}", Toast.LENGTH_SHORT).show()
                                     } else {
-                                        Toast.makeText(context, "No group found with code: $code", Toast.LENGTH_SHORT).show()
+                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            Toast.makeText(context, "No group found with code: $code", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 } catch (e: Exception) {
                                     e.printStackTrace()
-                                    Toast.makeText(context, "Failed to search/join group: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        Toast.makeText(context, "Failed to search/join group: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         }
@@ -5551,7 +5639,7 @@ fun CapturedPreviewScreen(
                 if (pal.isVlog) {
                     groupMembersMap[pal.code] = listOf("only you")
                 } else {
-                    launch {
+                    launch(kotlinx.coroutines.Dispatchers.IO) {
                         try {
                             val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
                                 .select { filter { eq("pal_code", pal.code) } }
@@ -5592,7 +5680,9 @@ fun CapturedPreviewScreen(
                                 }
                             }
 
-                            groupMembersMap[pal.code] = memberList
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                groupMembersMap[pal.code] = memberList
+                            }
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
@@ -7624,36 +7714,41 @@ fun VlogScreenContent(
         } else {
             while (true) {
                 try {
-                    val checkPal = com.finrein.pals.PalApplication.supabase.postgrest.from("pals")
-                        .select {
-                            filter {
-                                eq("code", pal.code)
+                    val (checkPal, dbSubs, mappings) = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        val check = com.finrein.pals.PalApplication.supabase.postgrest.from("pals")
+                            .select {
+                                filter {
+                                    eq("pal_code", pal.code)
+                                }
                             }
+                            .decodeSingleOrNull<PalDbItem>()
+                        if (check == null) {
+                            return@withContext Triple(null, emptyList<SubmissionDbItem>(), emptyList<UserPalMapping>())
                         }
-                        .decodeSingleOrNull<PalDbItem>()
+                        val s = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
+                            .select {
+                                filter {
+                                    eq("pal_code", pal.code)
+                                }
+                            }
+                            .decodeList<SubmissionDbItem>()
+                        val m = com.finrein.pals.PalApplication.supabase.postgrest.from("user_pals")
+                            .select {
+                                filter {
+                                    eq("pal_code", pal.code)
+                                }
+                            }
+                            .decodeList<UserPalMapping>()
+                            .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
+                        Triple(check, s, m)
+                    }
+
                     if (checkPal == null) {
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
                             params.onBack()
                         }
                         break
                     }
-
-                    val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
-                        .select {
-                            filter {
-                                eq("pal_code", pal.code)
-                                filter("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, "null")
-                            }
-                        }
-                        .decodeList<SubmissionDbItem>()
-                    val mappings = com.finrein.pals.PalApplication.supabase.postgrest.from("user_pals")
-                        .select {
-                            filter {
-                                eq("pal_code", pal.code)
-                            }
-                        }
-                        .decodeList<UserPalMapping>()
-                        .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
 
                     val memberTimestamps = mutableMapOf<String, Long>()
                     val memberDetails = mutableMapOf<String, Pair<String, String?>>()
@@ -7747,7 +7842,7 @@ fun VlogScreenContent(
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-                delay(1500)
+                delay(30000)
             }
         }
     }
@@ -12893,7 +12988,7 @@ fun JoinPalDialogOverlay(
                                                     matchedPalDb = supabaseClient.postgrest.from("pals")
                                                         .select {
                                                             filter {
-                                                                eq("code", code)
+                                                                eq("pal_code", code)
                                                             }
                                                         }
                                                         .decodeSingleOrNull<PalDbItem>()
@@ -12907,10 +13002,10 @@ fun JoinPalDialogOverlay(
                                             // 3. Fallback construct if RLS or replication delays details fetching
                                             val matchedItem = PalItem(
                                                 name = matchedPalDb?.name ?: "Group $code",
-                                                size = matchedPalDb?.size?.toString() ?: "12",
+                                                size = "1",
                                                 code = code,
-                                                isVlog = matchedPalDb?.isVlog ?: false,
-                                                isCreator = matchedPalDb?.creatorId == currentUserId
+                                                isVlog = false,
+                                                isCreator = false
                                             )
 
                                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -13479,14 +13574,11 @@ fun CreatePalDialogOverlay(
                                     isVlog = false,
                                     isCreator = true
                                 )
-                                localScope.launch {
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                                     try {
                                         val newPalDb = PalDbItem(
                                             code = generatedPalCode,
-                                            name = newPalName,
-                                            size = newPalSize.toIntOrNull() ?: 3,
-                                            isVlog = false,
-                                            creatorId = currentUserId
+                                            name = newPalName
                                         )
                                         supabaseClient.postgrest.from("pals").insert(newPalDb)
                                         
@@ -13496,15 +13588,17 @@ fun CreatePalDialogOverlay(
                                         )
                                         supabaseClient.postgrest.from("user_pals").insert(newMapping)
                                         
-                                        onCreatedPalsChange(createdPals + newItem)
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            onCreatedPalsChange(createdPals + newItem)
+                                        }
                                     } catch (e: Exception) {
                                         e.printStackTrace()
                                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                             android.widget.Toast.makeText(context, "Failed to create group: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                                         }
                                     } finally {
-                                        isSaving = false
                                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                            isSaving = false
                                             onShowCreatePalFlowChange(false)
                                         }
                                     }
@@ -14716,7 +14810,10 @@ private fun GroupExportMemberSlot(
     } else {
         ""
     }
-    val displayTimeText = "4:00"
+    val displayTimeText = remember {
+        val now = java.time.LocalTime.now()
+        String.format(java.util.Locale.US, "%02d:00", now.hour)
+    }
     
     val cardShape = androidx.compose.ui.graphics.RectangleShape
     
@@ -14902,6 +14999,12 @@ fun VideoVlogBoxItem(
     // Pull or create the persistent player instance
     val cachedPlayer = remember(videoUrl) { 
         VlogPlayerManager.getOrCreatePlayer(context, videoUrl) 
+    }
+
+    androidx.compose.runtime.DisposableEffect(videoUrl) {
+        onDispose {
+            VlogPlayerManager.releasePlayer(videoUrl)
+        }
     }
 
     Column(

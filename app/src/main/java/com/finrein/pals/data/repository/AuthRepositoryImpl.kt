@@ -224,18 +224,13 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun softDeleteAccount(userId: String): Unit = withContext(Dispatchers.IO) {
-        val now = java.time.Instant.now().toString()
         try {
-            supabaseClient.postgrest.from("submissions").update(
-                mapOf("deleted_at" to now)
-            ) {
+            supabaseClient.postgrest.from("submissions").delete {
                 filter {
                     eq("user_id", userId)
                 }
             }
-            supabaseClient.postgrest.from("user_pals").update(
-                mapOf("deleted_at" to now)
-            ) {
+            supabaseClient.postgrest.from("user_pals").delete {
                 filter {
                     eq("user_id", userId)
                 }
@@ -246,64 +241,44 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override suspend fun checkAndReinstateAccount(userId: String): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val deletedSubmission = try {
-                supabaseClient.postgrest.from("submissions")
-                    .select {
-                        filter {
-                            eq("user_id", userId)
-                            filterNot("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, null)
-                        }
-                    }
-                    .decodeList<SubmissionDbItem>()
-                    .firstOrNull()
-            } catch (e: Exception) {
-                null
-            }
-
-            val deletedMapping = try {
-                supabaseClient.postgrest.from("user_pals")
-                    .select {
-                        filter {
-                            eq("user_id", userId)
-                            filterNot("deleted_at", io.github.jan.supabase.postgrest.query.filter.FilterOperator.IS, null)
-                        }
-                    }
-                    .decodeList<UserPalMapping>()
-                    .firstOrNull()
-            } catch (e: Exception) {
-                null
-            }
-
-            if (deletedSubmission != null || deletedMapping != null) {
-                supabaseClient.postgrest.from("submissions").update(
-                    mapOf("deleted_at" to null)
-                ) {
-                    filter {
-                        eq("user_id", userId)
-                    }
-                }
-                supabaseClient.postgrest.from("user_pals").update(
-                    mapOf("deleted_at" to null)
-                ) {
-                    filter {
-                        eq("user_id", userId)
-                    }
-                }
-                return@withContext true
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
         return@withContext false
     }
 
     override suspend fun deletePalsGroupForever(palCode: String): Unit = withContext(Dispatchers.IO) {
         try {
-            supabaseClient.postgrest.from("pals")
-                .delete {
-                    filter { eq("code", palCode) }
-                }
+            // Hard delete in reverse order of foreign keys (child tables first, then parent table)
+            try {
+                supabaseClient.postgrest.from("messages")
+                    .delete {
+                        filter { eq("pal_code", palCode) }
+                    }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                supabaseClient.postgrest.from("submissions")
+                    .delete {
+                        filter { eq("pal_code", palCode) }
+                    }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                supabaseClient.postgrest.from("user_pals")
+                    .delete {
+                        filter { eq("pal_code", palCode) }
+                    }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                supabaseClient.postgrest.from("pals")
+                    .delete {
+                        filter { eq("pal_code", palCode) }
+                    }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -311,20 +286,29 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun leavePalsGroup(palCode: String, userId: String): Unit = withContext(Dispatchers.IO) {
         try {
-            supabaseClient.postgrest.from("user_pals")
-                .delete {
-                    filter {
-                        eq("pal_code", palCode)
-                        eq("user_id", userId)
+            // Hard delete mappings and submissions for this user in this group
+            try {
+                supabaseClient.postgrest.from("user_pals")
+                    .delete {
+                        filter {
+                            eq("pal_code", palCode)
+                            eq("user_id", userId)
+                        }
                     }
-                }
-            supabaseClient.postgrest.from("submissions")
-                .delete {
-                    filter {
-                        eq("pal_code", palCode)
-                        eq("user_id", userId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                supabaseClient.postgrest.from("submissions")
+                    .delete {
+                        filter {
+                            eq("pal_code", palCode)
+                            eq("user_id", userId)
+                        }
                     }
-                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }

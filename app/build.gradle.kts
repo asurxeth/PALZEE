@@ -195,4 +195,20 @@ tasks.register("readCrash") {
     }
 }
 
+tasks.register("readLogcat") {
+    doLast {
+        val destFile = file("${projectDir}/../logcat_real.txt")
+        try {
+            // Retrieve logcat with main, system, and crash buffers
+            val process = ProcessBuilder("adb", "logcat", "-d")
+                .redirectOutput(ProcessBuilder.Redirect.to(destFile))
+                .start()
+            process.waitFor()
+            println("Successfully read logcat and wrote to: ${destFile.absolutePath}")
+        } catch (e: Exception) {
+            println("Error reading logcat: ${e.message}")
+        }
+    }
+}
+
 
