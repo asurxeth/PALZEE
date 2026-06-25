@@ -2862,10 +2862,10 @@ fun HomeScreen(
                                 allPalsMembers.remove(p.code)
                                 pendingProfileInserts.remove(p.code)
                                 if (p.code == "vlog") {
-                                    capturedVlogsPaths = emptyList()
-                                    capturedVlogsTimes = emptyList()
-                                    capturedVlogsCaptions = emptyList()
-                                    capturedVlogsDurations = emptyList()
+                                    capturedVlogsPaths = arrayListOf()
+                                    capturedVlogsTimes = arrayListOf()
+                                    capturedVlogsCaptions = arrayListOf()
+                                    capturedVlogsDurations = arrayListOf()
                                     getVlogPrefs(context).edit().clear().apply()
                                 }
                                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -2896,10 +2896,10 @@ fun HomeScreen(
                                 allPalsMembers.remove(p.code)
                                 pendingProfileInserts.remove(p.code)
                                 if (p.code == "vlog") {
-                                    capturedVlogsPaths = emptyList()
-                                    capturedVlogsTimes = emptyList()
-                                    capturedVlogsCaptions = emptyList()
-                                    capturedVlogsDurations = emptyList()
+                                    capturedVlogsPaths = arrayListOf()
+                                    capturedVlogsTimes = arrayListOf()
+                                    capturedVlogsCaptions = arrayListOf()
+                                    capturedVlogsDurations = arrayListOf()
                                     getVlogPrefs(context).edit().clear().apply()
                                 }
                                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
