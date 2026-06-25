@@ -2023,17 +2023,29 @@ fun HomeScreen(
                                     }
                                 }
                             }
+                            val cleanCode = palCode.trim()
+                            if (cleanCode.isBlank()) {
+                                android.util.Log.e("SubmissionError", "Aborting upload: pal_code is empty.")
+                                return@launch
+                            }
                             val profileDisplayName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
                             val profileSub = SubmissionDbItem(
-                                palCode = palCode,
+                                palCode = cleanCode,
                                 userId = currentUserId,
                                 userDisplayName = profileDisplayName,
                                 imageUrl = "PROFILE_AVATAR",
                                 createdAt = java.time.Instant.now().toString()
                             )
-                            supabaseClient.postgrest.from("submissions").insert(profileSub)
-                            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                refreshActivePalDetails(palCode)
+                            try {
+                                supabaseClient.postgrest.from("submissions").insert(profileSub)
+                                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    refreshActivePalDetails(cleanCode)
+                                }
+                            } catch (e: io.github.jan.supabase.exceptions.RestException) {
+                                android.util.Log.e("SubmissionError", "Postgres ForeignKey block: Group $cleanCode might have been deleted.")
+                                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    activeVlogPal = null
+                                }
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -2415,24 +2427,36 @@ fun HomeScreen(
                         
                         val formattedName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
  
-                        val delimiterString = if (pal.code == "vlog") {
+                        val cleanCode = pal.code.trim()
+                        if (cleanCode.isBlank()) {
+                            android.util.Log.e("SubmissionError", "Aborting upload: pal_code is empty.")
+                            return@launch
+                        }
+                        val delimiterString = if (cleanCode == "vlog") {
                             "$uploadedVideoUrl|||$capturedCaptionText|||$capturedVideoDuration"
                         } else {
                             "$uploadedVideoUrl|||||2000"
                         }
                         val newSubmission = SubmissionDbItem(
-                            palCode = pal.code,
+                            palCode = cleanCode,
                             userId = currentUserId,
                             userDisplayName = formattedName,
                             imageUrl = delimiterString,
                             createdAt = java.time.Instant.now().toString()
                         )
-                        supabaseClient.postgrest.from("submissions").insert(newSubmission)
-                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            if (pal.code != "vlog") {
-                                refreshActivePalDetails(pal.code)
-                            } else {
-                                refreshVlogs()
+                        try {
+                            supabaseClient.postgrest.from("submissions").insert(newSubmission)
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                if (cleanCode != "vlog") {
+                                    refreshActivePalDetails(cleanCode)
+                                } else {
+                                    refreshVlogs()
+                                }
+                            }
+                        } catch (e: io.github.jan.supabase.exceptions.RestException) {
+                            android.util.Log.e("SubmissionError", "Postgres ForeignKey block: Group $cleanCode might have been deleted.")
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                activeVlogPal = null
                             }
                         }
                     } catch (e: Exception) {
@@ -3148,19 +3172,31 @@ fun HomeScreen(
                                         val formattedName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
  
                                         val delimiterString = "$uploadedVideoUrl|||${caption}|||${capturedVideoDuration}"
+                                        val cleanCode = targetPalCode.trim()
+                                        if (cleanCode.isBlank()) {
+                                            android.util.Log.e("SubmissionError", "Aborting upload: pal_code is empty.")
+                                            return@launch
+                                        }
                                         val newSubmission = SubmissionDbItem(
-                                            palCode = targetPalCode,
+                                            palCode = cleanCode,
                                             userId = currentUserId,
                                             userDisplayName = formattedName,
                                             imageUrl = delimiterString,
                                             createdAt = java.time.Instant.now().toString()
                                         )
-                                        supabaseClient.postgrest.from("submissions").insert(newSubmission)
-                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            if (targetPalCode != "vlog") {
-                                                refreshActivePalDetails(targetPalCode)
-                                            } else {
-                                                refreshVlogs()
+                                        try {
+                                            supabaseClient.postgrest.from("submissions").insert(newSubmission)
+                                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                if (cleanCode != "vlog") {
+                                                    refreshActivePalDetails(cleanCode)
+                                                } else {
+                                                    refreshVlogs()
+                                                }
+                                            }
+                                        } catch (e: io.github.jan.supabase.exceptions.RestException) {
+                                            android.util.Log.e("SubmissionError", "Postgres ForeignKey block: Group $cleanCode might have been deleted.")
+                                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                activeVlogPal = null
                                             }
                                         }
                                     } catch (e: Exception) {
