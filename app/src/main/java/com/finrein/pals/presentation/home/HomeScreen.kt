@@ -176,6 +176,40 @@ fun parseUserDisplayName(userDisplayName: String): Pair<String, String?> {
     return Pair(cleanName, if (avatar.isNullOrEmpty()) null else avatar)
 }
 
+fun compressImageBytes(bytes: ByteArray): ByteArray {
+    try {
+        // Decode dimensions first (out of memory safe)
+        val options = android.graphics.BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+        
+        // Downscale image if too large (max 1200px on either side)
+        val maxDimension = 1200
+        var scale = 1
+        if (options.outWidth > maxDimension || options.outHeight > maxDimension) {
+            val largest = maxOf(options.outWidth, options.outHeight)
+            scale = (largest.toFloat() / maxDimension).toInt().coerceAtLeast(1)
+        }
+        
+        val decodeOptions = android.graphics.BitmapFactory.Options().apply {
+            inSampleSize = scale
+        }
+        val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+        if (bitmap != null) {
+            val outputStream = java.io.ByteArrayOutputStream()
+            // Compress with 75% quality JPEG
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, outputStream)
+            val compressedBytes = outputStream.toByteArray()
+            bitmap.recycle()
+            return compressedBytes
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return bytes
+}
+
 suspend fun uploadFileToSupabase(context: android.content.Context, uriString: String, bucketName: String): String {
     try {
         val uri = android.net.Uri.parse(uriString)
@@ -194,8 +228,14 @@ suspend fun uploadFileToSupabase(context: android.content.Context, uriString: St
             android.util.Log.e("SupabaseUpload", "Could not open input stream for $uriString")
             return uriString
         }
-        val bytes = inputStream.use { it.readBytes() }
+        var bytes = inputStream.use { it.readBytes() }
         val extension = if (bucketName == "pals" || bucketName == "pals_vlogs") "mp4" else "jpg"
+        
+        // Compress images to keep payload under 200 KB
+        if (extension == "jpg") {
+            bytes = compressImageBytes(bytes)
+        }
+
         val fileName = "${java.util.UUID.randomUUID()}.$extension"
         val storageBucket = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
         storageBucket.upload(fileName, bytes, upsert = true)
@@ -2033,15 +2073,9 @@ fun HomeScreen(
                             // Use the mutex lock here so profile generation never cross-fires with real-time events
                             if (!globalSyncMutex.isLocked) {
                                 globalSyncMutex.withLock {
-                                    // Check if group exists
-                                    val exactGroupMatches = supabaseClient.postgrest.from("pals")
-                                        .select { filter { eq("pal_code", cleanCode) } }
-                                        .decodeList<PalDbItem>()
-                                    
-                                    if (exactGroupMatches.isEmpty()) {
-                                        supabaseClient.postgrest.from("pals")
-                                            .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
-                                    }
+                                    // Recreate group if deleted or missing using direct upsert (no pre-check select)
+                                    supabaseClient.postgrest.from("pals")
+                                        .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
 
                                     // Insert profile token row safely
                                     supabaseClient.postgrest.from("submissions").insert(profileSub)
@@ -2354,16 +2388,13 @@ fun HomeScreen(
     LaunchedEffect(currentUserId, selectedTab, activeVlogPal) {
         if (currentUserId.isNotEmpty() && isStateRestoredRef.value) {
             val stateString = "$selectedTab|||${activeVlogPal?.code ?: ""}"
-            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // Debounce state updates by 2000ms
+            delay(2000)
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    val exactGroupMatches = supabaseClient.postgrest.from("pals")
-                        .select { filter { eq("pal_code", "user_state") } }
-                        .decodeList<PalDbItem>()
-                    if (exactGroupMatches.isEmpty()) {
-                        android.util.Log.w("FkSafety", "Pal code 'user_state' not found on server. Auto-seeding group row...")
-                        supabaseClient.postgrest.from("pals")
-                            .upsert(PalDbItem(code = "user_state", name = "User State Group"), onConflict = "pal_code")
-                    }
+                    // Recreate 'user_state' group if missing using a direct upsert instead of select check
+                    supabaseClient.postgrest.from("pals")
+                        .upsert(PalDbItem(code = "user_state", name = "User State Group"), onConflict = "pal_code")
 
                     val existing = supabaseClient.postgrest.from("submissions")
                         .select {
@@ -2507,17 +2538,9 @@ fun HomeScreen(
                             createdAt = java.time.Instant.now().toString()
                         )
                         try {
-                            // safety step: check if this group code exists inside the master 'pals' table
-                            val exactGroupMatches = supabaseClient.postgrest.from("pals")
-                                .select { filter { eq("pal_code", cleanCode) } }
-                                .decodeList<PalDbItem>()
-                            
-                            // If the group was deleted or missing, recreate it instantly on the fly
-                            if (exactGroupMatches.isEmpty()) {
-                                android.util.Log.w("FkSafety", "Pal code '$cleanCode' not found on server. Auto-seeding group row...")
-                                supabaseClient.postgrest.from("pals")
-                                    .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
-                            }
+                            // Recreate group if deleted or missing using direct upsert (no pre-check select)
+                            supabaseClient.postgrest.from("pals")
+                                .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
 
                             supabaseClient.postgrest.from("submissions").insert(newSubmission)
                             withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -3313,17 +3336,9 @@ fun HomeScreen(
                                             createdAt = java.time.Instant.now().toString()
                                         )
                                         try {
-                                            // safety step: check if this group code exists inside the master 'pals' table
-                                            val exactGroupMatches = supabaseClient.postgrest.from("pals")
-                                                .select { filter { eq("pal_code", cleanCode) } }
-                                                .decodeList<PalDbItem>()
-                                            
-                                            // If the group was deleted or missing, recreate it instantly on the fly
-                                            if (exactGroupMatches.isEmpty()) {
-                                                android.util.Log.w("FkSafety", "Pal code '$cleanCode' not found on server. Auto-seeding group row...")
-                                                supabaseClient.postgrest.from("pals")
-                                                    .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
-                                            }
+                                            // Recreate group if deleted or missing using direct upsert (no pre-check select)
+                                            supabaseClient.postgrest.from("pals")
+                                                .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
 
                                             supabaseClient.postgrest.from("submissions").insert(newSubmission)
                                             withContext(kotlinx.coroutines.Dispatchers.Main) {

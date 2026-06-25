@@ -246,38 +246,9 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun deletePalsGroupForever(palCode: String): Unit = withContext(Dispatchers.IO) {
         try {
-            // Hard delete in reverse order of foreign keys (child tables first, then parent table)
-            try {
-                supabaseClient.postgrest.from("messages")
-                    .delete {
-                        filter { eq("pal_code", palCode) }
-                    }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                supabaseClient.postgrest.from("submissions")
-                    .delete {
-                        filter { eq("pal_code", palCode) }
-                    }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                supabaseClient.postgrest.from("user_pals")
-                    .delete {
-                        filter { eq("pal_code", palCode) }
-                    }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                supabaseClient.postgrest.from("pals")
-                    .delete {
-                        filter { eq("pal_code", palCode) }
-                    }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            // Atomically delete group from parent pals table, letting ON DELETE CASCADE handle child tables
+            supabaseClient.postgrest.from("pals").delete {
+                filter { eq("pal_code", palCode) }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -286,28 +257,12 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun leavePalsGroup(palCode: String, userId: String): Unit = withContext(Dispatchers.IO) {
         try {
-            // Hard delete mappings and submissions for this user in this group
-            try {
-                supabaseClient.postgrest.from("user_pals")
-                    .delete {
-                        filter {
-                            eq("pal_code", palCode)
-                            eq("user_id", userId)
-                        }
-                    }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                supabaseClient.postgrest.from("submissions")
-                    .delete {
-                        filter {
-                            eq("pal_code", palCode)
-                            eq("user_id", userId)
-                        }
-                    }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            // Atomically delete user mapping, letting database constraints cascade/clean up related rows
+            supabaseClient.postgrest.from("user_pals").delete {
+                filter {
+                    eq("pal_code", palCode)
+                    eq("user_id", userId)
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
