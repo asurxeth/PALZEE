@@ -6,6 +6,7 @@ import com.finrein.pals.domain.model.SubmissionDbItem
 import com.finrein.pals.domain.model.UserPalMapping
 import com.finrein.pals.domain.model.PalDbItem
 import com.finrein.pals.domain.model.VlogRecord
+import com.finrein.pals.domain.model.ActivePalState
 import android.os.Build
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
@@ -1054,8 +1055,6 @@ fun OnboardingFlowContainer(
     }
 }
 
-private val globalSyncMutex = Mutex()
-
 @Composable
 fun HomeScreen(
     user: com.finrein.pals.domain.model.User?,
@@ -1526,19 +1525,26 @@ fun HomeScreen(
         viewModel.updateCreatedPals(initialList)
     }
     val locallyDeletedSubmissions = remember { mutableStateMapOf<String, Boolean>() }
-    val pendingProfileInserts = remember { mutableStateMapOf<String, Boolean>() }
     var selectedDayOffset by remember { mutableStateOf(0) }
 
-    var activeHourSubmissions by remember { mutableStateOf<Map<String, SubmissionDbItem>>(emptyMap()) }
-    var dailyHourHistoryMap by remember { mutableStateOf<Map<Int, List<SubmissionDbItem>>>(emptyMap()) }
-    var exportMenuDataState by remember { mutableStateOf<Map<Int, List<SubmissionDbItem>>>(emptyMap()) }
+    val activePalState by viewModel.activePalState.collectAsState()
+    val dailyHourHistoryMap = activePalState?.dailyHourHistory ?: emptyMap()
+    val activeHourSubmissions = activePalState?.activeHourSubmissions ?: emptyMap()
+    val exportMenuDataState = activePalState?.exportData ?: emptyMap()
     var activeGroupMembersList by remember { mutableStateOf<List<UserItem>>(emptyList()) }
 
+    LaunchedEffect(activePalState) {
+        activePalState?.let { state ->
+            allPalsSubmissions[state.palCode] = state.submissions
+            allPalsMembers[state.palCode] = state.members
+            palPalsCount[state.palCode] = state.memberCount
+            allPalsMessages[state.palCode] = state.messages
+        }
+    }
+
     fun clearGroupMemoryCaches() {
-        activeHourSubmissions = emptyMap()
-        dailyHourHistoryMap = emptyMap()
+        viewModel.clearActivePalState()
         allPalsMessages.clear()
-        exportMenuDataState = emptyMap()
     }
 
     androidx.compose.runtime.DisposableEffect(Unit) {
@@ -1563,8 +1569,7 @@ fun HomeScreen(
             // 🚫 3. PURGE PALS GROUP MEMORY RAILS
             // ========================================================
             // Drops cached structural entries so they start on a blank canvas
-            activeHourSubmissions = emptyMap()
-            dailyHourHistoryMap = emptyMap()
+            viewModel.clearActivePalState()
             activeGroupMembersList = emptyList()
             createdPals = emptyList()
             
@@ -1572,7 +1577,6 @@ fun HomeScreen(
             // 🚫 4. FLUSH LIVE CHATS & EXPORT DATA
             // ========================================================
             allPalsMessages.clear()
-            exportMenuDataState = emptyMap()
             
             android.util.Log.d("LifecyclePurge", "All local app storage, memory caches, and dashboard layouts scrubbed on quit.")
         }
@@ -2018,182 +2022,32 @@ fun HomeScreen(
 
     fun refreshActivePalDetails(palCode: String) {
         if (currentUserId.isEmpty() || palCode == "vlog" || palCode.isBlank()) return
-        coroutineScope.launch {
-            try {
-                // Groups strictly operate within the absolute, real-time 4am to 4am day window
-                val systemNow = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
-                val targetDay = if (systemNow.hour < 4) {
-                    systemNow.minusDays(1).format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
-                } else {
-                    systemNow.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
-                }
-                
-                val currentSystemHour = systemNow.hour
-
-                // 1. Fetch only submissions belonging strictly to this custom palCode group table row
-                val dbSubmissions = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    supabaseClient.postgrest.from("submissions")
-                        .select {
-                            filter {
-                                eq("pal_code", palCode)
-                                gte("created_at", "${targetDay}T04:00:00Z")
-                                lt("created_at", "${java.time.ZonedDateTime.parse(targetDay + "T04:00:00Z").plusDays(1).toInstant()}")
+        viewModel.refreshActivePalDetails(
+            palCode = palCode,
+            currentUserId = currentUserId,
+            currentDisplayName = currentDisplayName,
+            firstName = firstName,
+            currentAvatarUrl = customAvatarUriString,
+            locallyDeletedSubmissions = locallyDeletedSubmissions.keys,
+            resolveAvatarUrl = {
+                var avatarUrl = ""
+                customAvatarUriString?.let { uriStr ->
+                    if (uriStr.startsWith("http")) {
+                        avatarUrl = uriStr
+                    } else if (uriStr.isNotEmpty()) {
+                        val uploaded = uploadFileToSupabase(context, uriStr, "avatars")
+                        if (uploaded.startsWith("http")) {
+                            avatarUrl = uploaded
+                            sessionManager.saveAvatarUri(uploaded)
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                customAvatarUriString = uploaded
                             }
-                        }
-                        .decodeList<SubmissionDbItem>()
-                }
-                val filteredSubmissions = dbSubmissions.filterNot { sub ->
-                    sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR") ||
-                    locallyDeletedSubmissions.containsKey(sub.imageUrl.split("|||").firstOrNull()) ||
-                    (sub.id != null && locallyDeletedSubmissions.containsKey(sub.id.toString()))
-                }
-                val oldSubs = allPalsSubmissions[palCode] ?: emptyList()
-                if (oldSubs != filteredSubmissions) {
-                    allPalsSubmissions[palCode] = filteredSubmissions
-                }
-                
-                val dbMessages = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    supabaseClient.postgrest.from("messages")
-                        .select {
-                            filter {
-                                eq("pal_code", palCode)
-                            }
-                        }
-                        .decodeList<MessageDbItem>()
-                }
-                val oldMsgs = allPalsMessages[palCode] ?: emptyList()
-                if (oldMsgs != dbMessages) {
-                    allPalsMessages[palCode] = dbMessages
-                }
-
-                // If user doesn't have a submission (either profile or active vlog) in dbSubmissions, insert a profile submission in the background
-                val hasUserSub = dbSubmissions.any { it.userId == currentUserId }
-                if (!hasUserSub && pendingProfileInserts[palCode] != true) {
-                    pendingProfileInserts[palCode] = true
-                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        try {
-                            var avatarUrl = ""
-                            customAvatarUriString?.let { uriStr ->
-                                if (uriStr.startsWith("http")) {
-                                    avatarUrl = uriStr
-                                } else if (uriStr.isNotEmpty()) {
-                                    val uploaded = uploadFileToSupabase(context, uriStr, "avatars")
-                                    if (uploaded.startsWith("http")) {
-                                        avatarUrl = uploaded
-                                        sessionManager.saveAvatarUri(uploaded)
-                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            customAvatarUriString = uploaded
-                                        }
-                                    }
-                                }
-                            }
-                            val cleanCode = palCode.trim()
-                            if (cleanCode.isBlank()) {
-                                android.util.Log.e("SubmissionError", "Aborting upload: pal_code is empty.")
-                                pendingProfileInserts.remove(palCode)
-                                return@launch
-                            }
-                            val profileDisplayName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
-                            val profileSub = SubmissionDbItem(
-                                palCode = cleanCode,
-                                userId = currentUserId,
-                                userDisplayName = profileDisplayName,
-                                imageUrl = "PROFILE_AVATAR",
-                                createdAt = java.time.Instant.now().toString()
-                            )
-
-                            // Use the mutex lock here so profile generation never cross-fires with real-time events
-                            if (!globalSyncMutex.isLocked) {
-                                globalSyncMutex.withLock {
-                                    // Recreate group if deleted or missing using insert (no pre-check select)
-                                    try {
-                                        supabaseClient.postgrest.from("pals")
-                                            .insert(PalDbItem(code = cleanCode, name = "Pals Group"))
-                                    } catch (e: Exception) {
-                                        // Ignore conflict to preserve original group name
-                                    }
-
-                                    // Insert profile token row safely
-                                    supabaseClient.postgrest.from("submissions").insert(profileSub)
-                                    
-                                    // ✅ THE FIX: Do NOT recall refreshActivePalDetails() recursively!
-                                    // Instead, update the local map memory directly on the main thread to break the loop.
-                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                        val currentList = allPalsSubmissions[cleanCode] ?: emptyList()
-                                        allPalsSubmissions[cleanCode] = currentList + profileSub
-                                        pendingProfileInserts.remove(cleanCode)
-                                    }
-                                }
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("WarpProfileFix", "Profile setup stalled safely: ${e.message}")
-                            pendingProfileInserts.remove(palCode)
                         }
                     }
                 }
-                
-                val mappings = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    supabaseClient.postgrest.from("user_pals")
-                        .select {
-                            filter {
-                                eq("pal_code", palCode)
-                            }
-                        }
-                        .decodeList<UserPalMapping>()
-                        .sortedWith(compareBy({ it.createdAt ?: "" }, { it.id ?: "" }))
-                }
-
-                val userFirstName = currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                
-                val memberList = mutableListOf<String>()
-                val addedUserIds = mutableSetOf<String>()
-
-                mappings.forEach { mapping ->
-                    if (mapping.userId.isNotEmpty() && !addedUserIds.contains(mapping.userId)) {
-                        val sub = dbSubmissions.firstOrNull { it.userId == mapping.userId }
-                        val (displayName, avatarUrl) = if (sub != null) {
-                            parseUserDisplayName(sub.userDisplayName)
-                        } else {
-                            if (mapping.userId == currentUserId) {
-                                val localAvatar = if (customAvatarUriString?.startsWith("http") == true) customAvatarUriString else null
-                                Pair(userFirstName, localAvatar)
-                            } else {
-                                Pair("Pal", null)
-                            }
-                        }
-                        val formatted = "${mapping.userId}|||$displayName|||${avatarUrl ?: ""}"
-                        memberList.add(formatted)
-                        addedUserIds.add(mapping.userId)
-                    }
-                }
-
-                dbSubmissions.forEach { sub ->
-                    if (sub.userId.isNotEmpty() && !addedUserIds.contains(sub.userId)) {
-                        val (displayName, avatarUrl) = parseUserDisplayName(sub.userDisplayName)
-                        val formatted = "${sub.userId}|||$displayName|||${avatarUrl ?: ""}"
-                        memberList.add(formatted)
-                        addedUserIds.add(sub.userId)
-                    }
-                }
-
-                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    // Classify all historical group updates into separate 0-23 hour slots
-                    dailyHourHistoryMap = filteredSubmissions.groupBy { it.getHourBucket() }
-
-                    // Extract group items submitted during the *current* active hourly frame
-                    val itemsInThisHour = dailyHourHistoryMap[currentSystemHour] ?: emptyList()
-                    activeHourSubmissions = itemsInThisHour.associateBy { it.userId }
-                    
-                    // Update group export matrices cleanly 
-                    exportMenuDataState = dailyHourHistoryMap.toSortedMap()
-
-                    allPalsMembers[palCode] = memberList
-                    palPalsCount[palCode] = filteredSubmissions.map { it.userId }.distinct().size
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("PalsGroupRefresh", "Group sync engine error: ${e.message}")
+                avatarUrl
             }
-        }
+        )
     }
 
     fun refreshMessages(palCode: String) {
@@ -2225,10 +2079,10 @@ fun HomeScreen(
                 launch {
                     userPalsFlow.collect { action ->
                         // Drop internal structural echo events if a refresh is already processing
-                        if (globalSyncMutex.isLocked) return@collect
+                        if (viewModel.globalSyncMutex.isLocked) return@collect
                         
                         try {
-                            globalSyncMutex.withLock {
+                            viewModel.globalSyncMutex.withLock {
                                 when (action) {
                                     is PostgresAction.Insert, is PostgresAction.Delete -> {
                                         val record = when (action) {
@@ -2260,10 +2114,10 @@ fun HomeScreen(
                 // SUBMISSIONS STREAM WATCHDOG
                 launch {
                     submissionsFlow.collect { action ->
-                        if (globalSyncMutex.isLocked) return@collect
+                        if (viewModel.globalSyncMutex.isLocked) return@collect
                         
                         try {
-                            globalSyncMutex.withLock {
+                            viewModel.globalSyncMutex.withLock {
                                 when (action) {
                                     is PostgresAction.Insert, is PostgresAction.Delete -> {
                                         val record = when (action) {
@@ -2290,10 +2144,10 @@ fun HomeScreen(
                 // MESSAGES STREAM WATCHDOG
                 launch {
                     messagesFlow.collect { action ->
-                        if (globalSyncMutex.isLocked) return@collect
+                        if (viewModel.globalSyncMutex.isLocked) return@collect
                         
                         try {
-                            globalSyncMutex.withLock {
+                            viewModel.globalSyncMutex.withLock {
                                 when (action) {
                                     is PostgresAction.Insert, is PostgresAction.Delete -> {
                                         val record = when (action) {
@@ -2946,7 +2800,7 @@ fun HomeScreen(
                                 allPalsSubmissions.remove(p.code)
                                 allPalsMessages.remove(p.code)
                                 allPalsMembers.remove(p.code)
-                                pendingProfileInserts.remove(p.code)
+                                viewModel.removePendingProfileInsert(p.code)
                                 if (p.code == "vlog") {
                                     capturedVlogsPaths = arrayListOf()
                                     capturedVlogsTimes = arrayListOf()
@@ -2980,7 +2834,7 @@ fun HomeScreen(
                                 allPalsSubmissions.remove(p.code)
                                 allPalsMessages.remove(p.code)
                                 allPalsMembers.remove(p.code)
-                                pendingProfileInserts.remove(p.code)
+                                viewModel.removePendingProfileInsert(p.code)
                                 if (p.code == "vlog") {
                                     capturedVlogsPaths = arrayListOf()
                                     capturedVlogsTimes = arrayListOf()

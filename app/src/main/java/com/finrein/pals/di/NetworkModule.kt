@@ -10,6 +10,8 @@ import com.finrein.pals.data.repository.StorageRepositoryImpl
 import com.finrein.pals.domain.repository.StorageRepository
 import com.finrein.pals.data.repository.GroupRepositoryImpl
 import com.finrein.pals.domain.repository.GroupRepository
+import com.finrein.pals.data.repository.ActivePalRepositoryImpl
+import com.finrein.pals.domain.repository.ActivePalRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -78,6 +80,17 @@ abstract class StorageModule {
     abstract fun bindStorageRepository(
         storageRepositoryImpl: StorageRepositoryImpl
     ): StorageRepository
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class ActivePalModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindActivePalRepository(
+        activePalRepositoryImpl: ActivePalRepositoryImpl
+    ): ActivePalRepository
 }
 
 
