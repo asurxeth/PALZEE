@@ -110,6 +110,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.boolean
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.rpc
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.storage.storage
 import io.github.jan.supabase.realtime.realtime
@@ -1899,103 +1900,46 @@ fun HomeScreen(
             try {
                 isRefreshing = true
                 
-                // Force operations into a strict single-thread IO pool sequence context
-                withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val mappings = supabaseClient.postgrest.from("user_pals")
-                        .select { filter { eq("user_id", currentUserId) } }
-                        .decodeList<UserPalMapping>()
-                    
-                    val palCodes = mappings.map { it.palCode }
-                    
-                    // ========================================================
-                    // 🛡️ THE FIXED HOME WINDOW LOGIC FOR THE DEFAULT VLOG BOX
-                    // ========================================================
-                    // Calculate the strict, current 4am-4am day string REGARDLESS of manual toggles
-                    val systemNow = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
-                    val absoluteCurrentDay = if (systemNow.hour < 4) systemNow.minusDays(1).toLocalDate() else systemNow.toLocalDate()
-                    val absoluteCurrentDayString = absoluteCurrentDay.toString()
-                    val nextDayString = absoluteCurrentDay.plusDays(1).toString()
-
-                    // Check the database to see if the user has captured any vlogs inside THIS strict active window
-                    val currentActiveVlogsCount = try {
-                        supabaseClient.postgrest.from("submissions")
-                            .select {
-                                filter {
-                                    eq("pal_code", "vlog")
-                                    eq("user_id", currentUserId)
-                                    gte("created_at", "${absoluteCurrentDayString}T04:00:00Z")
-                                    lt("created_at", "${nextDayString}T04:00:00Z")
-                                }
-                            }
-                            .decodeList<SubmissionDbItem>()
-                            .size
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        0
-                    }
-
-                    // Build the Default Vlog Box with strict current-window metrics
-                    val defaultVlog = PalItem(
-                        name = "vlog",
-                        // If count is 0, it dynamically resets to empty default text sizing smoothly
-                        size = if (currentActiveVlogsCount == 0) "" else currentActiveVlogsCount.toString(),
-                        code = "vlog",
-                        isVlog = true,
-                        isCreator = false
-                    )
-                    
-                    if (palCodes.isNotEmpty()) {
-                        val palsFromDb = supabaseClient.postgrest.from("pals")
-                            .select { filter { isIn("pal_code", palCodes) } }
-                            .decodeList<PalDbItem>()
-                        
-                        val allGroupMappings = supabaseClient.postgrest.from("user_pals")
-                            .select { filter { isIn("pal_code", palCodes) } }
-                            .decodeList<UserPalMapping>()
-                            
-                        val counts = allGroupMappings.groupBy { it.palCode }.mapValues { it.value.size }
-                        counts.forEach { (code, count) -> palPalsCount[code] = count }
-
-                        val validCodes = palsFromDb.map { it.code }.toSet()
-                        val orphanedCodes = palCodes.filter { it !in validCodes }
-                        
-                        if (orphanedCodes.isNotEmpty()) {
-                            supabaseClient.postgrest.from("user_pals").delete {
-                                filter {
-                                    eq("user_id", currentUserId)
-                                    isIn("pal_code", orphanedCodes)
-                                }
-                            }
-                        }
-
-                        val creatorMap = allGroupMappings
-                            .groupBy { it.palCode }
-                            .mapValues { entry -> entry.value.minByOrNull { it.createdAt ?: "" }?.userId }
-
-                        val mappedPals = palsFromDb.map { dbPal ->
-                            val groupCreatorId = creatorMap[dbPal.code]
-                            PalItem(
-                                name = dbPal.name.removeSuffix(" (${dbPal.code})"),
-                                size = palPalsCount[dbPal.code]?.toString() ?: "1",
-                                code = dbPal.code,
-                                isVlog = false,
-                                isCreator = groupCreatorId == currentUserId
-                            )
-                        }
-                        
-                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            createdPals = (listOf(defaultVlog) + mappedPals)
-                                .distinctBy { it.code }
-                                .filterNot { locallyDeletedPals.containsKey(it.code) }
-                        }
-                    } else {
-                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            createdPals = listOf(defaultVlog).filterNot { locallyDeletedPals.containsKey(it.code) }
-                        }
-                    }
+                // 🚀 Replaces all sequential client queries with one single database transaction
+                val rawResponseString = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    supabaseClient.postgrest.rpc(
+                        function = "get_clean_homescreen_dashboard",
+                        parameters = mapOf("current_user_uuid" to currentUserId)
+                    ).data
                 }
+
+                // Parse unified payload array
+                val jsonObject = kotlinx.serialization.json.Json.parseToJsonElement(rawResponseString).jsonObject
+                val vlogBoxSize = jsonObject["vlog_box_size"]?.jsonPrimitive?.content ?: ""
+                val groupsArray = jsonObject["groups"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
+
+                val defaultVlog = PalItem(
+                    name = "vlog",
+                    size = vlogBoxSize, 
+                    code = "vlog",
+                    isVlog = true,
+                    isCreator = false
+                )
+
+                val mappedPals = groupsArray.map { element ->
+                    val obj = element.jsonObject
+                    PalItem(
+                        name = obj["name"]?.jsonPrimitive?.content ?: "",
+                        size = obj["size"]?.jsonPrimitive?.content ?: "1",
+                        code = obj["code"]?.jsonPrimitive?.content ?: "",
+                        isVlog = false,
+                        isCreator = obj["is_creator"]?.jsonPrimitive?.boolean ?: false
+                    )
+                }
+
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    createdPals = (listOf(defaultVlog) + mappedPals)
+                        .distinctBy { it.code }
+                        .filterNot { locallyDeletedPals.containsKey(it.code) }
+                }
+
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("RPC_Dashboard_Error", "Transaction request bypassed: ${e.message}")
             } finally {
                 isRefreshing = false
             }
