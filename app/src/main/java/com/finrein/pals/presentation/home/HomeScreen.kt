@@ -365,6 +365,7 @@ suspend fun deleteVlogPostPermanently(userId: String, videoUrl: String, palCode:
 data class PalDbItem(
     @SerialName("pal_code") val code: String,
     val name: String,
+    val size: String? = null,
     @SerialName("created_at") val createdAt: String? = null
 )
 
@@ -3825,7 +3826,7 @@ fun HomeScreen(
                             val uniqueServerCode = supabaseClient.postgrest.rpc("generate_unique_pal_code").data.trim('"')
 
                             // 3. Perform insertions using the verified server code token string
-                            val newPalDb = PalDbItem(code = uniqueServerCode, name = newGroupName)
+                            val newPalDb = PalDbItem(code = uniqueServerCode, name = newGroupName, size = newPalSize)
                             supabaseClient.postgrest.from("pals").insert(newPalDb)
                             
                             val newMapping = UserPalMapping(
@@ -3840,7 +3841,7 @@ fun HomeScreen(
                             withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 val freshPalItem = PalItem(
                                     name = newGroupName,
-                                    size = "1", 
+                                    size = newPalSize, 
                                     code = uniqueServerCode,
                                     isVlog = false,
                                     isCreator = true
@@ -9268,10 +9269,10 @@ fun VlogScreenContent(
                                 val localPos = coordinates.positionInRoot()
                                 capsuleLeftDp = with(density) { localPos.x.toDp() }
                             }
-                            .widthIn(max = (screenWidthDp - 165.dp).coerceAtLeast(100.dp))
+                            .widthIn(max = (screenWidthDp - 215.dp).coerceAtLeast(100.dp))
                             .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(1.5.dp)
                     ) {
                         Text(
                             text = if (selectedDayOffset > 0) dayName else (if (showEdit && editName.isNotEmpty()) editName else pal.name),
@@ -9359,10 +9360,10 @@ fun VlogScreenContent(
                                 val localPos = coordinates.positionInRoot()
                                 capsuleLeftDp = with(density) { localPos.x.toDp() }
                             }
-                            .widthIn(max = (screenWidthDp - 165.dp).coerceAtLeast(100.dp))
+                            .widthIn(max = (screenWidthDp - 215.dp).coerceAtLeast(100.dp))
                             .padding(horizontal = 13.5.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(1.5.dp)
                     ) {
                         Text(
                             text = if (selectedDayOffset > 0) dayName else (if (showEdit && editName.isNotEmpty()) editName else pal.name),
