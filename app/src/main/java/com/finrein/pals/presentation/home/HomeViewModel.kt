@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.Dispatchers
 import com.finrein.pals.domain.repository.DashboardRepository
 import com.finrein.pals.domain.repository.ChatRepository
 import com.finrein.pals.domain.repository.ActivePalRepository
@@ -14,6 +16,8 @@ import com.finrein.pals.domain.model.MessageDbItem
 import com.finrein.pals.domain.model.ActivePalState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import io.github.jan.supabase.realtime.PostgresAction
+import kotlinx.serialization.json.jsonPrimitive
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -55,6 +59,64 @@ class HomeViewModel @Inject constructor(
             val oldMsgs = _palMessages.value[palCode] ?: emptyList()
             if (oldMsgs != dbMessages) {
                 updatePalMessages(palCode, dbMessages)
+            }
+        }
+    }
+
+    fun sendMessage(palCode: String, userId: String, messageText: String) {
+        if (palCode != "vlog") {
+            val newMessage = MessageDbItem(
+                palCode = palCode,
+                userId = userId,
+                messageText = messageText
+            )
+            viewModelScope.launch(Dispatchers.IO) {
+                val result = chatRepository.postMessage(newMessage)
+                if (result.isSuccess) {
+                    refreshMessages(palCode)
+                } else {
+                    val localMsg = MessageDbItem(
+                        palCode = palCode,
+                        userId = userId,
+                        messageText = messageText
+                    )
+                    _palMessages.value = _palMessages.value + (palCode to ((_palMessages.value[palCode] ?: emptyList()) + localMsg))
+                }
+            }
+        } else {
+            val localMsg = MessageDbItem(
+                palCode = palCode,
+                userId = userId,
+                messageText = messageText
+            )
+            _palMessages.value = _palMessages.value + (palCode to ((_palMessages.value[palCode] ?: emptyList()) + localMsg))
+        }
+    }
+
+    fun handleMessageRealtimeAction(action: PostgresAction, activePalCode: String?) {
+        if (globalSyncMutex.isLocked) return
+        viewModelScope.launch {
+            try {
+                globalSyncMutex.withLock {
+                    when (action) {
+                        is PostgresAction.Insert, is PostgresAction.Delete -> {
+                            val record = when (action) {
+                                is PostgresAction.Insert -> action.record
+                                is PostgresAction.Delete -> action.oldRecord
+                                else -> null
+                            }
+                            val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
+                            if (eventPalCode != null && eventPalCode == activePalCode) {
+                                refreshMessages(eventPalCode)
+                            }
+                        }
+                        else -> {
+                            // Suppressed
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

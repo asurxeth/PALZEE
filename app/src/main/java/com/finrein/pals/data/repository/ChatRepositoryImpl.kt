@@ -27,4 +27,10 @@ class ChatRepositoryImpl @Inject constructor(
                 .decodeList<MessageDbItem>()
         }
     }
+
+    override suspend fun postMessage(message: MessageDbItem): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            supabaseClient.postgrest.from("messages").insert(message)
+        }
+    }
 }

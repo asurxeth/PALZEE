@@ -364,42 +364,7 @@ suspend fun deleteVlogPostPermanently(userId: String, videoUrl: String, palCode:
 
 
 
-class HomeViewModelMapWrapper(
-    private val stateProvider: () -> Map<String, List<MessageDbItem>>,
-    private val onPut: (String, List<MessageDbItem>) -> Unit,
-    private val onRemove: (String) -> Unit
-) : MutableMap<String, List<MessageDbItem>> {
-    override val entries: MutableSet<MutableMap.MutableEntry<String, List<MessageDbItem>>>
-        get() = throw UnsupportedOperationException()
-    override val keys: MutableSet<String>
-        get() = stateProvider().keys.toMutableSet()
-    override val size: Int
-        get() = stateProvider().size
-    override val values: MutableCollection<List<MessageDbItem>>
-        get() = stateProvider().values.toMutableList()
-    override fun clear() {
-        throw UnsupportedOperationException()
-    }
-    override fun isEmpty(): Boolean = stateProvider().isEmpty()
-    override fun remove(key: String): List<MessageDbItem>? {
-        val old = stateProvider()[key]
-        onRemove(key)
-        return old
-    }
-    override fun putAll(from: Map<out String, List<MessageDbItem>>) {
-        from.forEach { (k, v) -> put(k, v) }
-    }
-    override fun put(key: String, value: List<MessageDbItem>): List<MessageDbItem>? {
-        val old = stateProvider()[key]
-        onPut(key, value)
-        return old
-    }
-    override fun get(key: String): List<MessageDbItem>? {
-        return stateProvider()[key]
-    }
-    override fun containsValue(value: List<MessageDbItem>): Boolean = stateProvider().containsValue(value)
-    override fun containsKey(key: String): Boolean = stateProvider().containsKey(key)
-}
+
 
 data class UserItem(
     val userId: String,
@@ -1473,14 +1438,7 @@ fun HomeScreen(
     var showLeavePalDialog by remember { mutableStateOf(false) }
     var showVlogExportDialog by remember { mutableStateOf(false) }
     val palPalsCount = remember { mutableStateMapOf<String, Int>() }
-    val palMessagesState = viewModel.palMessages.collectAsState()
-    val palMessages = remember(viewModel) {
-        HomeViewModelMapWrapper(
-            stateProvider = { palMessagesState.value },
-            onPut = { key, value -> viewModel.updatePalMessages(key, value) },
-            onRemove = { key -> viewModel.removePalMessages(key) }
-        )
-    }
+    val palMessages by viewModel.palMessages.collectAsState()
     val allPalsSubmissions = remember { mutableStateMapOf<String, List<SubmissionDbItem>>() }
     val allPalsMessages = remember { mutableStateMapOf<String, List<MessageDbItem>>() }
     val allPalsMembers = remember { mutableStateMapOf<String, List<String>>() }
@@ -2050,16 +2008,7 @@ fun HomeScreen(
         )
     }
 
-    fun refreshMessages(palCode: String) {
-        if (currentUserId.isEmpty() || palCode == "vlog") return
-        coroutineScope.launch {
-            try {
-                viewModel.refreshMessages(palCode)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
+
 
     LaunchedEffect(currentUserId, lifecycleOwner) {
         if (currentUserId.isEmpty()) return@LaunchedEffect
@@ -2140,35 +2089,12 @@ fun HomeScreen(
                         }
                     }
                 }
-
                 // MESSAGES STREAM WATCHDOG
                 launch {
                     messagesFlow.collect { action ->
-                        if (viewModel.globalSyncMutex.isLocked) return@collect
-                        
-                        try {
-                            viewModel.globalSyncMutex.withLock {
-                                when (action) {
-                                    is PostgresAction.Insert, is PostgresAction.Delete -> {
-                                        val record = when (action) {
-                                            is PostgresAction.Insert -> action.record
-                                            is PostgresAction.Delete -> action.oldRecord
-                                            else -> null
-                                        }
-                                        val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
-                                        if (eventPalCode != null && eventPalCode == activeVlogPal?.code) {
-                                            refreshMessages(eventPalCode)
-                                        }
-                                    }
-                                    else -> android.util.Log.d("WarpGuard", "Suppressed messages update echo.")
-                                }
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("WarpGuardError", "messages collection boundary caught: ${e.message}")
-                        }
+                        viewModel.handleMessageRealtimeAction(action, activeVlogPal?.code)
                     }
                 }
-                
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -2355,9 +2281,10 @@ fun HomeScreen(
         if (pal != null && pal.code != "vlog") {
             clearGroupMemoryCaches()
             refreshActivePalDetails(pal.code)
-            refreshMessages(pal.code)
+            viewModel.refreshMessages(pal.code)
         }
     }
+
     var isCapturingPal by remember { mutableStateOf(false) }
     var capturingProgress by remember { mutableStateOf(0.0f) }
     var vlogMenuExpandedMembers by remember { mutableStateOf(false) }
@@ -2752,38 +2679,7 @@ fun HomeScreen(
                         messages = palMessages[activeVlogPal!!.code] ?: emptyList(),
                         onSendMessage = { msg ->
                             val code = activeVlogPal!!.code
-                            if (code != "vlog") {
-                                val newMessage = MessageDbItem(
-                                    palCode = code,
-                                    userId = currentUserId,
-                                    messageText = msg
-                                )
-                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                    try {
-                                        supabaseClient.postgrest.from("messages").insert(newMessage)
-                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            refreshMessages(code)
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            val localMsg = MessageDbItem(
-                                                palCode = code,
-                                                userId = currentUserId,
-                                                messageText = msg
-                                            )
-                                            palMessages[code] = (palMessages[code] ?: emptyList()) + localMsg
-                                        }
-                                    }
-                                }
-                            } else {
-                                val localMsg = MessageDbItem(
-                                    palCode = code,
-                                    userId = currentUserId,
-                                    messageText = msg
-                                )
-                                palMessages[code] = (palMessages[code] ?: emptyList()) + localMsg
-                            }
+                            viewModel.sendMessage(code, currentUserId, msg)
                         },
                         currentDisplayName = currentDisplayName,
                         currentUserId = currentUserId,
@@ -2796,7 +2692,7 @@ fun HomeScreen(
                                     groupDatabase.remove(p.code)
                                 }
                                 palPalsCount.remove(p.code)
-                                palMessages.remove(p.code)
+                                viewModel.removePalMessages(p.code)
                                 allPalsSubmissions.remove(p.code)
                                 allPalsMessages.remove(p.code)
                                 allPalsMembers.remove(p.code)
@@ -2830,7 +2726,7 @@ fun HomeScreen(
                                 locallyDeletedPals[p.code] = true
                                 createdPals = createdPals.filterNot { it.code == p.code }
                                 palPalsCount.remove(p.code)
-                                palMessages.remove(p.code)
+                                viewModel.removePalMessages(p.code)
                                 allPalsSubmissions.remove(p.code)
                                 allPalsMessages.remove(p.code)
                                 allPalsMembers.remove(p.code)
@@ -3064,21 +2960,7 @@ fun HomeScreen(
                                 val targetUserDisplayName = targetSub?.userDisplayName?.let { parseUserDisplayName(it).first } ?: "Pal"
                                 
                                 val reactionContent = "REACTION|||$targetUserId|||$targetUserDisplayName|||$path|||$emoji"
-                                val newMessage = MessageDbItem(
-                                    palCode = targetPalCode,
-                                    userId = currentUserId,
-                                    messageText = reactionContent
-                                )
-                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                    try {
-                                        supabaseClient.postgrest.from("messages").insert(newMessage)
-                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            refreshMessages(targetPalCode)
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }
+                                viewModel.sendMessage(targetPalCode, currentUserId, reactionContent)
                             }
                         },
                         activeReplyPreviewPath = activeReplyPreviewPath,
@@ -3095,21 +2977,7 @@ fun HomeScreen(
                                 val targetUserDisplayName = targetSub?.userDisplayName?.let { parseUserDisplayName(it).first } ?: "Pal"
                                 
                                 val replyContent = "REPLY|||$targetUserId|||$targetUserDisplayName|||$path|||$text"
-                                val newMessage = MessageDbItem(
-                                    palCode = targetPalCode,
-                                    userId = currentUserId,
-                                    messageText = replyContent
-                                )
-                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                    try {
-                                        supabaseClient.postgrest.from("messages").insert(newMessage)
-                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            refreshMessages(targetPalCode)
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }
+                                viewModel.sendMessage(targetPalCode, currentUserId, replyContent)
                             }
                         }
                     )
