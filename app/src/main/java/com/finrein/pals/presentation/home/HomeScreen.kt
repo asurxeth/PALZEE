@@ -3825,7 +3825,7 @@ fun HomeScreen(
                         // Commit structural definitions to database safely
                         withContext(kotlinx.coroutines.Dispatchers.IO) {
                             val newPalDb = PalDbItem(code = generatedPalCode, name = newGroupName)
-                            supabaseClient.postgrest.from("pals").insert(newPalDb)
+                            supabaseClient.postgrest.from("pals").upsert(newPalDb, onConflict = "pal_code")
                             
                             val newMapping = UserPalMapping(
                                 userId = currentUserId,
@@ -3833,7 +3833,7 @@ fun HomeScreen(
                                 userDisplayName = currentDisplayName,
                                 userAvatarUrl = customAvatarUriString
                             )
-                            supabaseClient.postgrest.from("user_pals").insert(newMapping)
+                            supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
                         }
                         
                         withContext(kotlinx.coroutines.Dispatchers.Main) {
