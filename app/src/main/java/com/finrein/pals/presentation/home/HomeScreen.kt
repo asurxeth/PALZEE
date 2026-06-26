@@ -381,22 +381,7 @@ data class SubmissionDbItem(
     @SerialName("user_display_name") val userDisplayName: String,
     @SerialName("image_url") val imageUrl: String,
     @SerialName("created_at") val createdAt: String? = null
-) {
-    fun getHourBucket(): Int {
-        val time = createdAt ?: return 0
-        return try {
-            val parsedTime = java.time.ZonedDateTime.parse(time)
-            parsedTime.withZoneSameInstant(java.time.ZoneId.systemDefault()).hour
-        } catch (e1: Exception) {
-            try {
-                val parsedInstant = java.time.Instant.parse(time)
-                parsedInstant.atZone(java.time.ZoneId.systemDefault()).hour
-            } catch (e2: Exception) {
-                0
-            }
-        }
-    }
-}
+)
 
 @Serializable
 data class MessageDbItem(
@@ -1512,8 +1497,6 @@ fun HomeScreen(
     val palPalsCount = remember { mutableStateMapOf<String, Int>() }
     val palMessages = remember { mutableStateMapOf<String, List<MessageDbItem>>() }
     val allPalsSubmissions = remember { mutableStateMapOf<String, List<SubmissionDbItem>>() }
-    val activeHourSubmissions = remember { mutableStateMapOf<String, Map<String, SubmissionDbItem>>() }
-    val dailyHourHistoryMap = remember { mutableStateMapOf<String, Map<Int, List<SubmissionDbItem>>>() }
     val allPalsMessages = remember { mutableStateMapOf<String, List<MessageDbItem>>() }
     val allPalsMembers = remember { mutableStateMapOf<String, List<String>>() }
     val locallyDeletedPals = remember { mutableStateMapOf<String, Boolean>() }
@@ -2058,24 +2041,11 @@ fun HomeScreen(
         if (currentUserId.isEmpty() || palCode == "vlog") return
         coroutineScope.launch {
             try {
-                val systemNow = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
-                val activeLocalDate = if (systemNow.hour < 4) {
-                    systemNow.minusDays(1).toLocalDate()
-                } else {
-                    systemNow.toLocalDate()
-                }
-                val targetDay = activeLocalDate.minusDays(selectedDayOffset.toLong())
-                val targetDayString = targetDay.toString()
-                val nextDayString = targetDay.plusDays(1).toString()
-                val currentSystemHour = java.time.LocalTime.now().hour
-
                 val dbSubmissions = withContext(kotlinx.coroutines.Dispatchers.IO) {
                     supabaseClient.postgrest.from("submissions")
                         .select {
                             filter {
                                 eq("pal_code", palCode)
-                                gte("created_at", "${targetDayString}T04:00:00Z")
-                                lt("created_at", "${nextDayString}T04:00:00Z")
                             }
                         }
                         .decodeList<SubmissionDbItem>()
@@ -2089,14 +2059,6 @@ fun HomeScreen(
                 if (oldSubs != filteredSubmissions) {
                     allPalsSubmissions[palCode] = filteredSubmissions
                 }
-
-                // Group all submissions by hour slot (0-23)
-                val groupedByHour = filteredSubmissions.groupBy { it.getHourBucket() }
-                dailyHourHistoryMap[palCode] = groupedByHour
-
-                // Active 1-hour window entries for user row/cards
-                val itemsInThisHour = groupedByHour[currentSystemHour] ?: emptyList()
-                activeHourSubmissions[palCode] = itemsInThisHour.associateBy { it.userId }
                 
                 val dbMessages = withContext(kotlinx.coroutines.Dispatchers.IO) {
                     supabaseClient.postgrest.from("messages")
@@ -3093,18 +3055,6 @@ fun HomeScreen(
                                             }
                                             deleteVlogPostPermanently(currentUserId, deletedPath, palCode)
                                             withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                activeHourSubmissions[palCode] = activeHourSubmissions[palCode]?.filterValues { 
-                                                    val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
-                                                    pathPart != deletedPath && it.imageUrl != deletedPath
-                                                } ?: emptyMap()
-                                                
-                                                dailyHourHistoryMap[palCode] = dailyHourHistoryMap[palCode]?.mapValues { (_, subs) ->
-                                                    subs.filterNot {
-                                                        val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
-                                                        pathPart == deletedPath || it.imageUrl == deletedPath
-                                                    }
-                                                } ?: emptyMap()
-
                                                 refreshActivePalDetails(palCode)
                                             }
                                         } catch (e: Exception) {
@@ -3246,7 +3196,6 @@ fun HomeScreen(
                         onSelectedDayOffsetChange = { selectedDayOffset = it },
                         allPalsSubmissions = allPalsSubmissions,
                         allPalsMembers = allPalsMembers,
-                        dailyHourHistoryMap = dailyHourHistoryMap,
                         palReactions = palReactions,
                         onEmojiReacted = { path, emoji ->
                             palReactions[path] = emoji
@@ -5769,10 +5718,58 @@ fun GroupHoursSmileysRow(
     accentColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val activeHoursSet = remember(submissions) {
+    val activeHours = remember(submissions) {
         submissions.filter { it.imageUrl != "PROFILE_AVATAR" && !it.imageUrl.startsWith("PROFILE_AVATAR") }
-            .map { it.getHourBucket() }
-            .toSet()
+            .map { sub ->
+                if (!sub.createdAt.isNullOrEmpty()) {
+                    try {
+                        val instant = java.time.Instant.parse(sub.createdAt)
+                        val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                        zonedDateTime.hour
+                    } catch (e: Exception) {
+                        val parts = sub.imageUrl.split("|||")
+                        val path = parts.getOrNull(0) ?: ""
+                        val regex = Regex("\\d{13}")
+                        val match = regex.find(path)
+                        if (match != null) {
+                            try {
+                                val instant = java.time.Instant.ofEpochMilli(match.value.toLong())
+                                val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                                zonedDateTime.hour
+                            } catch (ex: Exception) { 0 }
+                        } else { 0 }
+                    }
+                } else {
+                    val parts = sub.imageUrl.split("|||")
+                    val path = parts.getOrNull(0) ?: ""
+                    val regex = Regex("\\d{13}")
+                    val match = regex.find(path)
+                    if (match != null) {
+                        try {
+                            val instant = java.time.Instant.ofEpochMilli(match.value.toLong())
+                            val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                            zonedDateTime.hour
+                        } catch (ex: Exception) { 0 }
+                    } else { 0 }
+                }
+            }
+            .distinct()
+            .sorted()
+    }
+
+    val hourCount = activeHours.size
+    if (hourCount == 0) return
+
+    val smileySize = when {
+        hourCount <= 6 -> 22.dp
+        hourCount <= 12 -> 16.dp
+        hourCount <= 18 -> 12.dp
+        else -> 9.dp
+    }
+    val spacing = when {
+        hourCount <= 6 -> 4.dp
+        hourCount <= 12 -> 3.dp
+        else -> 2.dp
     }
 
     val shufflingColors = listOf(
@@ -5784,221 +5781,40 @@ fun GroupHoursSmileysRow(
         Color(0xFFFF073A)  // Red
     )
 
-    Column(
+    Row(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalArrangement = Arrangement.spacedBy(spacing),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Row 1: Hours 0..11
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            for (hour in 0..11) {
-                val hasActivity = activeHoursSet.contains(hour)
-                if (hasActivity) {
-                    val outerColor = shufflingColors[hour % 6]
-                    val innerColor = shufflingColors[(hour + 3) % 6]
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .border(
-                                width = 1.dp,
-                                color = outerColor,
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(11.5.dp)
-                                .clip(CircleShape)
-                                .background(innerColor),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Image(
-                                painter = painterResource(id = R.drawable.smile_small),
-                                contentDescription = "Smiley",
-                                modifier = Modifier.fillMaxSize().rotate(180f),
-                                colorFilter = ColorFilter.tint(Color.Black)
-                            )
-                        }
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .background(
-                                color = if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.05f),
-                                shape = CircleShape
-                            )
-                            .border(
-                                width = 0.5.dp,
-                                color = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = String.format("%02d", hour),
-                            fontSize = 7.sp,
-                            color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.3f),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
-        }
-        // Row 2: Hours 12..23
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            for (hour in 12..23) {
-                val hasActivity = activeHoursSet.contains(hour)
-                if (hasActivity) {
-                    val outerColor = shufflingColors[hour % 6]
-                    val innerColor = shufflingColors[(hour + 3) % 6]
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .border(
-                                width = 1.dp,
-                                color = outerColor,
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(11.5.dp)
-                                .clip(CircleShape)
-                                .background(innerColor),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Image(
-                                painter = painterResource(id = R.drawable.smile_small),
-                                contentDescription = "Smiley",
-                                modifier = Modifier.fillMaxSize().rotate(180f),
-                                colorFilter = ColorFilter.tint(Color.Black)
-                            )
-                        }
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .background(
-                                color = if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.05f),
-                                shape = CircleShape
-                            )
-                            .border(
-                                width = 0.5.dp,
-                                color = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = String.format("%02d", hour),
-                            fontSize = 7.sp,
-                            color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.3f),
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun SegmentedExportMenu(
-    historyMap: Map<Int, List<SubmissionDbItem>>,
-    groupMembers: List<String>,
-    isDark: Boolean
-) {
-    val dialogTextColor = if (isDark) Color.White else Color.Black
-    val dividerColor = if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.1f)
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 200.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        val sortedHours = historyMap.keys.sorted()
-        if (sortedHours.isEmpty()) {
-            Text(
-                text = "No captured frames today.",
-                fontFamily = RobotoFontFamily,
-                fontSize = 13.sp,
-                color = dialogTextColor.copy(alpha = 0.6f)
-            )
-        } else {
-            sortedHours.forEach { hour ->
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = String.format("⏰ Frame Slot — %02d:00 to %02d:59", hour, hour),
-                        fontFamily = RobotoFontFamily,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = dialogTextColor
-                    )
-
-                    val subsInHour = historyMap[hour] ?: emptyList()
-                    val subByUserId = subsInHour.associateBy { it.userId }
-
-                    groupMembers.forEach { memberStr ->
-                        val parts = memberStr.split("|||")
-                        val memberId = parts.getOrNull(0) ?: ""
-                        val memberName = parts.getOrNull(1) ?: "Pal"
-
-                        val sub = subByUserId[memberId]
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = memberName,
-                                fontFamily = RobotoFontFamily,
-                                fontSize = 13.sp,
-                                color = dialogTextColor.copy(alpha = 0.8f)
-                            )
-                            if (sub != null) {
-                                val shortPath = sub.imageUrl.take(15)
-                                Text(
-                                    text = "✅ Captured [$shortPath...]",
-                                    fontFamily = RobotoFontFamily,
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF4CAF50),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            } else {
-                                Text(
-                                    text = "❌ Missing - Empty Frame",
-                                    fontFamily = RobotoFontFamily,
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFE57373),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                }
+        activeHours.forEachIndexed { i, hour ->
+            val outerColor = shufflingColors[i % 6]
+            val innerColor = shufflingColors[(i + 3) % 6]
+            
+            Box(
+                modifier = Modifier
+                    .size(smileySize)
+                    .border(
+                        width = 1.dp,
+                        color = outerColor,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                val innerCircleSize = smileySize * 0.72f
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(dividerColor)
-                        .padding(vertical = 4.dp)
-                )
+                        .size(innerCircleSize)
+                        .clip(CircleShape)
+                        .background(innerColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.smile_small),
+                        contentDescription = "Smiley",
+                        modifier = Modifier.fillMaxSize().rotate(180f),
+                        colorFilter = ColorFilter.tint(Color.Black)
+                    )
+                }
             }
         }
     }
@@ -6799,7 +6615,6 @@ data class VlogScreenContentParams(
     val onSelectedDayOffsetChange: (Int) -> Unit = {},
     val allPalsSubmissions: Map<String, List<SubmissionDbItem>> = emptyMap(),
     val allPalsMembers: Map<String, List<String>> = emptyMap(),
-    val dailyHourHistoryMap: Map<String, Map<Int, List<SubmissionDbItem>>> = emptyMap(),
     val currentUserId: String = "",
     val palReactions: Map<String, String> = emptyMap(),
     val onEmojiReacted: (String, String) -> Unit = { _, _ -> },
@@ -6836,8 +6651,7 @@ fun GroupMemberCard(
     palReactions: Map<String, String> = emptyMap(),
     onEmojiReacted: (String, String) -> Unit = { _, _ -> },
     onReplyClick: (String) -> Unit = {},
-    messages: List<MessageDbItem> = emptyList(),
-    selectedDayOffset: Int = 0
+    messages: List<MessageDbItem> = emptyList()
 ) {
     val isActualMember = index < groupMembers.size
     val cardShape = if (isGrid) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(28.dp)
@@ -6905,14 +6719,8 @@ fun GroupMemberCard(
         emptyList()
     }
 
-    val currentHour = java.time.LocalTime.now().hour
-    val sortedMemberSubs = remember(memberSubs, selectedDayOffset, currentHour) {
-        val filtered = if (selectedDayOffset == 0) {
-            memberSubs.filter { it.getHourBucket() == currentHour }
-        } else {
-            memberSubs
-        }
-        filtered.mapNotNull { sub ->
+    val sortedMemberSubs = remember(memberSubs) {
+        memberSubs.mapNotNull { sub ->
             val parts = sub.imageUrl.split("|||")
             val path = parts.getOrNull(0) ?: ""
             if (path.isEmpty()) null else {
@@ -7391,25 +7199,20 @@ fun GroupMemberCard(
                 )
             }
 
-            val currentHour = java.time.LocalTime.now().hour
-            val timeLabel = String.format("%02d:00 - %02d:59", currentHour, currentHour)
+            val now = java.time.LocalTime.now()
+            val roundedHourStr = String.format("%02d:00", now.hour)
 
             Column(
                 modifier = Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(if (isGrid) 4.dp else 6.dp)
             ) {
-                CircularProgressIndicator(
-                    color = accentColor,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(if (isGrid) 20.dp else 28.dp)
-                )
                 val userEmptyTextColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
                 val userEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
                 Text(
-                    text = timeLabel,
+                    text = roundedHourStr,
                     fontFamily = DelaGothicOneFontFamily,
-                    fontSize = if (isGrid) 10.sp else 14.sp,
+                    fontSize = if (isGrid) 12.5.sp else 18.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = userEmptyTextColor,
                     modifier = Modifier.offset(y = 2.5.dp)
@@ -7607,28 +7410,18 @@ fun GroupMemberCard(
             }
 
             // Synced current time text in the middle
-            val currentHour = java.time.LocalTime.now().hour
-            val timeLabel = String.format("%02d:00 - %02d:59", currentHour, currentHour)
+            val now = java.time.LocalTime.now()
+            val roundedHourStr = String.format("%02d:00", now.hour)
             val memberTimeColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
 
-            Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(if (isGrid) 4.dp else 6.dp)
-            ) {
-                CircularProgressIndicator(
-                    color = accentColor,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(if (isGrid) 20.dp else 28.dp)
-                )
-                Text(
-                    text = timeLabel,
-                    fontFamily = DelaGothicOneFontFamily,
-                    fontSize = if (isGrid) 10.sp else 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = memberTimeColor
-                )
-            }
+            Text(
+                text = roundedHourStr,
+                fontFamily = DelaGothicOneFontFamily,
+                fontSize = if (isGrid) 12.5.sp else 18.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = memberTimeColor,
+                modifier = Modifier.align(Alignment.Center)
+            )
         }
     } else {
         // INVITE SLOT (totalSlots > actualMembers)
@@ -7703,8 +7496,6 @@ fun GroupScreenContent(
     messages: List<MessageDbItem> = emptyList()
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val selectedDayOffset = params.selectedDayOffset
-        val dailyHourHistoryMap = params.dailyHourHistoryMap
         val screenHeightDp = maxHeight
         val screenWidthDp = maxWidth
 
@@ -7789,8 +7580,7 @@ fun GroupScreenContent(
                         palReactions = palReactions,
                         onEmojiReacted = onEmojiReacted,
                         onReplyClick = onReplyClick,
-                        messages = messages,
-                        selectedDayOffset = selectedDayOffset
+                        messages = messages
                     )
                 }
             } else {
@@ -7854,8 +7644,7 @@ fun GroupScreenContent(
                                     palReactions = palReactions,
                                     onEmojiReacted = onEmojiReacted,
                                     onReplyClick = onReplyClick,
-                                    messages = messages,
-                                    selectedDayOffset = selectedDayOffset
+                                    messages = messages
                                 )
                             }
                             Box(modifier = Modifier.weight(1f)) {
@@ -7908,8 +7697,7 @@ fun GroupScreenContent(
                                     palReactions = palReactions,
                                     onEmojiReacted = onEmojiReacted,
                                     onReplyClick = onReplyClick,
-                                    messages = messages,
-                                    selectedDayOffset = selectedDayOffset
+                                    messages = messages
                                 )
                             }
                         }
@@ -7968,8 +7756,7 @@ fun GroupScreenContent(
                                     palReactions = palReactions,
                                     onEmojiReacted = onEmojiReacted,
                                     onReplyClick = onReplyClick,
-                                    messages = messages,
-                                    selectedDayOffset = selectedDayOffset
+                                    messages = messages
                                 )
                             }
                         }
@@ -10894,14 +10681,6 @@ fun VlogScreenContent(
                                         color = dialogTextColor
                                     )
                                 }
-
-                                // Segmented Export Menu: groups submissions by hour buckets (0-23)
-                                val historyMap = dailyHourHistoryMap[pal.code] ?: emptyMap()
-                                SegmentedExportMenu(
-                                    historyMap = historyMap,
-                                    groupMembers = groupMembers,
-                                    isDark = isDark
-                                )
 
                                 Text(
                                     text = "cancel",
