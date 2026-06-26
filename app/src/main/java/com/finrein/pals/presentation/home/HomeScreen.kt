@@ -381,7 +381,25 @@ data class SubmissionDbItem(
     @SerialName("user_display_name") val userDisplayName: String,
     @SerialName("image_url") val imageUrl: String,
     @SerialName("created_at") val createdAt: String? = null
-)
+) {
+    fun getHourBucket(): Int {
+        val dateStr = createdAt ?: return 0
+        return try {
+            val instant = java.time.Instant.parse(dateStr)
+            instant.atZone(java.time.ZoneId.systemDefault()).hour
+        } catch (e: Exception) {
+            try {
+                java.time.ZonedDateTime.parse(dateStr).withZoneSameInstant(java.time.ZoneId.systemDefault()).hour
+            } catch (e2: Exception) {
+                try {
+                    java.time.LocalDateTime.parse(dateStr).hour
+                } catch (e3: Exception) {
+                    0
+                }
+            }
+        }
+    }
+}
 
 @Serializable
 data class MessageDbItem(
@@ -401,6 +419,12 @@ data class PalItem(
     val code: String,
     val isVlog: Boolean = false,
     val isCreator: Boolean = true
+)
+
+data class UserItem(
+    val userId: String,
+    val displayName: String,
+    val avatarUrl: String? = null
 )
 
 val PalItemSaver = listSaver<PalItem, Any>(
@@ -1504,6 +1528,55 @@ fun HomeScreen(
     val pendingProfileInserts = remember { mutableStateMapOf<String, Boolean>() }
     var selectedDayOffset by remember { mutableStateOf(0) }
 
+    var activeHourSubmissions by remember { mutableStateOf<Map<String, SubmissionDbItem>>(emptyMap()) }
+    var dailyHourHistoryMap by remember { mutableStateOf<Map<Int, List<SubmissionDbItem>>>(emptyMap()) }
+    var exportMenuDataState by remember { mutableStateOf<Map<Int, List<SubmissionDbItem>>>(emptyMap()) }
+    var activeGroupMembersList by remember { mutableStateOf<List<UserItem>>(emptyList()) }
+
+    fun clearGroupMemoryCaches() {
+        activeHourSubmissions = emptyMap()
+        dailyHourHistoryMap = emptyMap()
+        allPalsMessages.clear()
+        exportMenuDataState = emptyMap()
+    }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose {
+            // ========================================================
+            // 🚫 1. WIPE LOCAL APP FILE STORAGE (SHARED PREFERENCES)
+            // ========================================================
+            // This guarantees no old cached paths flash on the next bootup
+            getVlogPrefs(context).edit().apply {
+                clear() // Completely empties the persistent app storage file
+                apply()
+            }
+
+            // ========================================================
+            // 🚫 2. PURGE PERSONAL VLOG MEMORY RAILS
+            // ========================================================
+            capturedVlogsPaths = ArrayList()
+            capturedVlogsTimes = ArrayList()
+            capturedVlogsCaptions = ArrayList()
+
+            // ========================================================
+            // 🚫 3. PURGE PALS GROUP MEMORY RAILS
+            // ========================================================
+            // Drops cached structural entries so they start on a blank canvas
+            activeHourSubmissions = emptyMap()
+            dailyHourHistoryMap = emptyMap()
+            activeGroupMembersList = emptyList()
+            createdPals = emptyList()
+            
+            // ========================================================
+            // 🚫 4. FLUSH LIVE CHATS & EXPORT DATA
+            // ========================================================
+            allPalsMessages.clear()
+            exportMenuDataState = emptyMap()
+            
+            android.util.Log.d("LifecyclePurge", "All local app storage, memory caches, and dashboard layouts scrubbed on quit.")
+        }
+    }
+
     val palReactions = remember { mutableStateMapOf<String, String>() }
     var activeReplyPreviewPath by remember { mutableStateOf<String?>(null) }
     var activeReactionPreview by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -2038,14 +2111,27 @@ fun HomeScreen(
     }
 
     fun refreshActivePalDetails(palCode: String) {
-        if (currentUserId.isEmpty() || palCode == "vlog") return
+        if (currentUserId.isEmpty() || palCode == "vlog" || palCode.isBlank()) return
         coroutineScope.launch {
             try {
+                // Groups strictly operate within the absolute, real-time 4am to 4am day window
+                val systemNow = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+                val targetDay = if (systemNow.hour < 4) {
+                    systemNow.minusDays(1).format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                } else {
+                    systemNow.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE)
+                }
+                
+                val currentSystemHour = systemNow.hour
+
+                // 1. Fetch only submissions belonging strictly to this custom palCode group table row
                 val dbSubmissions = withContext(kotlinx.coroutines.Dispatchers.IO) {
                     supabaseClient.postgrest.from("submissions")
                         .select {
                             filter {
                                 eq("pal_code", palCode)
+                                gte("created_at", "${targetDay}T04:00:00Z")
+                                lt("created_at", "${java.time.ZonedDateTime.parse(targetDay + "T04:00:00Z").plusDays(1).toInstant()}")
                             }
                         }
                         .decodeList<SubmissionDbItem>()
@@ -2184,10 +2270,22 @@ fun HomeScreen(
                     }
                 }
 
-                allPalsMembers[palCode] = memberList
-                palPalsCount[palCode] = filteredSubmissions.map { it.userId }.distinct().size
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    // Classify all historical group updates into separate 0-23 hour slots
+                    dailyHourHistoryMap = filteredSubmissions.groupBy { it.getHourBucket() }
+
+                    // Extract group items submitted during the *current* active hourly frame
+                    val itemsInThisHour = dailyHourHistoryMap[currentSystemHour] ?: emptyList()
+                    activeHourSubmissions = itemsInThisHour.associateBy { it.userId }
+                    
+                    // Update group export matrices cleanly 
+                    exportMenuDataState = dailyHourHistoryMap.toSortedMap()
+
+                    allPalsMembers[palCode] = memberList
+                    palPalsCount[palCode] = filteredSubmissions.map { it.userId }.distinct().size
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("PalsGroupRefresh", "Group sync engine error: ${e.message}")
             }
         }
     }
@@ -2500,6 +2598,7 @@ fun HomeScreen(
     LaunchedEffect(activeVlogPal, showVlogChatScreen) {
         val pal = activeVlogPal
         if (pal != null && pal.code != "vlog") {
+            clearGroupMemoryCaches()
             refreshActivePalDetails(pal.code)
             refreshMessages(pal.code)
         }
@@ -3755,7 +3854,60 @@ fun HomeScreen(
             backgroundColor = backgroundColor,
             supabaseClient = supabaseClient,
             currentDisplayName = currentDisplayName,
-            customAvatarUriString = customAvatarUriString
+            customAvatarUriString = customAvatarUriString,
+            onSaveGroupClick = { newGroupName, generatedPalCode ->
+                coroutineScope.launch {
+                    try {
+                        // ⚡ THE FIX: Instantly empty Pals cached metrics before hitting database pipelines
+                        activeHourSubmissions = emptyMap()
+                        dailyHourHistoryMap = emptyMap()
+                        exportMenuDataState = emptyMap()
+                        allPalsMessages.clear() // Clear group chats only
+
+                        val freshPalItem = PalItem(
+                            name = newGroupName,
+                            size = "1", 
+                            code = generatedPalCode,
+                            isVlog = false,
+                            isCreator = true
+                        )
+                        
+                        activeVlogPal = freshPalItem
+                        
+                        // Commit structural definitions to database safely
+                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val newPalDb = PalDbItem(code = generatedPalCode, name = newGroupName)
+                            supabaseClient.postgrest.from("pals").insert(newPalDb)
+                            
+                            val newMapping = UserPalMapping(
+                                userId = currentUserId,
+                                palCode = generatedPalCode,
+                                userDisplayName = currentDisplayName,
+                                userAvatarUrl = customAvatarUriString
+                            )
+                            supabaseClient.postgrest.from("user_pals").insert(newMapping)
+                        }
+                        
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            createdPals = (createdPals + freshPalItem).distinctBy { it.code }
+                            refreshPals() // Rebuild main sidebar panel map records
+                            
+                            // Triggers fresh, empty hourly window matrices instantly for the new group
+                            refreshActivePalDetails(generatedPalCode)
+                        }
+                        
+                    } catch (e: Exception) {
+                        android.util.Log.e("CleanGroupSetup", "Error initializing fresh group payload: ${e.message}")
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "Failed to create group: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    } finally {
+                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            showCreatePalFlow = false
+                        }
+                    }
+                }
+            }
         )
 
         // Join Pal Dialog Flow (Overlay Card at bottom / center based on focus)
@@ -6367,9 +6519,7 @@ fun CapturedPreviewScreen(
                     if (parts.size >= 2) parts[1] else entry
                 }.filter { it != userFirstName && !it.contains("(You)") && it != "only you" }
                 
-                val description = if (pal.isVlog) {
-                    if (pal.size.isEmpty()) "Empty • Ready for today" else "${pal.size} vlogs captured today"
-                } else {
+                val description = if (pal.isVlog) "only you" else {
                     if (otherMembers.isEmpty()) "only you" else {
                         otherMembers.take(3).joinToString(", ") { name ->
                             name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
@@ -6498,7 +6648,7 @@ fun CapturedPreviewScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = if (pal.isVlog) "Daily Vlog Space" else groupName,
+                                text = if (pal.isVlog) "vlog" else groupName,
                                 fontFamily = FontFamily.SansSerif,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
@@ -13592,7 +13742,8 @@ fun CreatePalDialogOverlay(
     backgroundColor: Color,
     supabaseClient: io.github.jan.supabase.SupabaseClient,
     currentDisplayName: String,
-    customAvatarUriString: String?
+    customAvatarUriString: String?,
+    onSaveGroupClick: (String, String) -> Unit
 ) {
     if (showCreatePalFlow) {
         val localScope = rememberCoroutineScope()
@@ -13869,44 +14020,7 @@ fun CreatePalDialogOverlay(
                         modifier = Modifier
                             .clickable(enabled = !isSaving) {
                                 isSaving = true
-                                val newItem = PalItem(
-                                    name = newPalName,
-                                    size = newPalSize,
-                                    code = generatedPalCode,
-                                    isVlog = false,
-                                    isCreator = true
-                                )
-                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                    try {
-                                        val newPalDb = PalDbItem(
-                                            code = generatedPalCode,
-                                            name = newPalName
-                                        )
-                                        supabaseClient.postgrest.from("pals").upsert(newPalDb, onConflict = "pal_code")
-                                        
-                                        val newMapping = UserPalMapping(
-    userId = currentUserId,
-    palCode = generatedPalCode,
-    userDisplayName = currentDisplayName,
-    userAvatarUrl = customAvatarUriString
-)
-                                        supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
-                                        
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            onCreatedPalsChange(createdPals + newItem)
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            android.widget.Toast.makeText(context, "Failed to create group: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                                        }
-                                    } finally {
-                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            isSaving = false
-                                            onShowCreatePalFlowChange(false)
-                                        }
-                                    }
-                                }
+                                onSaveGroupClick(newPalName, generatedPalCode)
                             }
                             .padding(vertical = 12.dp)
                     )
