@@ -387,10 +387,13 @@ data class SubmissionDbItem(
 data class MessageDbItem(
     val id: String? = null,
     @SerialName("pal_code") val palCode: String,
-    @SerialName("sender_name") val senderName: String,
-    val content: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("message_text") val messageText: String,
     @SerialName("created_at") val createdAt: String? = null
-)
+) {
+    val senderName: String get() = userId
+    val content: String get() = messageText
+}
 
 data class PalItem(
     val name: String,
@@ -1443,6 +1446,7 @@ fun HomeScreen(
     var capturedCaptionText by remember(currentUserId) { mutableStateOf("") }
     var capturedVideoTimeText by remember(currentUserId) { mutableStateOf("") }
     var isMuted by remember { mutableStateOf(false) }
+    var initialSyncCompleted by remember { mutableStateOf(false) }
 
     val initialDeleted = remember(deletedVlogsKey) {
         emptySet<String>()
@@ -1825,7 +1829,43 @@ fun HomeScreen(
                         .decodeList<UserPalMapping>()
                     
                     val palCodes = mappings.map { it.palCode }
-                    val defaultVlog = PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true)
+                    
+                    // ========================================================
+                    // 🛡️ THE FIXED HOME WINDOW LOGIC FOR THE DEFAULT VLOG BOX
+                    // ========================================================
+                    // Calculate the strict, current 4am-4am day string REGARDLESS of manual toggles
+                    val systemNow = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+                    val absoluteCurrentDay = if (systemNow.hour < 4) systemNow.minusDays(1).toLocalDate() else systemNow.toLocalDate()
+                    val absoluteCurrentDayString = absoluteCurrentDay.toString()
+                    val nextDayString = absoluteCurrentDay.plusDays(1).toString()
+
+                    // Check the database to see if the user has captured any vlogs inside THIS strict active window
+                    val currentActiveVlogsCount = try {
+                        supabaseClient.postgrest.from("submissions")
+                            .select {
+                                filter {
+                                    eq("pal_code", "vlog")
+                                    eq("user_id", currentUserId)
+                                    gte("created_at", "${absoluteCurrentDayString}T04:00:00Z")
+                                    lt("created_at", "${nextDayString}T04:00:00Z")
+                                }
+                            }
+                            .decodeList<SubmissionDbItem>()
+                            .size
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        0
+                    }
+
+                    // Build the Default Vlog Box with strict current-window metrics
+                    val defaultVlog = PalItem(
+                        name = "vlog",
+                        // If count is 0, it dynamically resets to empty default text sizing smoothly
+                        size = if (currentActiveVlogsCount == 0) "" else currentActiveVlogsCount.toString(),
+                        code = "vlog",
+                        isVlog = true,
+                        isCreator = false
+                    )
                     
                     if (palCodes.isNotEmpty()) {
                         val palsFromDb = supabaseClient.postgrest.from("pals")
@@ -1858,7 +1898,7 @@ fun HomeScreen(
                         val mappedPals = palsFromDb.map { dbPal ->
                             val groupCreatorId = creatorMap[dbPal.code]
                             PalItem(
-                                name = dbPal.name,
+                                name = dbPal.name.removeSuffix(" (${dbPal.code})"),
                                 size = palPalsCount[dbPal.code]?.toString() ?: "1",
                                 code = dbPal.code,
                                 isVlog = false,
@@ -2073,9 +2113,13 @@ fun HomeScreen(
                             // Use the mutex lock here so profile generation never cross-fires with real-time events
                             if (!globalSyncMutex.isLocked) {
                                 globalSyncMutex.withLock {
-                                    // Recreate group if deleted or missing using direct upsert (no pre-check select)
-                                    supabaseClient.postgrest.from("pals")
-                                        .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
+                                    // Recreate group if deleted or missing using insert (no pre-check select)
+                                    try {
+                                        supabaseClient.postgrest.from("pals")
+                                            .insert(PalDbItem(code = cleanCode, name = "Pals Group"))
+                                    } catch (e: Exception) {
+                                        // Ignore conflict to preserve original group name
+                                    }
 
                                     // Insert profile token row safely
                                     supabaseClient.postgrest.from("submissions").insert(profileSub)
@@ -2295,7 +2339,19 @@ fun HomeScreen(
     }
 
     LaunchedEffect(currentUserId) {
-        if (currentUserId.isNotEmpty()) {
+        if (currentUserId.isNotEmpty() && !initialSyncCompleted) {
+            // 1. FORCE CLEAN DEFAULT STATE IMMEDIATELY ON BOOT UP
+            capturedVlogsPaths = ArrayList()
+            capturedVlogsTimes = ArrayList()
+            capturedVlogsCaptions = ArrayList()
+            
+            // 2. Clear out any legacy local SharedPreferences cache string values
+            getVlogPrefs(context).edit().apply {
+                putString("vlog_paths", "")
+                putString("vlog_times", "")
+                apply()
+            }
+
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
                     val vlogPal = PalDbItem(code = "vlog", name = "vlog")
@@ -2306,6 +2362,7 @@ fun HomeScreen(
             }
             refreshPals()
             refreshVlogs()
+            initialSyncCompleted = true
         }
     }
 
@@ -2538,9 +2595,13 @@ fun HomeScreen(
                             createdAt = java.time.Instant.now().toString()
                         )
                         try {
-                            // Recreate group if deleted or missing using direct upsert (no pre-check select)
-                            supabaseClient.postgrest.from("pals")
-                                .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
+                            // Recreate group if deleted or missing using insert (no pre-check select)
+                            try {
+                                supabaseClient.postgrest.from("pals")
+                                    .insert(PalDbItem(code = cleanCode, name = "Pals Group"))
+                            } catch (e: Exception) {
+                                // Ignore conflict to preserve original group name
+                            }
 
                             supabaseClient.postgrest.from("submissions").insert(newSubmission)
                             withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -2840,8 +2901,8 @@ fun HomeScreen(
                             if (code != "vlog") {
                                 val newMessage = MessageDbItem(
                                     palCode = code,
-                                    senderName = firstName,
-                                    content = msg
+                                    userId = currentUserId,
+                                    messageText = msg
                                 )
                                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
@@ -2854,8 +2915,8 @@ fun HomeScreen(
                                         withContext(kotlinx.coroutines.Dispatchers.Main) {
                                             val localMsg = MessageDbItem(
                                                 palCode = code,
-                                                senderName = firstName,
-                                                content = msg
+                                                userId = currentUserId,
+                                                messageText = msg
                                             )
                                             palMessages[code] = (palMessages[code] ?: emptyList()) + localMsg
                                         }
@@ -2864,8 +2925,8 @@ fun HomeScreen(
                             } else {
                                 val localMsg = MessageDbItem(
                                     palCode = code,
-                                    senderName = firstName,
-                                    content = msg
+                                    userId = currentUserId,
+                                    messageText = msg
                                 )
                                 palMessages[code] = (palMessages[code] ?: emptyList()) + localMsg
                             }
@@ -3151,8 +3212,8 @@ fun HomeScreen(
                                 val reactionContent = "REACTION|||$targetUserId|||$targetUserDisplayName|||$path|||$emoji"
                                 val newMessage = MessageDbItem(
                                     palCode = targetPalCode,
-                                    senderName = if (!customAvatarUriString.isNullOrEmpty()) "$firstName|||$customAvatarUriString" else firstName,
-                                    content = reactionContent
+                                    userId = currentUserId,
+                                    messageText = reactionContent
                                 )
                                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
@@ -3182,8 +3243,8 @@ fun HomeScreen(
                                 val replyContent = "REPLY|||$targetUserId|||$targetUserDisplayName|||$path|||$text"
                                 val newMessage = MessageDbItem(
                                     palCode = targetPalCode,
-                                    senderName = if (!customAvatarUriString.isNullOrEmpty()) "$firstName|||$customAvatarUriString" else firstName,
-                                    content = replyContent
+                                    userId = currentUserId,
+                                    messageText = replyContent
                                 )
                                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
@@ -3331,14 +3392,18 @@ fun HomeScreen(
                                         val newSubmission = SubmissionDbItem(
                                             palCode = cleanCode,
                                             userId = currentUserId,
-                                            userDisplayName = formattedName,
+                        userDisplayName = formattedName,
                                             imageUrl = delimiterString,
                                             createdAt = java.time.Instant.now().toString()
                                         )
                                         try {
-                                            // Recreate group if deleted or missing using direct upsert (no pre-check select)
-                                            supabaseClient.postgrest.from("pals")
-                                                .upsert(PalDbItem(code = cleanCode, name = "My Pals Group ($cleanCode)"), onConflict = "pal_code")
+                                            // Recreate group if deleted or missing using insert (no pre-check select)
+                                            try {
+                                                supabaseClient.postgrest.from("pals")
+                                                    .insert(PalDbItem(code = cleanCode, name = "Pals Group"))
+                                            } catch (e: Exception) {
+                                                // Ignore conflict to preserve original group name
+                                            }
 
                                             supabaseClient.postgrest.from("submissions").insert(newSubmission)
                                             withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -6302,7 +6367,9 @@ fun CapturedPreviewScreen(
                     if (parts.size >= 2) parts[1] else entry
                 }.filter { it != userFirstName && !it.contains("(You)") && it != "only you" }
                 
-                val description = if (pal.isVlog) "only you" else {
+                val description = if (pal.isVlog) {
+                    if (pal.size.isEmpty()) "Empty • Ready for today" else "${pal.size} vlogs captured today"
+                } else {
                     if (otherMembers.isEmpty()) "only you" else {
                         otherMembers.take(3).joinToString(", ") { name ->
                             name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
@@ -6370,7 +6437,7 @@ fun CapturedPreviewScreen(
                     ""
                 }
 
-                val cardAlpha = if (isHourlyRestricted) 0.5f else 1.0f
+                val cardAlpha = if (isHourlyRestricted) 0.5f else (if (pal.isVlog && pal.size.isEmpty()) 0.6f else 1.0f)
 
                 // Card Box Container (Grey in light mode, Charcoal in dark mode)
                 Row(
@@ -6378,7 +6445,13 @@ fun CapturedPreviewScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
                         .alpha(cardAlpha)
-                        .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
+                        .background(
+                            if (pal.isVlog && pal.size.isEmpty()) {
+                                if (isDark) Color(0xFF1C1C1E).copy(alpha = 0.4f) else Color(0xFFE5E5EA).copy(alpha = 0.4f)
+                            } else {
+                                if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA)
+                            }
+                        )
                         .then(
                             if (isHourlyRestricted) Modifier else Modifier.clickable {
                                 selectedPals = if (isSelected) {
@@ -6425,7 +6498,7 @@ fun CapturedPreviewScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = groupName,
+                                text = if (pal.isVlog) "Daily Vlog Space" else groupName,
                                 fontFamily = FontFamily.SansSerif,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
@@ -6614,9 +6687,17 @@ fun GroupMemberCard(
                 false
             }
         }.map { msg ->
-            val parts = msg.senderName.split("|||")
-            val senderName = parts.getOrNull(0) ?: "Pal"
-            val senderAvatar = parts.getOrNull(1)
+            val senderMember = groupMembers.firstOrNull { it.startsWith("${msg.userId}|||") }
+            val (senderName, senderAvatar) = if (senderMember != null) {
+                val parts = senderMember.split("|||")
+                Pair(parts.getOrNull(1) ?: "Pal", parts.getOrNull(2))
+            } else {
+                if (msg.userId == currentUserId) {
+                    Pair(userFirstName, customAvatarUriString)
+                } else {
+                    Pair("Pal", null)
+                }
+            }
             Pair(senderName, senderAvatar)
         }.distinctBy { it.first }
     }
@@ -9933,6 +10014,7 @@ fun VlogScreenContent(
             onSendMessage = onSendMessage,
             onShowExportDialogChange = onShowExportDialogChange,
             customAvatarUriString = customAvatarUriString,
+            allPalsMembers = allPalsMembers,
             messages = messages
         )
 
@@ -12210,6 +12292,7 @@ fun PalChatOverlay(
     onSendMessage: (String) -> Unit,
     onShowExportDialogChange: (Boolean) -> Unit,
     customAvatarUriString: String?,
+    allPalsMembers: Map<String, List<String>> = emptyMap(),
     messages: List<MessageDbItem> = emptyList()
 ) {
     if (!showChat) return
@@ -12358,7 +12441,7 @@ fun PalChatOverlay(
                             dayFeed.forEach { feedItem ->
                                 val headerText = "$dayLabel ${feedItem.timeStr}"
 
-                                val feedReactions = remember(messages, feedItem.path) {
+                                val feedReactions = remember(messages, feedItem.path, allPalsMembers, currentDisplayName, customAvatarUriString) {
                                     messages.filter { msg ->
                                         if (msg.content.startsWith("REACTION|||")) {
                                             val parts = msg.content.split("|||")
@@ -12370,14 +12453,23 @@ fun PalChatOverlay(
                                     }.map { msg ->
                                         val parts = msg.content.split("|||")
                                         val emoji = parts.getOrNull(4) ?: ""
-                                        val senderParts = msg.senderName.split("|||")
-                                        val senderName = senderParts.getOrNull(0) ?: "Pal"
-                                        val senderAvatar = senderParts.getOrNull(1)
+                                        val membersList = allPalsMembers[pal.code] ?: emptyList()
+                                        val senderMember = membersList.firstOrNull { it.startsWith("${msg.userId}|||") }
+                                        val (senderName, senderAvatar) = if (senderMember != null) {
+                                            val sParts = senderMember.split("|||")
+                                            Pair(sParts.getOrNull(1) ?: "Pal", sParts.getOrNull(2))
+                                        } else {
+                                            if (msg.userId == currentUserId) {
+                                                Pair(currentDisplayName, customAvatarUriString)
+                                            } else {
+                                                Pair("Pal", null)
+                                            }
+                                        }
                                         Triple(senderName, senderAvatar, emoji)
                                     }.distinctBy { it.first }
                                 }
 
-                                val feedReplies = remember(messages, feedItem.path) {
+                                val feedReplies = remember(messages, feedItem.path, allPalsMembers, currentDisplayName, customAvatarUriString) {
                                     messages.filter { msg ->
                                         if (msg.content.startsWith("REPLY|||")) {
                                             val parts = msg.content.split("|||")
@@ -12389,9 +12481,18 @@ fun PalChatOverlay(
                                     }.map { msg ->
                                         val parts = msg.content.split("|||")
                                         val replyText = parts.getOrNull(4) ?: ""
-                                        val senderParts = msg.senderName.split("|||")
-                                        val senderName = senderParts.getOrNull(0) ?: "Pal"
-                                        val senderAvatar = senderParts.getOrNull(1)
+                                        val membersList = allPalsMembers[pal.code] ?: emptyList()
+                                        val senderMember = membersList.firstOrNull { it.startsWith("${msg.userId}|||") }
+                                        val (senderName, senderAvatar) = if (senderMember != null) {
+                                            val sParts = senderMember.split("|||")
+                                            Pair(sParts.getOrNull(1) ?: "Pal", sParts.getOrNull(2))
+                                        } else {
+                                            if (msg.userId == currentUserId) {
+                                                Pair(currentDisplayName, customAvatarUriString)
+                                            } else {
+                                                Pair("Pal", null)
+                                            }
+                                        }
                                         Triple(senderName, senderAvatar, replyText)
                                     }
                                 }
@@ -13200,7 +13301,7 @@ fun JoinPalDialogOverlay(
 
                                             // 3. Fallback construct if RLS or replication delays details fetching
                                             val matchedItem = PalItem(
-                                                name = matchedPalDb?.name ?: "Group $code",
+                                                name = matchedPalDb?.name?.removeSuffix(" ($code)") ?: "Pals Group",
                                                 size = "1",
                                                 code = code,
                                                 isVlog = false,
@@ -13213,7 +13314,7 @@ fun JoinPalDialogOverlay(
                                                 }
                                                 refreshPals()
                                                 onShowJoinPalFlowChange(false)
-                                                val groupNameToShow = matchedPalDb?.name ?: "Group $code"
+                                                val groupNameToShow = matchedPalDb?.name?.removeSuffix(" ($code)") ?: "Pals Group"
                                                 android.widget.Toast.makeText(context, "Successfully joined $groupNameToShow!", android.widget.Toast.LENGTH_SHORT).show()
                                             }
                                         } catch (e: Exception) {
