@@ -1,0 +1,3372 @@
+[
+  {
+    "line": 505,
+    "var": "N/A",
+    "func": "Global/File",
+    "is_composable": false,
+    "content": "mutableStateOf(list)",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "N/A"
+    ],
+    "type": "Any",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 526,
+    "var": "N/A",
+    "func": "Global/File",
+    "is_composable": false,
+    "content": "mutableStateOf(pal)",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "N/A"
+    ],
+    "type": "Any",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 539,
+    "var": "imageBitmap",
+    "func": "UriImage",
+    "is_composable": true,
+    "content": "var imageBitmap by remember(uriString) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }",
+    "readers": [
+      "UriImage (L572)",
+      "UriImage (L574)"
+    ],
+    "writes": [
+      "UriImage (L565)"
+    ],
+    "type": "androidx.compose.ui.graphics.ImageBitmap?",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1102,
+    "var": "onboardingFlowStep",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(",
+    "readers": [
+      "HomeScreen (L1101)",
+      "HomeScreen (L1167)",
+      "HomeScreen (L1168)",
+      "HomeScreen (L1191)",
+      "HomeScreen (L1192)",
+      "HomeScreen (L1247)",
+      "HomeScreen (L1248)",
+      "HomeScreen (L1251)",
+      "HomeScreen (L1329)",
+      "HomeScreen (L1333)",
+      "HomeScreen (L1339)",
+      "HomeScreen (L1346)",
+      "HomeScreen (L1347)",
+      "OnboardingFlowContainer (L940)",
+      "OnboardingFlowContainer (L955)",
+      "onMediaItemTransition (L1824)",
+      "onMediaItemTransition (L1842)",
+      "refreshMessages (L2852)",
+      "refreshMessages (L2858)",
+      "refreshMessages (L2864)",
+      "refreshMessages (L2885)",
+      "refreshMessages (L3590)",
+      "refreshMessages (L3659)"
+    ],
+    "writes": [
+      "HomeScreen (L1250)",
+      "HomeScreen (L1330)",
+      "HomeScreen (L1334)",
+      "HomeScreen (L1340)",
+      "HomeScreen (L1348)",
+      "refreshMessages (L2887)",
+      "refreshMessages (L2888)"
+    ],
+    "type": "Unknown",
+    "category": "Navigation",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1115,
+    "var": "onboardingFirstName",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var onboardingFirstName by remember { mutableStateOf(parsedName.first) }",
+    "readers": [
+      "OnboardingFlowContainer (L1042)",
+      "OnboardingFlowContainer (L1053)",
+      "OnboardingFlowContainer (L1056)",
+      "OnboardingFlowContainer (L1067)",
+      "OnboardingFlowContainer (L942)"
+    ],
+    "writes": [
+      "refreshMessages (L2889)",
+      "refreshMessages (L2890)"
+    ],
+    "type": "Inferred (parsedName.first)",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1116,
+    "var": "onboardingLastName",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var onboardingLastName by remember { mutableStateOf(parsedName.second) }",
+    "readers": [
+      "OnboardingFlowContainer (L1044)",
+      "OnboardingFlowContainer (L1054)",
+      "OnboardingFlowContainer (L1056)",
+      "OnboardingFlowContainer (L1068)",
+      "OnboardingFlowContainer (L944)"
+    ],
+    "writes": [
+      "refreshMessages (L2891)",
+      "refreshMessages (L2892)"
+    ],
+    "type": "Inferred (parsedName.second)",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1119,
+    "var": "currentDisplayName",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(user?.displayName ?: user?.email?.substringBefore(\"@\") ?: \"apple_user\")",
+    "readers": [
+      "CapturedPreviewScreen (L5948)",
+      "CapturedPreviewScreen (L6002)",
+      "CapturedPreviewScreen (L6003)",
+      "CapturedPreviewScreen (L6008)",
+      "CreatePalDialogOverlay (L13702)",
+      "EditNameDialogOverlay (L13475)",
+      "GroupMemberCard (L6745)",
+      "GroupScreenContent (L7580)",
+      "HomeScreen (L1118)",
+      "HomeScreen (L1122)",
+      "HomeScreen (L1123)",
+      "JoinPalDialogOverlay (L13182)",
+      "JoinPalDialogOverlay (L13385)",
+      "OnboardingFlowContainer (L946)",
+      "PalChatOverlay (L12394)",
+      "PalChatOverlay (L12451)",
+      "PalChatOverlay (L12552)",
+      "PalChatOverlay (L12571)",
+      "PalChatOverlay (L12580)",
+      "PalChatOverlay (L12599)",
+      "PalsTabScreenContent (L14530)",
+      "TripleDotMenuOverlay (L14000)",
+      "TripleDotMenuOverlay (L14108)",
+      "VlogEmptyStateContent (L14984)",
+      "VlogScreenContent (L8068)",
+      "VlogScreenContent (L8069)",
+      "VlogScreenContent (L8093)",
+      "clearGroupMemoryCaches (L1624)",
+      "clearGroupMemoryCaches (L1689)",
+      "onPlaybackStateChanged (L6638)",
+      "onPlaybackStateChanged (L6709)",
+      "onPlaybackStateChanged (L8680)",
+      "onPlaybackStateChanged (L8997)",
+      "refreshActivePalDetails (L2189)",
+      "refreshMessages (L2450)",
+      "refreshMessages (L2738)",
+      "refreshMessages (L3546)",
+      "refreshMessages (L3835)"
+    ],
+    "writes": [
+      "GroupScreenContent (L7650)",
+      "GroupScreenContent (L7714)",
+      "GroupScreenContent (L7767)",
+      "GroupScreenContent (L7826)",
+      "HomeScreen (L1317)",
+      "PalsTabScreenContent (L14559)",
+      "VlogEmptyStateContent (L14811)",
+      "VlogScreenContent (L8031)",
+      "getEpoch (L8387)",
+      "onPlaybackStateChanged (L10116)",
+      "refreshMessages (L2451)",
+      "refreshMessages (L2893)",
+      "refreshMessages (L2894)",
+      "refreshMessages (L2990)",
+      "refreshMessages (L3487)",
+      "refreshMessages (L3513)",
+      "refreshMessages (L3756)",
+      "refreshMessages (L3813)",
+      "refreshMessages (L3884)",
+      "refreshMessages (L3902)",
+      "refreshMessages (L3903)"
+    ],
+    "type": "Inferred (user?.displayName ?: user?.email?.substringBefore(\"@\") ?: \"apple_user\")",
+    "category": "Playback",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1126,
+    "var": "editFirstName",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var editFirstName by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "EditNameDialogOverlay (L13469)",
+      "EditNameDialogOverlay (L13548)",
+      "EditNameDialogOverlay (L13568)",
+      "EditNameDialogOverlay (L13654)",
+      "EditNameDialogOverlay (L13655)"
+    ],
+    "writes": [
+      "refreshMessages (L2739)",
+      "refreshMessages (L3896)",
+      "refreshMessages (L3897)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1127,
+    "var": "editLastName",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var editLastName by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "EditNameDialogOverlay (L13471)",
+      "EditNameDialogOverlay (L13588)",
+      "EditNameDialogOverlay (L13607)",
+      "EditNameDialogOverlay (L13655)"
+    ],
+    "writes": [
+      "refreshMessages (L2740)",
+      "refreshMessages (L3898)",
+      "refreshMessages (L3899)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1130,
+    "var": "customAvatarUriString",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var customAvatarUriString by remember { mutableStateOf(sessionManager.getAvatarUri()) }",
+    "readers": [
+      "CapturedPreviewScreen (L5950)",
+      "CapturedPreviewScreen (L6033)",
+      "CreatePalDialogOverlay (L13703)",
+      "GroupMemberCard (L6749)",
+      "GroupMemberCard (L6804)",
+      "GroupMemberCard (L6902)",
+      "GroupMemberCard (L7272)",
+      "GroupMemberCard (L7483)",
+      "GroupScreenContent (L7584)",
+      "JoinPalDialogOverlay (L13183)",
+      "JoinPalDialogOverlay (L13386)",
+      "PalChatOverlay (L12402)",
+      "PalChatOverlay (L12552)",
+      "PalChatOverlay (L12571)",
+      "PalChatOverlay (L12580)",
+      "PalChatOverlay (L12599)",
+      "PalChatOverlay (L12659)",
+      "PalsTabScreenContent (L14514)",
+      "TripleDotMenuOverlay (L13998)",
+      "TripleDotMenuOverlay (L14080)",
+      "TripleDotMenuOverlay (L14087)",
+      "VlogEmptyStateContent (L14958)",
+      "VlogEmptyStateContent (L14960)",
+      "VlogScreenContent (L8088)",
+      "VlogScreenContent (L8095)",
+      "getEpoch (L8162)",
+      "getEpoch (L8189)",
+      "onPlaybackStateChanged (L6712)",
+      "onPlaybackStateChanged (L8653)",
+      "onPlaybackStateChanged (L8655)",
+      "onPlaybackStateChanged (L8969)",
+      "onPlaybackStateChanged (L8971)",
+      "refreshActivePalDetails (L2119)",
+      "refreshActivePalDetails (L2201)",
+      "refreshMessages (L2453)",
+      "refreshMessages (L2587)",
+      "refreshMessages (L2619)",
+      "refreshMessages (L3386)",
+      "refreshMessages (L3425)",
+      "refreshMessages (L3547)",
+      "refreshMessages (L3836)"
+    ],
+    "writes": [
+      "GroupScreenContent (L7654)",
+      "GroupScreenContent (L7718)",
+      "GroupScreenContent (L7771)",
+      "GroupScreenContent (L7830)",
+      "HomeScreen (L1137)",
+      "HomeScreen (L1142)",
+      "HomeScreen (L1318)",
+      "PalsTabScreenContent (L14543)",
+      "VlogEmptyStateContent (L14812)",
+      "VlogScreenContent (L8034)",
+      "getEpoch (L8391)",
+      "onPlaybackStateChanged (L10124)",
+      "refreshActivePalDetails (L2128)",
+      "refreshMessages (L2454)",
+      "refreshMessages (L2628)",
+      "refreshMessages (L3064)",
+      "refreshMessages (L3434)",
+      "refreshMessages (L3489)",
+      "refreshMessages (L3497)",
+      "refreshMessages (L3754)",
+      "refreshMessages (L3770)",
+      "refreshMessages (L3814)",
+      "refreshMessages (L3885)"
+    ],
+    "type": "Inferred (sessionManager.getAvatarUri())",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1147,
+    "var": "isLoadingPals",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var isLoadingPals by remember { mutableStateOf(sessionManager.isFirstLogin()) }",
+    "readers": [
+      "PalsTabScreenContent (L14515)"
+    ],
+    "writes": [
+      "HomeScreen (L1207)",
+      "HomeScreen (L1209)",
+      "HomeScreen (L1212)",
+      "PalsTabScreenContent (L14544)",
+      "refreshMessages (L3498)"
+    ],
+    "type": "Inferred (sessionManager.isFirstLogin())",
+    "category": "Network",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1148,
+    "var": "selectedTab",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var selectedTab by remember { mutableStateOf(\"pals\") } // \"camera\" or \"pals\"",
+    "readers": [
+      "HomeScreen (L1191)",
+      "HomeScreen (L1192)",
+      "HomeScreen (L1205)",
+      "HomeScreen (L1206)",
+      "onMediaItemTransition (L1775)",
+      "onMediaItemTransition (L1825)",
+      "onOrientationChanged (L1874)",
+      "onOrientationChanged (L1876)",
+      "refreshMessages (L2500)",
+      "refreshMessages (L2502)",
+      "refreshMessages (L3319)",
+      "refreshMessages (L3607)",
+      "refreshMessages (L3618)",
+      "refreshMessages (L3631)",
+      "refreshMessages (L3642)",
+      "refreshMessages (L3660)"
+    ],
+    "writes": [
+      "onOrientationChanged (L1875)",
+      "onOrientationChanged (L1877)",
+      "refreshMessages (L2480)",
+      "refreshMessages (L3072)",
+      "refreshMessages (L3484)",
+      "refreshMessages (L3528)",
+      "refreshMessages (L3609)",
+      "refreshMessages (L3633)",
+      "refreshMessages (L3681)"
+    ],
+    "type": "String",
+    "category": "Navigation",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1149,
+    "var": "isRecordingCamera",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var isRecordingCamera by remember { mutableStateOf(false) }",
+    "readers": [
+      "onMediaItemTransition (L1838)",
+      "onMediaItemTransition (L1855)",
+      "refreshMessages (L3679)"
+    ],
+    "writes": [
+      "refreshMessages (L3680)"
+    ],
+    "type": "Boolean",
+    "category": "Camera",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1216,
+    "var": "showPlusMenu",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showPlusMenu by remember { mutableStateOf(false) }",
+    "readers": [
+      "PlusMenuOverlay (L13034)",
+      "PlusMenuOverlay (L13043)",
+      "onMediaItemTransition (L1826)",
+      "onMediaItemTransition (L1843)",
+      "refreshMessages (L2845)"
+    ],
+    "writes": [
+      "refreshMessages (L3516)",
+      "refreshMessages (L3729)",
+      "refreshMessages (L3730)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1217,
+    "var": "showTripleDotMenu",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showTripleDotMenu by remember { mutableStateOf(false) }",
+    "readers": [
+      "TripleDotMenuOverlay (L13993)",
+      "TripleDotMenuOverlay (L14014)",
+      "getEpoch (L8303)",
+      "getEpoch (L8350)",
+      "onMediaItemTransition (L1827)",
+      "onMediaItemTransition (L1844)",
+      "onPlaybackStateChanged (L9058)",
+      "refreshMessages (L2845)"
+    ],
+    "writes": [
+      "getEpoch (L8358)",
+      "onPlaybackStateChanged (L8800)",
+      "onPlaybackStateChanged (L9079)",
+      "onPlaybackStateChanged (L9126)",
+      "onPlaybackStateChanged (L9166)",
+      "refreshMessages (L3518)",
+      "refreshMessages (L3749)",
+      "refreshMessages (L3750)",
+      "refreshMessages (L3764)",
+      "refreshMessages (L3768)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1218,
+    "var": "showActivityScreen",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showActivityScreen by remember { mutableStateOf(false) }",
+    "readers": [
+      "ActivityScreenOverlay (L13112)",
+      "ActivityScreenOverlay (L13118)",
+      "onMediaItemTransition (L1828)",
+      "onMediaItemTransition (L1845)"
+    ],
+    "writes": [
+      "refreshMessages (L3780)",
+      "refreshMessages (L3781)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1219,
+    "var": "showCreatePalFlow",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showCreatePalFlow by remember { mutableStateOf(false) }",
+    "readers": [
+      "CreatePalDialogOverlay (L13678)",
+      "CreatePalDialogOverlay (L13706)",
+      "HomeScreen (L1230)",
+      "HomeScreen (L1231)",
+      "onMediaItemTransition (L1829)",
+      "onMediaItemTransition (L1846)"
+    ],
+    "writes": [
+      "refreshMessages (L3739)",
+      "refreshMessages (L3789)",
+      "refreshMessages (L3790)",
+      "refreshMessages (L3864)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1220,
+    "var": "showJoinPalFlow",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showJoinPalFlow by remember { mutableStateOf(false) }",
+    "readers": [
+      "JoinPalDialogOverlay (L13171)",
+      "JoinPalDialogOverlay (L13185)",
+      "onMediaItemTransition (L1830)",
+      "onMediaItemTransition (L1847)",
+      "refreshMessages (L2845)"
+    ],
+    "writes": [
+      "refreshMessages (L3743)",
+      "refreshMessages (L3873)",
+      "refreshMessages (L3874)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1226,
+    "var": "createPalTitleVisible",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var createPalTitleVisible by remember { mutableStateOf(false) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "HomeScreen (L1232)",
+      "HomeScreen (L1241)"
+    ],
+    "type": "Boolean",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1227,
+    "var": "createPalInputVisible",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var createPalInputVisible by remember { mutableStateOf(false) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "HomeScreen (L1234)",
+      "HomeScreen (L1242)"
+    ],
+    "type": "Boolean",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1228,
+    "var": "createPalSizeVisible",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var createPalSizeVisible by remember { mutableStateOf(false) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "HomeScreen (L1236)",
+      "HomeScreen (L1243)"
+    ],
+    "type": "Boolean",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1352,
+    "var": "createPalStep",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var createPalStep by remember { mutableStateOf(1) }",
+    "readers": [
+      "CreatePalDialogOverlay (L13682)",
+      "CreatePalDialogOverlay (L13762)",
+      "CreatePalDialogOverlay (L13797)"
+    ],
+    "writes": [
+      "HomeScreen (L1377)",
+      "refreshMessages (L3738)",
+      "refreshMessages (L3793)",
+      "refreshMessages (L3794)"
+    ],
+    "type": "Int",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1353,
+    "var": "newPalName",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var newPalName by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "CreatePalDialogOverlay (L13684)",
+      "CreatePalDialogOverlay (L13763)",
+      "CreatePalDialogOverlay (L13815)",
+      "CreatePalDialogOverlay (L13930)",
+      "CreatePalDialogOverlay (L13960)",
+      "CreatePalDialogOverlay (L13981)"
+    ],
+    "writes": [
+      "refreshMessages (L3736)",
+      "refreshMessages (L3795)",
+      "refreshMessages (L3796)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1354,
+    "var": "newPalSize",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var newPalSize by remember { mutableStateOf(\"3\") }",
+    "readers": [
+      "CreatePalDialogOverlay (L13686)",
+      "CreatePalDialogOverlay (L13867)",
+      "CreatePalDialogOverlay (L13899)",
+      "refreshMessages (L3829)",
+      "refreshMessages (L3844)"
+    ],
+    "writes": [
+      "refreshMessages (L3737)",
+      "refreshMessages (L3797)",
+      "refreshMessages (L3798)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1355,
+    "var": "generatedPalCode",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var generatedPalCode by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "CreatePalDialogOverlay (L13688)",
+      "CreatePalDialogOverlay (L13940)",
+      "CreatePalDialogOverlay (L13960)",
+      "CreatePalDialogOverlay (L13981)"
+    ],
+    "writes": [
+      "HomeScreen (L1364)",
+      "refreshMessages (L3799)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1356,
+    "var": "joinPalCode",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var joinPalCode by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "JoinPalDialogOverlay (L13173)",
+      "JoinPalDialogOverlay (L13323)",
+      "JoinPalDialogOverlay (L13359)",
+      "JoinPalDialogOverlay (L13368)"
+    ],
+    "writes": [
+      "refreshMessages (L3742)",
+      "refreshMessages (L3875)",
+      "refreshMessages (L3876)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1358,
+    "var": "isCreatingPal",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var isCreatingPal by remember { mutableStateOf(false) }",
+    "readers": [
+      "CreatePalDialogOverlay (L13680)",
+      "CreatePalDialogOverlay (L13712)",
+      "CreatePalDialogOverlay (L13762)",
+      "CreatePalDialogOverlay (L13789)",
+      "HomeScreen (L1361)",
+      "HomeScreen (L1362)"
+    ],
+    "writes": [
+      "HomeScreen (L1378)",
+      "refreshMessages (L3791)",
+      "refreshMessages (L3792)"
+    ],
+    "type": "Boolean",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1359,
+    "var": "creationDots",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var creationDots by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "CreatePalDialogOverlay (L13689)",
+      "CreatePalDialogOverlay (L13791)"
+    ],
+    "writes": [
+      "HomeScreen (L1368)",
+      "HomeScreen (L1370)",
+      "HomeScreen (L1372)",
+      "HomeScreen (L1374)",
+      "refreshMessages (L3800)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1400,
+    "var": "N/A",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(initialList)",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "N/A"
+    ],
+    "type": "Any",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1415,
+    "var": "selectedThemeColor",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var selectedThemeColor by remember { mutableStateOf(\"yellow\") }",
+    "readers": [
+      "CameraScreenContent (L4730)",
+      "CameraScreenContent (L4740)",
+      "CameraScreenContent (L4741)",
+      "CameraScreenContent (L4751)",
+      "CameraScreenContent (L4752)",
+      "HomeScreen (L1416)",
+      "HomeScreen (L1421)",
+      "HomeScreen (L1422)",
+      "HomeScreen (L1433)",
+      "HomeScreen (L1434)",
+      "HomeScreen (L1441)",
+      "TripleDotMenuOverlay (L14003)",
+      "TripleDotMenuOverlay (L14328)"
+    ],
+    "writes": [
+      "refreshMessages (L3675)",
+      "refreshMessages (L3759)",
+      "refreshMessages (L3760)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1465,
+    "var": "tripleDotScreen",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var tripleDotScreen by remember { mutableStateOf(TripleDotScreen.MAIN) }",
+    "readers": [
+      "TripleDotMenuOverlay (L13995)",
+      "TripleDotMenuOverlay (L14017)",
+      "TripleDotMenuOverlay (L14019)",
+      "TripleDotMenuOverlay (L14039)",
+      "TripleDotMenuOverlay (L14070)"
+    ],
+    "writes": [
+      "refreshMessages (L3519)",
+      "refreshMessages (L3751)",
+      "refreshMessages (L3752)"
+    ],
+    "type": "Inferred (TripleDotScreen.MAIN)",
+    "category": "Navigation",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1466,
+    "var": "showEditNameDialog",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showEditNameDialog by remember { mutableStateOf(false) }",
+    "readers": [
+      "EditNameDialogOverlay (L13463)",
+      "EditNameDialogOverlay (L13479)",
+      "onMediaItemTransition (L1831)",
+      "onMediaItemTransition (L1848)",
+      "refreshMessages (L2736)",
+      "refreshMessages (L2737)",
+      "refreshMessages (L2845)",
+      "refreshMessages (L3694)"
+    ],
+    "writes": [
+      "refreshMessages (L3772)",
+      "refreshMessages (L3890)",
+      "refreshMessages (L3891)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1467,
+    "var": "notificationInterval",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var notificationInterval by remember { mutableStateOf(\"off\") }",
+    "readers": [
+      "TripleDotMenuOverlay (L14005)",
+      "TripleDotMenuOverlay (L14391)"
+    ],
+    "writes": [
+      "refreshMessages (L3761)",
+      "refreshMessages (L3762)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1468,
+    "var": "userPin",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var userPin by remember { mutableStateOf(\"4A2D8B\") }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "N/A"
+    ],
+    "type": "String",
+    "category": "Authentication",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1471,
+    "var": "activeVlogPal",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var activeVlogPal by remember(currentUserId) { mutableStateOf<PalItem?>(null) }",
+    "readers": [
+      "CapturedPreviewScreen (L5940)",
+      "clearGroupMemoryCaches (L1600)",
+      "clearGroupMemoryCaches (L1601)",
+      "clearGroupMemoryCaches (L1636)",
+      "onMediaItemTransition (L1742)",
+      "onMediaItemTransition (L1775)",
+      "onMediaItemTransition (L1776)",
+      "onMediaItemTransition (L1834)",
+      "onMediaItemTransition (L1851)",
+      "refreshMessages (L2303)",
+      "refreshMessages (L2332)",
+      "refreshMessages (L2361)",
+      "refreshMessages (L2419)",
+      "refreshMessages (L2500)",
+      "refreshMessages (L2502)",
+      "refreshMessages (L2545)",
+      "refreshMessages (L2546)",
+      "refreshMessages (L2549)",
+      "refreshMessages (L2555)",
+      "refreshMessages (L2556)",
+      "refreshMessages (L2581)",
+      "refreshMessages (L2698)",
+      "refreshMessages (L2747)",
+      "refreshMessages (L2902)",
+      "refreshMessages (L2905)",
+      "refreshMessages (L2933)",
+      "refreshMessages (L2934)",
+      "refreshMessages (L2954)",
+      "refreshMessages (L2956)",
+      "refreshMessages (L2993)",
+      "refreshMessages (L3030)",
+      "refreshMessages (L3079)",
+      "refreshMessages (L3208)",
+      "refreshMessages (L3260)",
+      "refreshMessages (L3291)",
+      "refreshMessages (L3590)",
+      "refreshMessages (L3660)"
+    ],
+    "writes": [
+      "refreshMessages (L2486)",
+      "refreshMessages (L2488)",
+      "refreshMessages (L2550)",
+      "refreshMessages (L2673)",
+      "refreshMessages (L2706)",
+      "refreshMessages (L2759)",
+      "refreshMessages (L2907)",
+      "refreshMessages (L3026)",
+      "refreshMessages (L3061)",
+      "refreshMessages (L3073)",
+      "refreshMessages (L3142)",
+      "refreshMessages (L3327)",
+      "refreshMessages (L3475)",
+      "refreshMessages (L3526)",
+      "refreshMessages (L3849)"
+    ],
+    "type": "PalItem?",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1472,
+    "var": "isStateRestoredRef",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "val isStateRestoredRef = remember(currentUserId) { mutableStateOf(false) }",
+    "readers": [
+      "refreshMessages (L2501)"
+    ],
+    "writes": [
+      "refreshMessages (L2495)"
+    ],
+    "type": "Boolean",
+    "category": "Cache",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1473,
+    "var": "showingCapturedPreview",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showingCapturedPreview by remember(currentUserId) { mutableStateOf(false) }",
+    "readers": [
+      "onMediaItemTransition (L1775)",
+      "onMediaItemTransition (L1839)",
+      "onMediaItemTransition (L1856)",
+      "refreshMessages (L3320)",
+      "refreshMessages (L3660)"
+    ],
+    "writes": [
+      "refreshMessages (L3332)",
+      "refreshMessages (L3483)",
+      "refreshMessages (L3685)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1474,
+    "var": "capturedVideoPath",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var capturedVideoPath by remember(currentUserId) { mutableStateOf<String?>(null) }",
+    "readers": [
+      "CapturedPreviewScreen (L5943)",
+      "CapturedPreviewScreen (L5958)",
+      "CapturedPreviewScreen (L6066)",
+      "CapturedPreviewScreen (L6075)",
+      "CapturedPreviewScreen (L6076)",
+      "CapturedPreviewScreen (L6080)",
+      "CapturedPreviewScreen (L6082)",
+      "CapturedPreviewScreen (L6083)",
+      "onPlaybackStateChanged (L6386)",
+      "onPlaybackStateChanged (L6390)",
+      "onPlaybackStateChanged (L6391)",
+      "refreshMessages (L2588)",
+      "refreshMessages (L2600)",
+      "refreshMessages (L2602)",
+      "refreshMessages (L2606)",
+      "refreshMessages (L2612)",
+      "refreshMessages (L2614)",
+      "refreshMessages (L2615)",
+      "refreshMessages (L3334)"
+    ],
+    "writes": [
+      "refreshMessages (L3330)",
+      "refreshMessages (L3683)"
+    ],
+    "type": "String?",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1475,
+    "var": "capturedVideoDuration",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var capturedVideoDuration by remember(currentUserId) { mutableStateOf(2000L) }",
+    "readers": [
+      "refreshMessages (L2642)",
+      "refreshMessages (L3375)",
+      "refreshMessages (L3387)",
+      "refreshMessages (L3442)"
+    ],
+    "writes": [
+      "refreshMessages (L3684)"
+    ],
+    "type": "Inferred (2000L)",
+    "category": "Playback",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1476,
+    "var": "capturedCaptionText",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var capturedCaptionText by remember(currentUserId) { mutableStateOf(\"\") }",
+    "readers": [
+      "refreshMessages (L2642)"
+    ],
+    "writes": [
+      "refreshMessages (L3335)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1477,
+    "var": "capturedVideoTimeText",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var capturedVideoTimeText by remember(currentUserId) { mutableStateOf(\"\") }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "refreshMessages (L3338)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1478,
+    "var": "isMuted",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var isMuted by remember { mutableStateOf(false) }",
+    "readers": [
+      "CapturedPreviewScreen (L5953)",
+      "CapturedPreviewScreen (L6104)",
+      "CapturedPreviewScreen (L6105)",
+      "VoiceMuteIcon (L5368)",
+      "VoiceMuteIcon (L5391)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L6366)",
+      "onPlaybackStateChanged (L6370)"
+    ],
+    "type": "Boolean",
+    "category": "Playback",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1479,
+    "var": "initialSyncCompleted",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var initialSyncCompleted by remember { mutableStateOf(false) }",
+    "readers": [
+      "refreshMessages (L2389)"
+    ],
+    "writes": [
+      "refreshMessages (L2428)"
+    ],
+    "type": "Boolean",
+    "category": "Network",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1490,
+    "var": "filteredPathsList",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(ArrayList(filteredPathsList))",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "HomeScreen (L1489)"
+    ],
+    "type": "Inferred (ArrayList(filteredPathsList))",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1499,
+    "var": "filteredTimesList",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(ArrayList(filteredTimesList))",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "HomeScreen (L1498)"
+    ],
+    "type": "Inferred (ArrayList(filteredTimesList))",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1508,
+    "var": "filteredCaptionsList",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(ArrayList(filteredCaptionsList))",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "HomeScreen (L1507)"
+    ],
+    "type": "Inferred (ArrayList(filteredCaptionsList))",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1517,
+    "var": "filteredDurationsList",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(ArrayList(filteredDurationsList))",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "HomeScreen (L1516)"
+    ],
+    "type": "Inferred (ArrayList(filteredDurationsList))",
+    "category": "Playback",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1519,
+    "var": "currentPlayingIndex",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var currentPlayingIndex by remember { mutableStateOf(0) }",
+    "readers": [
+      "PalsTabScreenContent (L14520)",
+      "getEpoch (L8463)",
+      "getEpoch (L8464)",
+      "getEpoch (L8465)",
+      "onPlaybackStateChanged (L6716)"
+    ],
+    "writes": [
+      "PalsTabScreenContent (L14549)",
+      "VlogScreenContent (L8038)",
+      "onMediaItemTransition (L1737)",
+      "onMediaItemTransition (L1743)",
+      "onMediaItemTransition (L1805)",
+      "refreshMessages (L2760)",
+      "refreshMessages (L2908)",
+      "refreshMessages (L3068)",
+      "refreshMessages (L3194)",
+      "refreshMessages (L3196)",
+      "refreshMessages (L3503)",
+      "refreshMessages (L3522)"
+    ],
+    "type": "Int",
+    "category": "Playback",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1520,
+    "var": "vlogPlaybackProgress",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var vlogPlaybackProgress by remember { mutableStateOf(0f) }",
+    "readers": [
+      "PalsTabScreenContent (L14523)",
+      "onPlaybackStateChanged (L6717)"
+    ],
+    "writes": [
+      "PalsTabScreenContent (L14552)",
+      "VlogScreenContent (L8039)",
+      "onMediaItemTransition (L1792)",
+      "onMediaItemTransition (L1794)",
+      "onMediaItemTransition (L1799)",
+      "refreshMessages (L3069)",
+      "refreshMessages (L3506)"
+    ],
+    "type": "Float",
+    "category": "Playback",
+    "target": "UI"
+  },
+  {
+    "line": 1521,
+    "var": "showVlogDropdownMenu",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showVlogDropdownMenu by remember { mutableStateOf(false) }",
+    "readers": [
+      "onMediaItemTransition (L1835)",
+      "onMediaItemTransition (L1852)",
+      "refreshMessages (L2750)",
+      "refreshMessages (L2925)"
+    ],
+    "writes": [
+      "refreshMessages (L2751)",
+      "refreshMessages (L2926)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1522,
+    "var": "showVlogChatScreen",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showVlogChatScreen by remember { mutableStateOf(false) }",
+    "readers": [
+      "onMediaItemTransition (L1836)",
+      "onMediaItemTransition (L1853)",
+      "refreshMessages (L2555)",
+      "refreshMessages (L2748)",
+      "refreshMessages (L2927)"
+    ],
+    "writes": [
+      "refreshMessages (L2749)",
+      "refreshMessages (L2928)",
+      "refreshMessages (L3074)"
+    ],
+    "type": "Boolean",
+    "category": "Chat",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1523,
+    "var": "showEditPalFlow",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showEditPalFlow by remember { mutableStateOf(false) }",
+    "readers": [
+      "onMediaItemTransition (L1837)",
+      "onMediaItemTransition (L1854)",
+      "refreshMessages (L2752)",
+      "refreshMessages (L2929)"
+    ],
+    "writes": [
+      "refreshMessages (L2726)",
+      "refreshMessages (L2753)",
+      "refreshMessages (L2931)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1524,
+    "var": "showDeletePalDialog",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showDeletePalDialog by remember { mutableStateOf(false) }",
+    "readers": [
+      "onMediaItemTransition (L1832)",
+      "onMediaItemTransition (L1849)",
+      "refreshMessages (L2754)",
+      "refreshMessages (L2937)"
+    ],
+    "writes": [
+      "refreshMessages (L2755)",
+      "refreshMessages (L2938)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1525,
+    "var": "showLeavePalDialog",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showLeavePalDialog by remember { mutableStateOf(false) }",
+    "readers": [
+      "onMediaItemTransition (L1833)",
+      "onMediaItemTransition (L1850)",
+      "refreshMessages (L2756)",
+      "refreshMessages (L2939)"
+    ],
+    "writes": [
+      "refreshMessages (L2757)",
+      "refreshMessages (L2940)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1526,
+    "var": "showVlogExportDialog",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var showVlogExportDialog by remember { mutableStateOf(false) }",
+    "readers": [
+      "onMediaItemTransition (L1776)",
+      "onMediaItemTransition (L1803)",
+      "onMediaItemTransition (L1804)",
+      "refreshMessages (L2941)"
+    ],
+    "writes": [
+      "refreshMessages (L2942)"
+    ],
+    "type": "Boolean",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1535,
+    "var": "selectedDayOffset",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var selectedDayOffset by remember { mutableStateOf(0) }",
+    "readers": [
+      "clearGroupMemoryCaches (L1590)",
+      "clearGroupMemoryCaches (L1597)",
+      "getEpoch (L8248)",
+      "getEpoch (L8255)",
+      "getEpoch (L8325)",
+      "getEpoch (L8333)",
+      "getEpoch (L8334)",
+      "getEpoch (L8338)",
+      "getEpoch (L8339)",
+      "onPlaybackStateChanged (L6722)",
+      "onPlaybackStateChanged (L9193)",
+      "onPlaybackStateChanged (L9194)",
+      "onPlaybackStateChanged (L9248)",
+      "onPlaybackStateChanged (L9249)",
+      "onPlaybackStateChanged (L9262)",
+      "onPlaybackStateChanged (L9278)",
+      "onPlaybackStateChanged (L9287)",
+      "onPlaybackStateChanged (L9339)",
+      "onPlaybackStateChanged (L9340)",
+      "onPlaybackStateChanged (L9353)",
+      "onPlaybackStateChanged (L9369)",
+      "onPlaybackStateChanged (L9378)"
+    ],
+    "writes": [
+      "VlogScreenContent (L8044)",
+      "refreshMessages (L2909)",
+      "refreshMessages (L3251)",
+      "refreshMessages (L3252)"
+    ],
+    "type": "Int",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1537,
+    "var": "activeHourSubmissions",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var activeHourSubmissions by remember { mutableStateOf<Map<String, SubmissionDbItem>>(emptyMap()) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "clearGroupMemoryCaches (L1543)",
+      "clearGroupMemoryCaches (L1571)",
+      "refreshActivePalDetails (L2228)",
+      "refreshMessages (L3819)"
+    ],
+    "type": "Map<String, SubmissionDbItem",
+    "category": "Database",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1538,
+    "var": "dailyHourHistoryMap",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var dailyHourHistoryMap by remember { mutableStateOf<Map<Int, List<SubmissionDbItem>>>(emptyMap()) }",
+    "readers": [
+      "refreshActivePalDetails (L2227)",
+      "refreshActivePalDetails (L2231)"
+    ],
+    "writes": [
+      "clearGroupMemoryCaches (L1544)",
+      "clearGroupMemoryCaches (L1572)",
+      "refreshActivePalDetails (L2224)",
+      "refreshMessages (L3820)"
+    ],
+    "type": "Map<Int, List<SubmissionDbItem",
+    "category": "Database",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1539,
+    "var": "exportMenuDataState",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var exportMenuDataState by remember { mutableStateOf<Map<Int, List<SubmissionDbItem>>>(emptyMap()) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "clearGroupMemoryCaches (L1546)",
+      "clearGroupMemoryCaches (L1580)",
+      "refreshActivePalDetails (L2231)",
+      "refreshMessages (L3821)"
+    ],
+    "type": "Map<Int, List<SubmissionDbItem",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1540,
+    "var": "activeGroupMembersList",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var activeGroupMembersList by remember { mutableStateOf<List<UserItem>>(emptyList()) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "clearGroupMemoryCaches (L1573)"
+    ],
+    "type": "List<UserItem",
+    "category": "Database",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1587,
+    "var": "activeReplyPreviewPath",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var activeReplyPreviewPath by remember { mutableStateOf<String?>(null) }",
+    "readers": [
+      "ReplyPreviewOverlay (L12048)",
+      "ReplyPreviewOverlay (L12054)",
+      "ReplyPreviewOverlay (L12055)",
+      "onPlaybackStateChanged (L6729)"
+    ],
+    "writes": [
+      "VlogScreenContent (L8051)",
+      "onPlaybackStateChanged (L10131)",
+      "refreshMessages (L3286)",
+      "refreshMessages (L3287)"
+    ],
+    "type": "String?",
+    "category": "Chat",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1588,
+    "var": "activeReactionPreview",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var activeReactionPreview by remember { mutableStateOf<Pair<String, String>?>(null) }",
+    "readers": [
+      "ReactionPreviewOverlay (L12197)",
+      "ReactionPreviewOverlay (L12201)",
+      "ReactionPreviewOverlay (L12202)",
+      "onPlaybackStateChanged (L6731)"
+    ],
+    "writes": [
+      "VlogScreenContent (L8053)",
+      "onPlaybackStateChanged (L10140)",
+      "refreshMessages (L3258)",
+      "refreshMessages (L3288)",
+      "refreshMessages (L3289)"
+    ],
+    "type": "Pair<String, String",
+    "category": "Chat",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1820,
+    "var": "lastPhysicalIsRotated",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var lastPhysicalIsRotated by remember { mutableStateOf<Boolean?>(null) }",
+    "readers": [
+      "onMediaItemTransition (L1840)",
+      "onOrientationChanged (L1872)",
+      "onOrientationChanged (L1873)"
+    ],
+    "writes": [
+      "onOrientationChanged (L1880)"
+    ],
+    "type": "Boolean?",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 1896,
+    "var": "isRefreshing",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var isRefreshing by remember { mutableStateOf(false) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "refreshPals (L1902)",
+      "refreshPals (L1945)"
+    ],
+    "type": "Boolean",
+    "category": "Network",
+    "target": "ViewModel"
+  },
+  {
+    "line": 2563,
+    "var": "isCapturingPal",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var isCapturingPal by remember { mutableStateOf(false) }",
+    "readers": [
+      "refreshMessages (L2572)",
+      "refreshMessages (L2573)",
+      "refreshMessages (L2923)"
+    ],
+    "writes": [
+      "refreshMessages (L2681)",
+      "refreshMessages (L2922)"
+    ],
+    "type": "Boolean",
+    "category": "Camera",
+    "target": "ViewModel"
+  },
+  {
+    "line": 2564,
+    "var": "capturingProgress",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var capturingProgress by remember { mutableStateOf(0.0f) }",
+    "readers": [
+      "refreshMessages (L2924)"
+    ],
+    "writes": [
+      "refreshMessages (L2574)",
+      "refreshMessages (L2579)"
+    ],
+    "type": "Float",
+    "category": "Camera",
+    "target": "ViewModel"
+  },
+  {
+    "line": 2565,
+    "var": "vlogMenuExpandedMembers",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var vlogMenuExpandedMembers by remember { mutableStateOf(false) }",
+    "readers": [
+      "refreshMessages (L2943)"
+    ],
+    "writes": [
+      "refreshMessages (L2944)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 2566,
+    "var": "vlogMenuExpandedSettings",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var vlogMenuExpandedSettings by remember { mutableStateOf(false) }",
+    "readers": [
+      "refreshMessages (L2945)"
+    ],
+    "writes": [
+      "refreshMessages (L2946)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 2567,
+    "var": "editPalName",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var editPalName by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "refreshMessages (L2700)",
+      "refreshMessages (L2702)",
+      "refreshMessages (L2712)",
+      "refreshMessages (L2947)"
+    ],
+    "writes": [
+      "refreshMessages (L2933)",
+      "refreshMessages (L2948)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 2568,
+    "var": "editPalSize",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var editPalSize by remember { mutableStateOf(\"3\") }",
+    "readers": [
+      "refreshMessages (L2702)",
+      "refreshMessages (L2713)",
+      "refreshMessages (L2949)"
+    ],
+    "writes": [
+      "refreshMessages (L2934)",
+      "refreshMessages (L2950)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 2569,
+    "var": "isEditingPalLoading",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var isEditingPalLoading by remember { mutableStateOf(false) }",
+    "readers": [
+      "refreshMessages (L2685)",
+      "refreshMessages (L2686)",
+      "refreshMessages (L2951)"
+    ],
+    "writes": [
+      "refreshMessages (L2725)",
+      "refreshMessages (L2952)"
+    ],
+    "type": "Boolean",
+    "category": "Network",
+    "target": "ViewModel"
+  },
+  {
+    "line": 2570,
+    "var": "editPalDots",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var editPalDots by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "refreshMessages (L2953)"
+    ],
+    "writes": [
+      "refreshMessages (L2689)",
+      "refreshMessages (L2691)",
+      "refreshMessages (L2693)",
+      "refreshMessages (L2695)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 2731,
+    "var": "plusMenuBounds",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var plusMenuBounds by remember { mutableStateOf<Rect?>(null) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "N/A"
+    ],
+    "type": "Rect?",
+    "category": "Dialogs",
+    "target": "UI"
+  },
+  {
+    "line": 2732,
+    "var": "tripleDotMenuBounds",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var tripleDotMenuBounds by remember { mutableStateOf<Rect?>(null) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "refreshMessages (L3775)"
+    ],
+    "type": "Rect?",
+    "category": "Dialogs",
+    "target": "UI"
+  },
+  {
+    "line": 2733,
+    "var": "joinPalBounds",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var joinPalBounds by remember { mutableStateOf<Rect?>(null) }",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "N/A"
+    ],
+    "type": "Rect?",
+    "category": "Dialogs",
+    "target": "UI"
+  },
+  {
+    "line": 2734,
+    "var": "editNameBounds",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var editNameBounds by remember { mutableStateOf<Rect?>(null) }",
+    "readers": [
+      "refreshMessages (L3694)"
+    ],
+    "writes": [
+      "refreshMessages (L3901)"
+    ],
+    "type": "Rect?",
+    "category": "Dialogs",
+    "target": "UI"
+  },
+  {
+    "line": 2768,
+    "var": "screenCornerRadius",
+    "func": "HomeScreen",
+    "is_composable": true,
+    "content": "var screenCornerRadius by remember { mutableStateOf(28.dp) }",
+    "readers": [
+      "refreshMessages (L2867)",
+      "refreshMessages (L2869)",
+      "refreshMessages (L2875)"
+    ],
+    "writes": [
+      "refreshMessages (L2831)"
+    ],
+    "type": "Dp",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 4648,
+    "var": "activeCamera",
+    "func": "CameraPreview",
+    "is_composable": true,
+    "content": "var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }",
+    "readers": [
+      "CameraPreview (L4684)",
+      "CameraPreview (L4685)",
+      "CameraPreview (L4695)",
+      "CameraPreview (L4696)"
+    ],
+    "writes": [
+      "CameraPreview (L4677)"
+    ],
+    "type": "androidx.camera.core.Camera?",
+    "category": "Camera",
+    "target": "UI"
+  },
+  {
+    "line": 4762,
+    "var": "activeSlot",
+    "func": "CameraScreenContent",
+    "is_composable": true,
+    "content": "var activeSlot by remember { mutableStateOf(1) }",
+    "readers": [
+      "CameraScreenContent (L4962)",
+      "CameraScreenContent (L4977)",
+      "CameraScreenContent (L5189)",
+      "CameraScreenContent (L5218)",
+      "CameraScreenContent (L5219)"
+    ],
+    "writes": [
+      "CameraScreenContent (L4980)",
+      "CameraScreenContent (L5220)"
+    ],
+    "type": "Int",
+    "category": "Camera",
+    "target": "ViewModel"
+  },
+  {
+    "line": 4763,
+    "var": "activeTimerMode",
+    "func": "CameraScreenContent",
+    "is_composable": true,
+    "content": "var activeTimerMode by remember { mutableStateOf(TimerMode.DEFAULT) }",
+    "readers": [
+      "CameraScreenContent (L4809)",
+      "CameraScreenContent (L4921)",
+      "CameraScreenContent (L4996)",
+      "CameraScreenContent (L5329)"
+    ],
+    "writes": [
+      "CameraScreenContent (L5320)"
+    ],
+    "type": "Inferred (TimerMode.DEFAULT)",
+    "category": "Camera",
+    "target": "ViewModel"
+  },
+  {
+    "line": 4764,
+    "var": "flashMode",
+    "func": "CameraScreenContent",
+    "is_composable": true,
+    "content": "var flashMode by remember { mutableStateOf(\"off\") } // \"off\", \"on\", \"auto\"",
+    "readers": [
+      "CameraScreenContent (L4961)",
+      "CameraScreenContent (L5271)",
+      "CameraScreenContent (L5279)"
+    ],
+    "writes": [
+      "CameraScreenContent (L5263)"
+    ],
+    "type": "String",
+    "category": "Camera",
+    "target": "ViewModel"
+  },
+  {
+    "line": 4765,
+    "var": "isCameraFlipped",
+    "func": "CameraScreenContent",
+    "is_composable": true,
+    "content": "var isCameraFlipped by remember { mutableStateOf(false) }",
+    "readers": [
+      "CameraPreview (L4626)",
+      "CameraPreview (L4650)",
+      "CameraPreview (L4663)"
+    ],
+    "writes": [
+      "CameraScreenContent (L4960)",
+      "CameraScreenContent (L5355)"
+    ],
+    "type": "Boolean",
+    "category": "Camera",
+    "target": "ViewModel"
+  },
+  {
+    "line": 4766,
+    "var": "recordingProgress",
+    "func": "CameraScreenContent",
+    "is_composable": true,
+    "content": "var recordingProgress by remember { mutableStateOf(0.0f) }",
+    "readers": [
+      "CameraScreenContent (L5046)",
+      "CameraScreenContent (L5287)",
+      "CameraScreenContent (L5300)"
+    ],
+    "writes": [
+      "CameraScreenContent (L4856)",
+      "CameraScreenContent (L4861)",
+      "CameraScreenContent (L4867)",
+      "CameraScreenContent (L4872)"
+    ],
+    "type": "Float",
+    "category": "Camera",
+    "target": "UI"
+  },
+  {
+    "line": 4767,
+    "var": "countdownSeconds",
+    "func": "CameraScreenContent",
+    "is_composable": true,
+    "content": "var countdownSeconds by remember { mutableStateOf(0) }",
+    "readers": [
+      "CameraScreenContent (L4777)",
+      "CameraScreenContent (L4778)",
+      "CameraScreenContent (L4781)",
+      "CameraScreenContent (L4920)",
+      "CameraScreenContent (L5065)",
+      "CameraScreenContent (L5071)",
+      "CameraScreenContent (L5081)",
+      "CameraScreenContent (L5189)"
+    ],
+    "writes": [
+      "CameraScreenContent (L4780)",
+      "CameraScreenContent (L4924)"
+    ],
+    "type": "Int",
+    "category": "Camera",
+    "target": "ViewModel"
+  },
+  {
+    "line": 4768,
+    "var": "videoCaptureRef",
+    "func": "CameraScreenContent",
+    "is_composable": true,
+    "content": "var videoCaptureRef by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }",
+    "readers": [
+      "CameraScreenContent (L4801)"
+    ],
+    "writes": [
+      "CameraScreenContent (L4963)"
+    ],
+    "type": "VideoCapture<Recorder",
+    "category": "Camera",
+    "target": "UI"
+  },
+  {
+    "line": 4769,
+    "var": "activeRecordingSession",
+    "func": "CameraScreenContent",
+    "is_composable": true,
+    "content": "var activeRecordingSession by remember { mutableStateOf<Recording?>(null) }",
+    "readers": [
+      "CameraScreenContent (L4773)",
+      "CameraScreenContent (L4870)"
+    ],
+    "writes": [
+      "CameraScreenContent (L4847)",
+      "CameraScreenContent (L4865)",
+      "CameraScreenContent (L4871)"
+    ],
+    "type": "Recording?",
+    "category": "Camera",
+    "target": "UI"
+  },
+  {
+    "line": 4789,
+    "var": "initialTime",
+    "func": "CameraScreenContent",
+    "is_composable": true,
+    "content": "mutableStateOf(String.format(\"%02d:%02d\", initialTime.hour, initialTime.minute))",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "CameraScreenContent (L4788)"
+    ],
+    "type": "Inferred (String.format(\"%02d:%02d\", initialTime.hour, initialTime.minute))",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 5953,
+    "var": "isMuted",
+    "func": "CapturedPreviewScreen",
+    "is_composable": true,
+    "content": "var isMuted by remember { mutableStateOf(false) }",
+    "readers": [
+      "CapturedPreviewScreen (L6104)",
+      "CapturedPreviewScreen (L6105)",
+      "HomeScreen (L1478)",
+      "VoiceMuteIcon (L5368)",
+      "VoiceMuteIcon (L5391)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L6366)",
+      "onPlaybackStateChanged (L6370)"
+    ],
+    "type": "Boolean",
+    "category": "Playback",
+    "target": "ViewModel"
+  },
+  {
+    "line": 5954,
+    "var": "captionText",
+    "func": "CapturedPreviewScreen",
+    "is_composable": true,
+    "content": "var captionText by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "onPlaybackStateChanged (L6271)",
+      "onPlaybackStateChanged (L6343)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L6272)",
+      "onPlaybackStateChanged (L6402)",
+      "onPlaybackStateChanged (L9115)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 5955,
+    "var": "isPreviewSaving",
+    "func": "CapturedPreviewScreen",
+    "is_composable": true,
+    "content": "var isPreviewSaving by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L6386)",
+      "onPlaybackStateChanged (L6423)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L6387)",
+      "onPlaybackStateChanged (L6416)"
+    ],
+    "type": "Boolean",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 5956,
+    "var": "isPreviewSaved",
+    "func": "CapturedPreviewScreen",
+    "is_composable": true,
+    "content": "var isPreviewSaved by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L6386)",
+      "onPlaybackStateChanged (L6431)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L6408)",
+      "onPlaybackStateChanged (L6411)"
+    ],
+    "type": "Boolean",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 5973,
+    "var": "selectedPals",
+    "func": "CapturedPreviewScreen",
+    "is_composable": true,
+    "content": "var selectedPals by remember { mutableStateOf<Set<String>>(emptySet()) }",
+    "readers": [
+      "onPlaybackStateChanged (L6221)",
+      "onPlaybackStateChanged (L6222)",
+      "onPlaybackStateChanged (L6319)",
+      "onPlaybackStateChanged (L6342)",
+      "onPlaybackStateChanged (L6398)",
+      "onPlaybackStateChanged (L6471)",
+      "onPlaybackStateChanged (L6566)",
+      "onPlaybackStateChanged (L6568)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L6565)"
+    ],
+    "type": "Set<String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 6857,
+    "var": "showDropdownMenu",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var showDropdownMenu by remember { mutableStateOf(false) }",
+    "readers": [
+      "GroupMemberCard (L6989)"
+    ],
+    "writes": [
+      "GroupMemberCard (L6978)",
+      "GroupMemberCard (L6990)",
+      "GroupMemberCard (L7002)",
+      "GroupMemberCard (L7009)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 6858,
+    "var": "showEmojiOverlay",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var showEmojiOverlay by remember { mutableStateOf(false) }",
+    "readers": [
+      "GroupMemberCard (L7113)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7041)",
+      "GroupMemberCard (L7119)",
+      "GroupMemberCard (L7134)"
+    ],
+    "type": "Boolean",
+    "category": "Chat",
+    "target": "ViewModel"
+  },
+  {
+    "line": 6860,
+    "var": "currentEmojis",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }",
+    "readers": [
+      "GroupMemberCard (L7127)",
+      "PalChatOverlay (L12421)",
+      "PalChatOverlay (L12861)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7145)",
+      "PalChatOverlay (L12881)"
+    ],
+    "type": "Inferred (defaultEmojis.take(5))",
+    "category": "Chat",
+    "target": "ViewModel"
+  },
+  {
+    "line": 7177,
+    "var": "groupPosX",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var groupPosX by remember { mutableStateOf(0f) }",
+    "readers": [
+      "GroupMemberCard (L7200)",
+      "GroupMemberCard (L7250)",
+      "GroupMemberCard (L7386)",
+      "GroupMemberCard (L7409)",
+      "GroupMemberCard (L7460)",
+      "VlogEmptyStateContent (L14863)",
+      "VlogEmptyStateContent (L14886)",
+      "VlogEmptyStateContent (L14936)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7184)",
+      "GroupMemberCard (L7234)",
+      "GroupMemberCard (L7393)",
+      "GroupMemberCard (L7443)",
+      "VlogEmptyStateContent (L14870)",
+      "VlogEmptyStateContent (L14920)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 7178,
+    "var": "groupPosY",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var groupPosY by remember { mutableStateOf(0f) }",
+    "readers": [
+      "GroupMemberCard (L7201)",
+      "GroupMemberCard (L7251)",
+      "GroupMemberCard (L7387)",
+      "GroupMemberCard (L7410)",
+      "GroupMemberCard (L7461)",
+      "VlogEmptyStateContent (L14864)",
+      "VlogEmptyStateContent (L14887)",
+      "VlogEmptyStateContent (L14937)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7185)",
+      "GroupMemberCard (L7235)",
+      "GroupMemberCard (L7394)",
+      "GroupMemberCard (L7444)",
+      "VlogEmptyStateContent (L14871)",
+      "VlogEmptyStateContent (L14921)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 7179,
+    "var": "groupSmileRotation",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var groupSmileRotation by remember { mutableStateOf(0f) }",
+    "readers": [
+      "GroupMemberCard (L7253)",
+      "GroupMemberCard (L7388)",
+      "GroupMemberCard (L7463)",
+      "VlogEmptyStateContent (L14865)",
+      "VlogEmptyStateContent (L14939)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7237)",
+      "GroupMemberCard (L7446)",
+      "VlogEmptyStateContent (L14923)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 7180,
+    "var": "groupSmileColorIndex",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var groupSmileColorIndex by remember { mutableStateOf(0) }",
+    "readers": [
+      "GroupMemberCard (L7255)",
+      "GroupMemberCard (L7389)",
+      "GroupMemberCard (L7465)",
+      "VlogEmptyStateContent (L14866)",
+      "VlogEmptyStateContent (L14941)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7240)",
+      "GroupMemberCard (L7449)",
+      "VlogEmptyStateContent (L14926)"
+    ],
+    "type": "Int",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 7386,
+    "var": "groupPosX",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var groupPosX by remember { mutableStateOf(0f) }",
+    "readers": [
+      "GroupMemberCard (L7177)",
+      "GroupMemberCard (L7200)",
+      "GroupMemberCard (L7250)",
+      "GroupMemberCard (L7409)",
+      "GroupMemberCard (L7460)",
+      "VlogEmptyStateContent (L14863)",
+      "VlogEmptyStateContent (L14886)",
+      "VlogEmptyStateContent (L14936)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7184)",
+      "GroupMemberCard (L7234)",
+      "GroupMemberCard (L7393)",
+      "GroupMemberCard (L7443)",
+      "VlogEmptyStateContent (L14870)",
+      "VlogEmptyStateContent (L14920)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 7387,
+    "var": "groupPosY",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var groupPosY by remember { mutableStateOf(0f) }",
+    "readers": [
+      "GroupMemberCard (L7178)",
+      "GroupMemberCard (L7201)",
+      "GroupMemberCard (L7251)",
+      "GroupMemberCard (L7410)",
+      "GroupMemberCard (L7461)",
+      "VlogEmptyStateContent (L14864)",
+      "VlogEmptyStateContent (L14887)",
+      "VlogEmptyStateContent (L14937)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7185)",
+      "GroupMemberCard (L7235)",
+      "GroupMemberCard (L7394)",
+      "GroupMemberCard (L7444)",
+      "VlogEmptyStateContent (L14871)",
+      "VlogEmptyStateContent (L14921)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 7388,
+    "var": "groupSmileRotation",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var groupSmileRotation by remember { mutableStateOf(0f) }",
+    "readers": [
+      "GroupMemberCard (L7179)",
+      "GroupMemberCard (L7253)",
+      "GroupMemberCard (L7463)",
+      "VlogEmptyStateContent (L14865)",
+      "VlogEmptyStateContent (L14939)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7237)",
+      "GroupMemberCard (L7446)",
+      "VlogEmptyStateContent (L14923)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 7389,
+    "var": "groupSmileColorIndex",
+    "func": "GroupMemberCard",
+    "is_composable": true,
+    "content": "var groupSmileColorIndex by remember { mutableStateOf(0) }",
+    "readers": [
+      "GroupMemberCard (L7180)",
+      "GroupMemberCard (L7255)",
+      "GroupMemberCard (L7465)",
+      "VlogEmptyStateContent (L14866)",
+      "VlogEmptyStateContent (L14941)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7240)",
+      "GroupMemberCard (L7449)",
+      "VlogEmptyStateContent (L14926)"
+    ],
+    "type": "Int",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 8091,
+    "var": "N/A",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "mutableStateOf(initialList)",
+    "readers": [
+      "N/A"
+    ],
+    "writes": [
+      "N/A"
+    ],
+    "type": "Any",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8246,
+    "var": "selectedMemberIndex",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var selectedMemberIndex by remember(pal.code) { mutableStateOf(0) }",
+    "readers": [
+      "GroupMemberCard (L6751)",
+      "GroupScreenContent (L7586)"
+    ],
+    "writes": [
+      "GroupScreenContent (L7656)",
+      "GroupScreenContent (L7720)",
+      "GroupScreenContent (L7773)",
+      "GroupScreenContent (L7832)",
+      "getEpoch (L8393)",
+      "getEpoch (L8394)"
+    ],
+    "type": "Int",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8297,
+    "var": "selectedPageIndex",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var selectedPageIndex by remember(pal.code) { mutableStateOf(0) }",
+    "readers": [
+      "DeleteVlogConfirmationDialog (L11956)",
+      "DeleteVlogConfirmationDialog (L12032)",
+      "DeleteVlogConfirmationDialog (L12034)",
+      "GroupScreenContent (L7590)",
+      "getEpoch (L8314)",
+      "getEpoch (L8470)",
+      "getEpoch (L8471)",
+      "getEpoch (L8472)",
+      "getEpoch (L8477)",
+      "onPlaybackStateChanged (L8624)",
+      "onPlaybackStateChanged (L8638)",
+      "onPlaybackStateChanged (L8730)",
+      "onPlaybackStateChanged (L8819)",
+      "onPlaybackStateChanged (L8828)",
+      "onPlaybackStateChanged (L9071)",
+      "onPlaybackStateChanged (L9106)",
+      "onPlaybackStateChanged (L9107)",
+      "onPlaybackStateChanged (L9304)"
+    ],
+    "writes": [
+      "getEpoch (L8397)",
+      "getEpoch (L8398)",
+      "getEpoch (L8465)",
+      "onPlaybackStateChanged (L10096)",
+      "onPlaybackStateChanged (L10097)",
+      "onPlaybackStateChanged (L8625)",
+      "onPlaybackStateChanged (L8639)"
+    ],
+    "type": "Int",
+    "category": "Navigation",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8298,
+    "var": "inMembersSubMenu",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var inMembersSubMenu by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L9454)",
+      "onPlaybackStateChanged (L9556)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L9451)",
+      "onPlaybackStateChanged (L9563)",
+      "onPlaybackStateChanged (L9644)"
+    ],
+    "type": "Boolean",
+    "category": "Navigation",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8299,
+    "var": "capsuleLeftDp",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var capsuleLeftDp by remember { mutableStateOf(0.dp) }",
+    "readers": [
+      "onPlaybackStateChanged (L9461)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L9270)",
+      "onPlaybackStateChanged (L9361)"
+    ],
+    "type": "Dp",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8300,
+    "var": "inSettingsSubMenu",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var inSettingsSubMenu by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L9454)",
+      "onPlaybackStateChanged (L9475)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L9450)",
+      "onPlaybackStateChanged (L9482)",
+      "onPlaybackStateChanged (L9500)",
+      "onPlaybackStateChanged (L9522)",
+      "onPlaybackStateChanged (L9541)",
+      "onPlaybackStateChanged (L9668)"
+    ],
+    "type": "Boolean",
+    "category": "Navigation",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8301,
+    "var": "showArchiveView",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var showArchiveView by remember { mutableStateOf(false) }",
+    "readers": [
+      "getEpoch (L8368)"
+    ],
+    "writes": [
+      "getEpoch (L8376)",
+      "onPlaybackStateChanged (L9601)"
+    ],
+    "type": "Boolean",
+    "category": "Navigation",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8302,
+    "var": "currentMonth",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var currentMonth by remember { mutableStateOf(java.time.YearMonth.now()) }",
+    "readers": [
+      "VlogArchiveCard (L14583)",
+      "VlogArchiveCard (L14675)",
+      "VlogArchiveCard (L14709)",
+      "VlogArchiveCard (L14710)",
+      "VlogArchiveCard (L14729)"
+    ],
+    "writes": [
+      "VlogArchiveCard (L14672)",
+      "VlogArchiveCard (L14687)"
+    ],
+    "type": "Inferred (java.time.YearMonth.now())",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8303,
+    "var": "showTripleDotMenu",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var showTripleDotMenu by remember { mutableStateOf(false) }",
+    "readers": [
+      "HomeScreen (L1217)",
+      "TripleDotMenuOverlay (L13993)",
+      "TripleDotMenuOverlay (L14014)",
+      "getEpoch (L8350)",
+      "onMediaItemTransition (L1827)",
+      "onMediaItemTransition (L1844)",
+      "onPlaybackStateChanged (L9058)",
+      "refreshMessages (L2845)"
+    ],
+    "writes": [
+      "getEpoch (L8358)",
+      "onPlaybackStateChanged (L8800)",
+      "onPlaybackStateChanged (L9079)",
+      "onPlaybackStateChanged (L9126)",
+      "onPlaybackStateChanged (L9166)",
+      "refreshMessages (L3518)",
+      "refreshMessages (L3749)",
+      "refreshMessages (L3750)",
+      "refreshMessages (L3764)",
+      "refreshMessages (L3768)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8304,
+    "var": "isEditingCaption",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var isEditingCaption by remember { mutableStateOf(false) }",
+    "readers": [
+      "GroupScreenContent (L7592)",
+      "GroupScreenContent (L7876)",
+      "getEpoch (L8312)",
+      "getEpoch (L8313)",
+      "onPlaybackStateChanged (L8730)",
+      "onPlaybackStateChanged (L8819)"
+    ],
+    "writes": [
+      "getEpoch (L8399)",
+      "getEpoch (L8400)",
+      "onPlaybackStateChanged (L8829)",
+      "onPlaybackStateChanged (L9080)"
+    ],
+    "type": "Boolean",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8305,
+    "var": "showDeleteVlogConfirmation",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var showDeleteVlogConfirmation by remember { mutableStateOf(false) }",
+    "readers": [
+      "DeleteVlogConfirmationDialog (L11953)",
+      "DeleteVlogConfirmationDialog (L11961)",
+      "GroupScreenContent (L7594)"
+    ],
+    "writes": [
+      "getEpoch (L8401)",
+      "getEpoch (L8402)",
+      "onPlaybackStateChanged (L10093)",
+      "onPlaybackStateChanged (L10098)",
+      "onPlaybackStateChanged (L9167)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8306,
+    "var": "savedVlogPaths",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var savedVlogPaths by remember { mutableStateOf(setOf<String>()) }",
+    "readers": [
+      "onPlaybackStateChanged (L9072)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L9122)"
+    ],
+    "type": "Set",
+    "category": "Database",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8307,
+    "var": "editCaptionText",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var editCaptionText by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(\"\")) }",
+    "readers": [
+      "GroupScreenContent (L7596)",
+      "GroupScreenContent (L7904)",
+      "GroupScreenContent (L7959)",
+      "onPlaybackStateChanged (L8737)",
+      "onPlaybackStateChanged (L8758)",
+      "onPlaybackStateChanged (L8828)"
+    ],
+    "writes": [
+      "getEpoch (L8315)",
+      "getEpoch (L8403)",
+      "getEpoch (L8404)",
+      "onPlaybackStateChanged (L8738)"
+    ],
+    "type": "Inferred (androidx.compose.ui.text.input.TextFieldValue(\"\"))",
+    "category": "User profile",
+    "target": "UI"
+  },
+  {
+    "line": 8309,
+    "var": "isDropdownSaving",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var isDropdownSaving by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L9098)",
+      "onPlaybackStateChanged (L9146)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L9099)",
+      "onPlaybackStateChanged (L9131)"
+    ],
+    "type": "Boolean",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8310,
+    "var": "isDropdownSaved",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var isDropdownSaved by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L9072)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L9121)",
+      "onPlaybackStateChanged (L9125)"
+    ],
+    "type": "Boolean",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 8871,
+    "var": "localPosX",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var localPosX by remember { mutableStateOf(0f) }",
+    "readers": [
+      "onPlaybackStateChanged (L8895)",
+      "onPlaybackStateChanged (L8946)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L8879)",
+      "onPlaybackStateChanged (L8929)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 8872,
+    "var": "localPosY",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var localPosY by remember { mutableStateOf(0f) }",
+    "readers": [
+      "onPlaybackStateChanged (L8896)",
+      "onPlaybackStateChanged (L8947)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L8880)",
+      "onPlaybackStateChanged (L8930)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 8873,
+    "var": "localSmileRotation",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var localSmileRotation by remember { mutableStateOf(0f) }",
+    "readers": [
+      "onPlaybackStateChanged (L8949)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L8932)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 8874,
+    "var": "localSmileColorIndex",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var localSmileColorIndex by remember { mutableStateOf(0) }",
+    "readers": [
+      "onPlaybackStateChanged (L8951)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L8935)"
+    ],
+    "type": "Int",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 10147,
+    "var": "isExportSavingVideo",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var isExportSavingVideo by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L10577)",
+      "onPlaybackStateChanged (L10596)",
+      "onPlaybackStateChanged (L10660)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L10597)",
+      "onPlaybackStateChanged (L10633)"
+    ],
+    "type": "Boolean",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 10148,
+    "var": "isExportSharingVideo",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var isExportSharingVideo by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L10596)",
+      "onPlaybackStateChanged (L10642)",
+      "onPlaybackStateChanged (L10660)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L10661)",
+      "onPlaybackStateChanged (L10705)"
+    ],
+    "type": "Boolean",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 10149,
+    "var": "isExportSaved",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var isExportSaved by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L10585)",
+      "onPlaybackStateChanged (L10591)",
+      "onPlaybackStateChanged (L10596)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L10625)",
+      "onPlaybackStateChanged (L10628)"
+    ],
+    "type": "Boolean",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 10152,
+    "var": "showEditExportSheet",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var showEditExportSheet by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L10715)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L10570)",
+      "onPlaybackStateChanged (L10724)",
+      "onPlaybackStateChanged (L10801)"
+    ],
+    "type": "Boolean",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 10153,
+    "var": "exportBackground",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var exportBackground by remember { mutableStateOf(\"black\") }",
+    "readers": [
+      "GroupExportMemberSlot (L15112)",
+      "GroupExportMemberSlot (L15200)",
+      "onPlaybackStateChanged (L10500)",
+      "onPlaybackStateChanged (L10761)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L10497)",
+      "onPlaybackStateChanged (L10620)",
+      "onPlaybackStateChanged (L10684)",
+      "onPlaybackStateChanged (L10753)"
+    ],
+    "type": "String",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 10154,
+    "var": "exportMissedText",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var exportMissedText by remember { mutableStateOf(\"\ud83d\udca4\") }",
+    "readers": [
+      "GroupExportMemberSlot (L15113)",
+      "onPlaybackStateChanged (L10774)",
+      "onPlaybackStateChanged (L10784)",
+      "onPlaybackStateChanged (L15357)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L10498)",
+      "onPlaybackStateChanged (L10874)",
+      "onPlaybackStateChanged (L10914)",
+      "onPlaybackStateChanged (L10928)"
+    ],
+    "type": "String",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 10155,
+    "var": "showMissedTextDialog",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var showMissedTextDialog by remember { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L10809)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L10775)",
+      "onPlaybackStateChanged (L10829)",
+      "onPlaybackStateChanged (L10915)",
+      "onPlaybackStateChanged (L10929)"
+    ],
+    "type": "Boolean",
+    "category": "Dialogs",
+    "target": "ViewModel"
+  },
+  {
+    "line": 10156,
+    "var": "tempMissedText",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var tempMissedText by remember { mutableStateOf(\"\ud83d\udca4\") }",
+    "readers": [
+      "onPlaybackStateChanged (L10854)",
+      "onPlaybackStateChanged (L10855)",
+      "onPlaybackStateChanged (L10914)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L10774)"
+    ],
+    "type": "String",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 10242,
+    "var": "exportActiveIndex",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "var exportActiveIndex by remember { mutableStateOf(0) }",
+    "readers": [
+      "onPlaybackStateChanged (L10380)"
+    ],
+    "writes": [
+      "onMediaItemTransition (L10277)"
+    ],
+    "type": "Int",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 10852,
+    "var": "textVal",
+    "func": "VlogScreenContent",
+    "is_composable": true,
+    "content": "mutableStateOf(",
+    "readers": [
+      "onPlaybackStateChanged (L10851)",
+      "onPlaybackStateChanged (L10871)",
+      "onPlaybackStateChanged (L10928)"
+    ],
+    "writes": [
+      "onPlaybackStateChanged (L10873)"
+    ],
+    "type": "Unknown",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 11339,
+    "var": "isCameraGranted",
+    "func": "PermissionsScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(",
+    "readers": [
+      "PermissionsScreen (L11338)",
+      "PermissionsScreen (L11370)",
+      "PermissionsScreen (L11451)",
+      "PermissionsScreen (L11544)"
+    ],
+    "writes": [
+      "PermissionsScreen (L11400)"
+    ],
+    "type": "Unknown",
+    "category": "Camera",
+    "target": "ViewModel"
+  },
+  {
+    "line": 11347,
+    "var": "isMicrophoneGranted",
+    "func": "PermissionsScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(",
+    "readers": [
+      "PermissionsScreen (L11346)",
+      "PermissionsScreen (L11371)",
+      "PermissionsScreen (L11486)",
+      "PermissionsScreen (L11544)"
+    ],
+    "writes": [
+      "PermissionsScreen (L11391)"
+    ],
+    "type": "Unknown",
+    "category": "Permissions",
+    "target": "ViewModel"
+  },
+  {
+    "line": 11361,
+    "var": "isStorageGranted",
+    "func": "PermissionsScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(",
+    "readers": [
+      "PermissionsScreen (L11360)",
+      "PermissionsScreen (L11372)",
+      "PermissionsScreen (L11514)",
+      "PermissionsScreen (L11544)"
+    ],
+    "writes": [
+      "PermissionsScreen (L11381)"
+    ],
+    "type": "Unknown",
+    "category": "Permissions",
+    "target": "ViewModel"
+  },
+  {
+    "line": 11369,
+    "var": "permissionSubStep",
+    "func": "PermissionsScreen",
+    "is_composable": true,
+    "content": "mutableStateOf(",
+    "readers": [
+      "PermissionsScreen (L11368)",
+      "PermissionsScreen (L11459)",
+      "PermissionsScreen (L11494)",
+      "PermissionsScreen (L11522)",
+      "PermissionsScreen (L11561)"
+    ],
+    "writes": [
+      "PermissionsScreen (L11382)",
+      "PermissionsScreen (L11392)",
+      "PermissionsScreen (L11401)"
+    ],
+    "type": "Unknown",
+    "category": "Permissions",
+    "target": "ViewModel"
+  },
+  {
+    "line": 11577,
+    "var": "bitmap",
+    "func": "VideoThumbnail",
+    "is_composable": true,
+    "content": "var bitmap by remember(videoPath) { mutableStateOf<android.graphics.Bitmap?>(null) }",
+    "readers": [
+      "UriImage (L564)",
+      "UriImage (L565)",
+      "VideoThumbnail (L11603)",
+      "compressImageBytes (L204)",
+      "compressImageBytes (L207)",
+      "compressImageBytes (L209)"
+    ],
+    "writes": [
+      "UriImage (L543)",
+      "UriImage (L574)",
+      "VideoThumbnail (L11590)",
+      "VideoThumbnail (L11605)",
+      "compressImageBytes (L203)"
+    ],
+    "type": "android.graphics.Bitmap?",
+    "category": "User profile",
+    "target": "UI"
+  },
+  {
+    "line": 11643,
+    "var": "resolvedPaths",
+    "func": "VideoPlayerItem",
+    "is_composable": true,
+    "content": "var resolvedPaths by remember(videoPaths) { mutableStateOf<List<String>>(emptyList()) }",
+    "readers": [
+      "VideoPlayerItem (L11644)",
+      "VideoPlayerItem (L11654)",
+      "VideoPlayerItem (L11655)",
+      "onPlaybackStateChanged (L10606)",
+      "onPlaybackStateChanged (L10614)",
+      "onPlaybackStateChanged (L10670)",
+      "onPlaybackStateChanged (L10678)",
+      "onPlayerError (L11677)"
+    ],
+    "writes": [
+      "VideoPlayerItem (L11651)",
+      "onPlaybackStateChanged (L10601)",
+      "onPlaybackStateChanged (L10665)"
+    ],
+    "type": "List<String",
+    "category": "User profile",
+    "target": "UI"
+  },
+  {
+    "line": 11644,
+    "var": "isVideoReady",
+    "func": "VideoPlayerItem",
+    "is_composable": true,
+    "content": "var isVideoReady by remember(resolvedPaths) { mutableStateOf(false) }",
+    "readers": [
+      "onPlaybackStateChanged (L11798)"
+    ],
+    "writes": [
+      "onIsPlayingChanged (L11668)",
+      "onPlaybackStateChanged (L11663)",
+      "onPlayerError (L11673)",
+      "onPlayerError (L11700)"
+    ],
+    "type": "Boolean",
+    "category": "User profile",
+    "target": "UI"
+  },
+  {
+    "line": 11823,
+    "var": "isPlaying",
+    "func": "VoiceNotePlayerItem",
+    "is_composable": true,
+    "content": "var isPlaying by remember { mutableStateOf(false) }",
+    "readers": [
+      "VideoVlogBoxItem (L15420)",
+      "VoiceNotePlayerItem (L11860)",
+      "VoiceNotePlayerItem (L11861)",
+      "VoiceNotePlayerItem (L11862)",
+      "VoiceNotePlayerItem (L11892)",
+      "VoiceNotePlayerItem (L11906)",
+      "VoiceNotePlayerItem (L11909)",
+      "onIsPlayingChanged (L11666)",
+      "onIsPlayingChanged (L11667)",
+      "onPlaybackStateChanged (L15318)",
+      "onPlaybackStateChanged (L6213)",
+      "onPlaybackStateChanged (L8605)",
+      "onPlayerError (L11699)"
+    ],
+    "writes": [
+      "VoiceNotePlayerItem (L11853)",
+      "VoiceNotePlayerItem (L11894)",
+      "VoiceNotePlayerItem (L11897)"
+    ],
+    "type": "Boolean",
+    "category": "Playback",
+    "target": "UI"
+  },
+  {
+    "line": 11824,
+    "var": "progress",
+    "func": "VoiceNotePlayerItem",
+    "is_composable": true,
+    "content": "var progress by remember { mutableStateOf(0f) }",
+    "readers": [
+      "AnimatedSaveIcon (L5433)",
+      "AnimatedSaveIcon (L5447)",
+      "AnimatedSaveIcon (L5448)",
+      "AnimatedSaveIcon (L5449)",
+      "AnimatedSaveIcon (L5461)",
+      "AnimatedSaveIcon (L5464)",
+      "AnimatedSaveIcon (L5465)",
+      "AnimatedSaveIcon (L5476)",
+      "AnimatedSaveIcon (L5477)",
+      "AnimatedSaveIcon (L5478)",
+      "AnimatedSaveIcon (L5479)",
+      "AnimatedSaveIcon (L5490)",
+      "AnimatedSaveIcon (L5491)",
+      "AnimatedSaveIcon (L5492)",
+      "AnimatedSaveIcon (L5493)",
+      "VoiceNotePlayerItem (L11938)"
+    ],
+    "writes": [
+      "VoiceNotePlayerItem (L11854)",
+      "VoiceNotePlayerItem (L11864)"
+    ],
+    "type": "Float",
+    "category": "Playback",
+    "target": "UI"
+  },
+  {
+    "line": 11825,
+    "var": "duration",
+    "func": "VoiceNotePlayerItem",
+    "is_composable": true,
+    "content": "var duration by remember { mutableStateOf(1) }",
+    "readers": [
+      "VoiceNotePlayerItem (L11864)",
+      "clearGroupMemoryCaches (L1625)",
+      "clearGroupMemoryCaches (L1690)",
+      "onMediaItemTransition (L1791)",
+      "onMediaItemTransition (L1792)",
+      "refreshMessages (L3682)",
+      "refreshMessages (L3684)",
+      "refreshVlogs (L2038)"
+    ],
+    "writes": [
+      "VoiceNotePlayerItem (L11850)",
+      "clearGroupMemoryCaches (L1605)",
+      "clearGroupMemoryCaches (L1670)",
+      "onMediaItemTransition (L1789)",
+      "refreshVlogs (L2013)"
+    ],
+    "type": "Int",
+    "category": "Playback",
+    "target": "UI"
+  },
+  {
+    "line": 11826,
+    "var": "currentPosition",
+    "func": "VoiceNotePlayerItem",
+    "is_composable": true,
+    "content": "var currentPosition by remember { mutableStateOf(0) }",
+    "readers": [
+      "VoiceNotePlayerItem (L11864)",
+      "onMediaItemTransition (L1790)"
+    ],
+    "writes": [
+      "VoiceNotePlayerItem (L11855)",
+      "VoiceNotePlayerItem (L11863)"
+    ],
+    "type": "Int",
+    "category": "Playback",
+    "target": "UI"
+  },
+  {
+    "line": 12070,
+    "var": "replyInput",
+    "func": "ReplyPreviewOverlay",
+    "is_composable": true,
+    "content": "var replyInput by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "ReplyPreviewOverlay (L12148)",
+      "ReplyPreviewOverlay (L12159)",
+      "ReplyPreviewOverlay (L12172)",
+      "ReplyPreviewOverlay (L12179)"
+    ],
+    "writes": [
+      "ReplyPreviewOverlay (L12149)"
+    ],
+    "type": "String",
+    "category": "Chat",
+    "target": "UI"
+  },
+  {
+    "line": 12418,
+    "var": "messageInput",
+    "func": "PalChatOverlay",
+    "is_composable": true,
+    "content": "var messageInput by remember { mutableStateOf(\"\") }",
+    "readers": [
+      "PalChatOverlay (L12984)",
+      "PalChatOverlay (L12995)",
+      "PalChatOverlay (L13008)",
+      "PalChatOverlay (L13015)"
+    ],
+    "writes": [
+      "PalChatOverlay (L12985)",
+      "PalChatOverlay (L13016)"
+    ],
+    "type": "String",
+    "category": "Chat",
+    "target": "UI"
+  },
+  {
+    "line": 12421,
+    "var": "currentEmojis",
+    "func": "PalChatOverlay",
+    "is_composable": true,
+    "content": "var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }",
+    "readers": [
+      "GroupMemberCard (L6860)",
+      "GroupMemberCard (L7127)",
+      "PalChatOverlay (L12861)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7145)",
+      "PalChatOverlay (L12881)"
+    ],
+    "type": "Inferred (defaultEmojis.take(5))",
+    "category": "Chat",
+    "target": "ViewModel"
+  },
+  {
+    "line": 12506,
+    "var": "showEmojiOverlayForPath",
+    "func": "PalChatOverlay",
+    "is_composable": true,
+    "content": "var showEmojiOverlayForPath by remember { mutableStateOf<String?>(null) }",
+    "readers": [
+      "PalChatOverlay (L12841)",
+      "PalChatOverlay (L12842)"
+    ],
+    "writes": [
+      "PalChatOverlay (L12786)",
+      "PalChatOverlay (L12850)",
+      "PalChatOverlay (L12868)"
+    ],
+    "type": "String?",
+    "category": "Chat",
+    "target": "ViewModel"
+  },
+  {
+    "line": 13192,
+    "var": "isFocused",
+    "func": "JoinPalDialogOverlay",
+    "is_composable": true,
+    "content": "var isFocused by remember { mutableStateOf(false) }",
+    "readers": [
+      "JoinPalDialogOverlay (L13194)",
+      "JoinPalDialogOverlay (L13241)",
+      "JoinPalDialogOverlay (L13353)",
+      "onPlaybackStateChanged (L10886)"
+    ],
+    "writes": [
+      "JoinPalDialogOverlay (L13352)"
+    ],
+    "type": "Boolean",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 13709,
+    "var": "isSaving",
+    "func": "CreatePalDialogOverlay",
+    "is_composable": true,
+    "content": "var isSaving by remember { mutableStateOf(false) }",
+    "readers": [
+      "CreatePalDialogOverlay (L13712)",
+      "CreatePalDialogOverlay (L13739)",
+      "CreatePalDialogOverlay (L13772)",
+      "CreatePalDialogOverlay (L13831)",
+      "CreatePalDialogOverlay (L13880)",
+      "CreatePalDialogOverlay (L13912)",
+      "CreatePalDialogOverlay (L13957)",
+      "CreatePalDialogOverlay (L13972)",
+      "CreatePalDialogOverlay (L13979)"
+    ],
+    "writes": [
+      "CreatePalDialogOverlay (L13980)"
+    ],
+    "type": "Boolean",
+    "category": "Upload",
+    "target": "ViewModel"
+  },
+  {
+    "line": 14583,
+    "var": "currentMonth",
+    "func": "VlogArchiveCard",
+    "is_composable": true,
+    "content": "var currentMonth by remember { mutableStateOf(java.time.YearMonth.now()) }",
+    "readers": [
+      "VlogArchiveCard (L14675)",
+      "VlogArchiveCard (L14709)",
+      "VlogArchiveCard (L14710)",
+      "VlogArchiveCard (L14729)",
+      "getEpoch (L8302)"
+    ],
+    "writes": [
+      "VlogArchiveCard (L14672)",
+      "VlogArchiveCard (L14687)"
+    ],
+    "type": "Inferred (java.time.YearMonth.now())",
+    "category": "User profile",
+    "target": "ViewModel"
+  },
+  {
+    "line": 14863,
+    "var": "groupPosX",
+    "func": "VlogEmptyStateContent",
+    "is_composable": true,
+    "content": "var groupPosX by remember { mutableStateOf(0f) }",
+    "readers": [
+      "GroupMemberCard (L7177)",
+      "GroupMemberCard (L7200)",
+      "GroupMemberCard (L7250)",
+      "GroupMemberCard (L7386)",
+      "GroupMemberCard (L7409)",
+      "GroupMemberCard (L7460)",
+      "VlogEmptyStateContent (L14886)",
+      "VlogEmptyStateContent (L14936)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7184)",
+      "GroupMemberCard (L7234)",
+      "GroupMemberCard (L7393)",
+      "GroupMemberCard (L7443)",
+      "VlogEmptyStateContent (L14870)",
+      "VlogEmptyStateContent (L14920)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 14864,
+    "var": "groupPosY",
+    "func": "VlogEmptyStateContent",
+    "is_composable": true,
+    "content": "var groupPosY by remember { mutableStateOf(0f) }",
+    "readers": [
+      "GroupMemberCard (L7178)",
+      "GroupMemberCard (L7201)",
+      "GroupMemberCard (L7251)",
+      "GroupMemberCard (L7387)",
+      "GroupMemberCard (L7410)",
+      "GroupMemberCard (L7461)",
+      "VlogEmptyStateContent (L14887)",
+      "VlogEmptyStateContent (L14937)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7185)",
+      "GroupMemberCard (L7235)",
+      "GroupMemberCard (L7394)",
+      "GroupMemberCard (L7444)",
+      "VlogEmptyStateContent (L14871)",
+      "VlogEmptyStateContent (L14921)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 14865,
+    "var": "groupSmileRotation",
+    "func": "VlogEmptyStateContent",
+    "is_composable": true,
+    "content": "var groupSmileRotation by remember { mutableStateOf(0f) }",
+    "readers": [
+      "GroupMemberCard (L7179)",
+      "GroupMemberCard (L7253)",
+      "GroupMemberCard (L7388)",
+      "GroupMemberCard (L7463)",
+      "VlogEmptyStateContent (L14939)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7237)",
+      "GroupMemberCard (L7446)",
+      "VlogEmptyStateContent (L14923)"
+    ],
+    "type": "Float",
+    "category": "Animations",
+    "target": "UI"
+  },
+  {
+    "line": 14866,
+    "var": "groupSmileColorIndex",
+    "func": "VlogEmptyStateContent",
+    "is_composable": true,
+    "content": "var groupSmileColorIndex by remember { mutableStateOf(0) }",
+    "readers": [
+      "GroupMemberCard (L7180)",
+      "GroupMemberCard (L7255)",
+      "GroupMemberCard (L7389)",
+      "GroupMemberCard (L7465)",
+      "VlogEmptyStateContent (L14941)"
+    ],
+    "writes": [
+      "GroupMemberCard (L7240)",
+      "GroupMemberCard (L7449)",
+      "VlogEmptyStateContent (L14926)"
+    ],
+    "type": "Int",
+    "category": "Animations",
+    "target": "UI"
+  }
+]

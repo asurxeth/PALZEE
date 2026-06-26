@@ -19,8 +19,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import com.finrein.pals.presentation.home.SubmissionDbItem
-import com.finrein.pals.presentation.home.UserPalMapping
+import com.finrein.pals.domain.model.SubmissionDbItem
+import com.finrein.pals.domain.model.UserPalMapping
 import javax.inject.Inject
 import javax.inject.Singleton
 

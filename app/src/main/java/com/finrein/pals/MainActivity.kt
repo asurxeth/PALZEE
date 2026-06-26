@@ -15,6 +15,7 @@ import androidx.compose.foundation.background
 import com.finrein.pals.presentation.auth.OnboardingScreen
 import com.finrein.pals.presentation.auth.AuthViewModel
 import com.finrein.pals.presentation.home.HomeScreen
+import com.finrein.pals.presentation.home.HomeViewModel
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import io.github.jan.supabase.gotrue.auth
@@ -32,6 +33,7 @@ class MainActivity : ComponentActivity() {
     lateinit var authRepository: AuthRepository
 
     private val authViewModel: AuthViewModel by viewModels()
+    private val homeViewModel: HomeViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
@@ -76,6 +78,7 @@ class MainActivity : ComponentActivity() {
                         HomeScreen(
                             user = currentUser,
                             authRepository = authRepository,
+                            viewModel = homeViewModel,
                             onSignOut = {
                                 lifecycleScope.launch {
                                     try {

@@ -1,0 +1,1802 @@
+Line: 505 | Var: N/A | Type: Unknown | Owner: Global/File
+  Declaration: mutableStateOf(list)
+  Writes (1):
+    Unknown (no var name)
+  Reads (1):
+    Unknown (no var name)
+--------------------------------------------------------------------------------
+Line: 526 | Var: N/A | Type: Unknown | Owner: Global/File
+  Declaration: mutableStateOf(pal)
+  Writes (1):
+    Unknown (no var name)
+  Reads (1):
+    Unknown (no var name)
+--------------------------------------------------------------------------------
+Line: 539 | Var: imageBitmap | Type: androidx.compose.ui.graphics.ImageBitmap? | Owner: UriImage
+  Declaration: var imageBitmap by remember(uriString) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+  Writes (1):
+    L565: imageBitmap = bitmap.asImageBitmap()
+  Reads (2):
+    L572: if (imageBitmap != null) {
+    L574: bitmap = imageBitmap!!,
+--------------------------------------------------------------------------------
+Line: 1102 | Var: onboardingFlowStep | Type: Unknown | Owner: HomeScreen
+  Declaration: mutableStateOf(
+  Writes (7):
+    L1250: onboardingFlowStep = 4
+    L1330: onboardingFlowStep = 4
+    L1334: onboardingFlowStep = 1
+    L1340: onboardingFlowStep = 1
+    L1348: onboardingFlowStep = 1
+    L2887: onboardingFlowStep = onboardingFlowStep,
+    L2888: onOnboardingFlowStepChange = { onboardingFlowStep = it },
+  Reads (23):
+    L940: onboardingFlowStep: Int,
+    L955: when (onboardingFlowStep) {
+    L1101: var onboardingFlowStep by remember {
+    L1167: LaunchedEffect(onboardingFlowStep) {
+    L1168: if (onboardingFlowStep == 6) {
+    L1191: LaunchedEffect(selectedTab, onboardingFlowStep) {
+    L1192: if (onboardingFlowStep == 6 && selectedTab == "camera") {
+    L1247: LaunchedEffect(onboardingFlowStep, currentUserId) {
+    L1248: if (onboardingFlowStep == 3) {
+    L1251: } else if ((onboardingFlowStep == -1 || onboardingFlowStep == 4) && currentUserId.isNotEmpty()) {
+    ... and 13 more
+--------------------------------------------------------------------------------
+Line: 1115 | Var: onboardingFirstName | Type: Inferred (parsedName.first) | Owner: HomeScreen
+  Declaration: var onboardingFirstName by remember { mutableStateOf(parsedName.first) }
+  Writes (2):
+    L2889: onboardingFirstName = onboardingFirstName,
+    L2890: onOnboardingFirstNameChange = { onboardingFirstName = it },
+  Reads (5):
+    L942: onboardingFirstName: String,
+    L1042: firstName = onboardingFirstName,
+    L1053: firstName = onboardingFirstName,
+    L1056: val newName = "$onboardingFirstName $onboardingLastName".trim()
+    L1067: firstName = onboardingFirstName,
+--------------------------------------------------------------------------------
+Line: 1116 | Var: onboardingLastName | Type: Inferred (parsedName.second) | Owner: HomeScreen
+  Declaration: var onboardingLastName by remember { mutableStateOf(parsedName.second) }
+  Writes (2):
+    L2891: onboardingLastName = onboardingLastName,
+    L2892: onOnboardingLastNameChange = { onboardingLastName = it },
+  Reads (5):
+    L944: onboardingLastName: String,
+    L1044: lastName = onboardingLastName,
+    L1054: lastName = onboardingLastName,
+    L1056: val newName = "$onboardingFirstName $onboardingLastName".trim()
+    L1068: lastName = onboardingLastName,
+--------------------------------------------------------------------------------
+Line: 1119 | Var: currentDisplayName | Type: Inferred (user?.displayName ?: user?.email?.substringBefore("@") ?: "apple_user") | Owner: HomeScreen
+  Declaration: mutableStateOf(user?.displayName ?: user?.email?.substringBefore("@") ?: "apple_user")
+  Writes (21):
+    L1317: currentDisplayName = restoredName
+    L2451: currentDisplayName = name
+    L2893: currentDisplayName = currentDisplayName,
+    L2894: onCurrentDisplayNameChange = { currentDisplayName = it },
+    L2990: currentDisplayName = currentDisplayName,
+    L3487: currentDisplayName = currentDisplayName,
+    L3513: currentDisplayName = currentDisplayName,
+    L3756: currentDisplayName = currentDisplayName,
+    L3813: currentDisplayName = currentDisplayName,
+    L3884: currentDisplayName = currentDisplayName,
+    ... and 11 more
+  Reads (38):
+    L946: currentDisplayName: String,
+    L1118: var currentDisplayName by remember(user) {
+    L1122: val firstName = remember(currentDisplayName) {
+    L1123: currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+    L1624: userDisplayName = currentDisplayName,
+    L1689: userDisplayName = currentDisplayName,
+    L2189: val userFirstName = currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+    L2450: if (name.isNotEmpty() && (currentDisplayName.isEmpty() || currentDisplayName == "apple_user")) {
+    L2738: val parts = currentDisplayName.trim().split(" ", limit = 2)
+    L3546: userDisplayName = currentDisplayName,
+    ... and 28 more
+--------------------------------------------------------------------------------
+Line: 1126 | Var: editFirstName | Type: String | Owner: HomeScreen
+  Declaration: var editFirstName by remember { mutableStateOf("") }
+  Writes (3):
+    L2739: editFirstName = parts.getOrNull(0) ?: ""
+    L3896: editFirstName = editFirstName,
+    L3897: onEditFirstNameChange = { editFirstName = it },
+  Reads (5):
+    L13469: editFirstName: String,
+    L13548: value = editFirstName,
+    L13568: if (editFirstName.isEmpty()) {
+    L13654: if (editFirstName.trim().isNotEmpty()) {
+    L13655: onCurrentDisplayNameChange("$editFirstName $editLastName".trim())
+--------------------------------------------------------------------------------
+Line: 1127 | Var: editLastName | Type: String | Owner: HomeScreen
+  Declaration: var editLastName by remember { mutableStateOf("") }
+  Writes (3):
+    L2740: editLastName = parts.getOrNull(1) ?: ""
+    L3898: editLastName = editLastName,
+    L3899: onEditLastNameChange = { editLastName = it },
+  Reads (4):
+    L13471: editLastName: String,
+    L13588: value = editLastName,
+    L13607: if (editLastName.isEmpty()) {
+    L13655: onCurrentDisplayNameChange("$editFirstName $editLastName".trim())
+--------------------------------------------------------------------------------
+Line: 1130 | Var: customAvatarUriString | Type: Inferred (sessionManager.getAvatarUri()) | Owner: HomeScreen
+  Declaration: var customAvatarUriString by remember { mutableStateOf(sessionManager.getAvatarUri()) }
+  Writes (23):
+    L1137: customAvatarUriString = uri.toString()
+    L1142: customAvatarUriString = uploadedUrl
+    L1318: customAvatarUriString = restoredAvatar
+    L2128: customAvatarUriString = uploaded
+    L2454: customAvatarUriString = avatar
+    L2628: customAvatarUriString = uploaded
+    L3064: customAvatarUriString = customAvatarUriString,
+    L3434: customAvatarUriString = uploaded
+    L3489: customAvatarUriString = customAvatarUriString
+    L3497: customAvatarUriString = customAvatarUriString,
+    ... and 13 more
+  Reads (41):
+    L2119: customAvatarUriString?.let { uriStr ->
+    L2201: val localAvatar = if (customAvatarUriString?.startsWith("http") == true) customAvatarUriString else null
+    L2453: if (avatar.isNotEmpty() && customAvatarUriString.isNullOrEmpty()) {
+    L2587: userDisplayName = if (!customAvatarUriString.isNullOrEmpty()) "$firstName|||$customAvatarUriString" else firstName,
+    L2619: customAvatarUriString?.let { uriStr ->
+    L3386: userDisplayName = if (!customAvatarUriString.isNullOrEmpty()) "$firstName|||$customAvatarUriString" else firstName,
+    L3425: customAvatarUriString?.let { uriStr ->
+    L3547: userAvatarUrl = customAvatarUriString
+    L3836: userAvatarUrl = customAvatarUriString
+    L5950: customAvatarUriString: String?
+    ... and 31 more
+--------------------------------------------------------------------------------
+Line: 1147 | Var: isLoadingPals | Type: Inferred (sessionManager.isFirstLogin()) | Owner: HomeScreen
+  Declaration: var isLoadingPals by remember { mutableStateOf(sessionManager.isFirstLogin()) }
+  Writes (5):
+    L1207: isLoadingPals = true
+    L1209: isLoadingPals = false
+    L1212: isLoadingPals = false
+    L3498: isLoadingPals = isLoadingPals,
+    L14544: isLoadingPals = isLoadingPals,
+  Reads (1):
+    L14515: isLoadingPals: Boolean,
+--------------------------------------------------------------------------------
+Line: 1148 | Var: selectedTab | Type: String | Owner: HomeScreen
+  Declaration: var selectedTab by remember { mutableStateOf("pals") } // "camera" or "pals"
+  Writes (9):
+    L1875: selectedTab = "camera"
+    L1877: selectedTab = "pals"
+    L2480: selectedTab = savedTab
+    L3072: selectedTab = "camera"
+    L3484: selectedTab = "pals"
+    L3528: onCameraClick = { selectedTab = "camera" },
+    L3609: selectedTab = "camera"
+    L3633: selectedTab = "pals"
+    L3681: onClose = { selectedTab = "pals" },
+  Reads (16):
+    L1191: LaunchedEffect(selectedTab, onboardingFlowStep) {
+    L1192: if (onboardingFlowStep == 6 && selectedTab == "camera") {
+    L1205: LaunchedEffect(selectedTab) {
+    L1206: if (selectedTab == "pals" && sessionManager.isFirstLogin()) {
+    L1775: val isVlogTabVisible = selectedTab == "pals" && activeVlogPal == null && !showingCapturedPreview
+    L1825: selectedTab,
+    L1874: if (currentIsRotated && selectedTab == "pals") {
+    L1876: } else if (!currentIsRotated && selectedTab == "camera") {
+    L2500: LaunchedEffect(currentUserId, selectedTab, activeVlogPal) {
+    L2502: val stateString = "$selectedTab|||${activeVlogPal?.code ?: ""}"
+    ... and 6 more
+--------------------------------------------------------------------------------
+Line: 1149 | Var: isRecordingCamera | Type: Boolean | Owner: HomeScreen
+  Declaration: var isRecordingCamera by remember { mutableStateOf(false) }
+  Writes (1):
+    L3680: onRecordingChange = { isRecordingCamera = it },
+  Reads (3):
+    L1838: isRecordingCamera,
+    L1855: !isRecordingCamera &&
+    L3679: isRecording = isRecordingCamera,
+--------------------------------------------------------------------------------
+Line: 1216 | Var: showPlusMenu | Type: Boolean | Owner: HomeScreen
+  Declaration: var showPlusMenu by remember { mutableStateOf(false) }
+  Writes (3):
+    L3516: onPlusClick = { showPlusMenu = !showPlusMenu },
+    L3729: showPlusMenu = showPlusMenu,
+    L3730: onShowPlusMenuChange = { showPlusMenu = it },
+  Reads (5):
+    L1826: showPlusMenu,
+    L1843: !showPlusMenu &&
+    L2845: val isOverlayVisible = showPlusMenu || showTripleDotMenu || showJoinPalFlow || showEditNameDialog
+    L13034: showPlusMenu: Boolean,
+    L13043: if (showPlusMenu) {
+--------------------------------------------------------------------------------
+Line: 1217 | Var: showTripleDotMenu | Type: Boolean | Owner: HomeScreen
+  Declaration: var showTripleDotMenu by remember { mutableStateOf(false) }
+  Writes (10):
+    L3518: showTripleDotMenu = true
+    L3749: showTripleDotMenu = showTripleDotMenu,
+    L3750: onShowTripleDotMenuChange = { showTripleDotMenu = it },
+    L3764: showTripleDotMenu = false
+    L3768: showTripleDotMenu = false
+    L8358: showTripleDotMenu = false
+    L8800: .clickable { showTripleDotMenu = true },
+    L9079: showTripleDotMenu = false
+    L9126: showTripleDotMenu = false
+    L9166: showTripleDotMenu = false
+  Reads (8):
+    L1827: showTripleDotMenu,
+    L1844: !showTripleDotMenu &&
+    L2845: val isOverlayVisible = showPlusMenu || showTripleDotMenu || showJoinPalFlow || showEditNameDialog
+    L8303: var showTripleDotMenu by remember { mutableStateOf(false) }
+    L8350: if (showTripleDotMenu) {
+    L9058: if (showTripleDotMenu) {
+    L13993: showTripleDotMenu: Boolean,
+    L14014: if (showTripleDotMenu) {
+--------------------------------------------------------------------------------
+Line: 1218 | Var: showActivityScreen | Type: Boolean | Owner: HomeScreen
+  Declaration: var showActivityScreen by remember { mutableStateOf(false) }
+  Writes (2):
+    L3780: showActivityScreen = showActivityScreen,
+    L3781: onShowActivityScreenChange = { showActivityScreen = it },
+  Reads (4):
+    L1828: showActivityScreen,
+    L1845: !showActivityScreen &&
+    L13112: showActivityScreen: Boolean,
+    L13118: if (showActivityScreen) {
+--------------------------------------------------------------------------------
+Line: 1219 | Var: showCreatePalFlow | Type: Boolean | Owner: HomeScreen
+  Declaration: var showCreatePalFlow by remember { mutableStateOf(false) }
+  Writes (4):
+    L3739: showCreatePalFlow = true
+    L3789: showCreatePalFlow = showCreatePalFlow,
+    L3790: onShowCreatePalFlowChange = { showCreatePalFlow = it },
+    L3864: showCreatePalFlow = false
+  Reads (6):
+    L1230: LaunchedEffect(showCreatePalFlow) {
+    L1231: if (showCreatePalFlow) {
+    L1829: showCreatePalFlow,
+    L1846: !showCreatePalFlow &&
+    L13678: showCreatePalFlow: Boolean,
+    L13706: if (showCreatePalFlow) {
+--------------------------------------------------------------------------------
+Line: 1220 | Var: showJoinPalFlow | Type: Boolean | Owner: HomeScreen
+  Declaration: var showJoinPalFlow by remember { mutableStateOf(false) }
+  Writes (3):
+    L3743: showJoinPalFlow = true
+    L3873: showJoinPalFlow = showJoinPalFlow,
+    L3874: onShowJoinPalFlowChange = { showJoinPalFlow = it },
+  Reads (5):
+    L1830: showJoinPalFlow,
+    L1847: !showJoinPalFlow &&
+    L2845: val isOverlayVisible = showPlusMenu || showTripleDotMenu || showJoinPalFlow || showEditNameDialog
+    L13171: showJoinPalFlow: Boolean,
+    L13185: if (showJoinPalFlow) {
+--------------------------------------------------------------------------------
+Line: 1226 | Var: createPalTitleVisible | Type: Boolean | Owner: HomeScreen
+  Declaration: var createPalTitleVisible by remember { mutableStateOf(false) }
+  Writes (2):
+    L1232: createPalTitleVisible = true
+    L1241: createPalTitleVisible = false
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1227 | Var: createPalInputVisible | Type: Boolean | Owner: HomeScreen
+  Declaration: var createPalInputVisible by remember { mutableStateOf(false) }
+  Writes (2):
+    L1234: createPalInputVisible = true
+    L1242: createPalInputVisible = false
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1228 | Var: createPalSizeVisible | Type: Boolean | Owner: HomeScreen
+  Declaration: var createPalSizeVisible by remember { mutableStateOf(false) }
+  Writes (2):
+    L1236: createPalSizeVisible = true
+    L1243: createPalSizeVisible = false
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1352 | Var: createPalStep | Type: Int | Owner: HomeScreen
+  Declaration: var createPalStep by remember { mutableStateOf(1) }
+  Writes (4):
+    L1377: createPalStep = 2
+    L3738: createPalStep = 1
+    L3793: createPalStep = createPalStep,
+    L3794: onCreatePalStepChange = { createPalStep = it },
+  Reads (3):
+    L13682: createPalStep: Int,
+    L13762: if (!isCreatingPal && createPalStep == 1) {
+    L13797: } else if (createPalStep == 1) {
+--------------------------------------------------------------------------------
+Line: 1353 | Var: newPalName | Type: String | Owner: HomeScreen
+  Declaration: var newPalName by remember { mutableStateOf("") }
+  Writes (3):
+    L3736: newPalName = ""
+    L3795: newPalName = newPalName,
+    L3796: onNewPalNameChange = { newPalName = it },
+  Reads (6):
+    L13684: newPalName: String,
+    L13763: val isFormValid = newPalName.trim().isNotEmpty()
+    L13815: value = newPalName,
+    L13930: text = "$newPalName :)",
+    L13960: putExtra(android.content.Intent.EXTRA_TEXT, "Join my Pal group $newPalName using code #$generatedPalCode !")
+    L13981: onSaveGroupClick(newPalName, generatedPalCode)
+--------------------------------------------------------------------------------
+Line: 1354 | Var: newPalSize | Type: String | Owner: HomeScreen
+  Declaration: var newPalSize by remember { mutableStateOf("3") }
+  Writes (3):
+    L3737: newPalSize = "4"
+    L3797: newPalSize = newPalSize,
+    L3798: onNewPalSizeChange = { newPalSize = it },
+  Reads (5):
+    L3829: val newPalDb = PalDbItem(code = uniqueServerCode, name = newGroupName, size = newPalSize)
+    L3844: size = newPalSize,
+    L13686: newPalSize: String,
+    L13867: val isSelected = size == newPalSize
+    L13899: val isSelected = size == newPalSize
+--------------------------------------------------------------------------------
+Line: 1355 | Var: generatedPalCode | Type: String | Owner: HomeScreen
+  Declaration: var generatedPalCode by remember { mutableStateOf("") }
+  Writes (2):
+    L1364: generatedPalCode = uniqueCode
+    L3799: generatedPalCode = generatedPalCode,
+  Reads (4):
+    L13688: generatedPalCode: String,
+    L13940: text = "code: #$generatedPalCode",
+    L13960: putExtra(android.content.Intent.EXTRA_TEXT, "Join my Pal group $newPalName using code #$generatedPalCode !")
+    L13981: onSaveGroupClick(newPalName, generatedPalCode)
+--------------------------------------------------------------------------------
+Line: 1356 | Var: joinPalCode | Type: String | Owner: HomeScreen
+  Declaration: var joinPalCode by remember { mutableStateOf("") }
+  Writes (3):
+    L3742: joinPalCode = ""
+    L3875: joinPalCode = joinPalCode,
+    L3876: onJoinPalCodeChange = { joinPalCode = it.lowercase(java.util.Locale.ROOT) },
+  Reads (4):
+    L13173: joinPalCode: String,
+    L13323: value = joinPalCode,
+    L13359: val isCodeValid = joinPalCode.trim().isNotEmpty()
+    L13368: val code = joinPalCode.trim().lowercase(java.util.Locale.ROOT)
+--------------------------------------------------------------------------------
+Line: 1358 | Var: isCreatingPal | Type: Boolean | Owner: HomeScreen
+  Declaration: var isCreatingPal by remember { mutableStateOf(false) }
+  Writes (3):
+    L1378: isCreatingPal = false
+    L3791: isCreatingPal = isCreatingPal,
+    L3792: onIsCreatingPalChange = { isCreatingPal = it },
+  Reads (6):
+    L1361: LaunchedEffect(isCreatingPal) {
+    L1362: if (isCreatingPal) {
+    L13680: isCreatingPal: Boolean,
+    L13712: if (!isCreatingPal && !isSaving) {
+    L13762: if (!isCreatingPal && createPalStep == 1) {
+    L13789: if (isCreatingPal) {
+--------------------------------------------------------------------------------
+Line: 1359 | Var: creationDots | Type: String | Owner: HomeScreen
+  Declaration: var creationDots by remember { mutableStateOf("") }
+  Writes (5):
+    L1368: creationDots = ""
+    L1370: creationDots = "."
+    L1372: creationDots = ".."
+    L1374: creationDots = "..."
+    L3800: creationDots = creationDots,
+  Reads (2):
+    L13689: creationDots: String,
+    L13791: text = "creating pal$creationDots",
+--------------------------------------------------------------------------------
+Line: 1400 | Var: N/A | Type: Unknown | Owner: HomeScreen
+  Declaration: mutableStateOf(initialList)
+  Writes (1):
+    Unknown (no var name)
+  Reads (1):
+    Unknown (no var name)
+--------------------------------------------------------------------------------
+Line: 1415 | Var: selectedThemeColor | Type: String | Owner: HomeScreen
+  Declaration: var selectedThemeColor by remember { mutableStateOf("yellow") }
+  Writes (3):
+    L3675: selectedThemeColor = selectedThemeColor,
+    L3759: selectedThemeColor = selectedThemeColor,
+    L3760: onSelectedThemeColorChange = { selectedThemeColor = it },
+  Reads (13):
+    L1416: val themeConfig = remember(selectedThemeColor) { PalThemes[selectedThemeColor] ?: PalThemes["yellow"]!! }
+    L1421: val selectedProfileColor = remember(selectedThemeColor) {
+    L1422: when (selectedThemeColor) {
+    L1433: val palTextLogoColor = remember(selectedThemeColor) {
+    L1434: val mappedColorName = when (selectedThemeColor) {
+    L1441: else -> selectedThemeColor
+    L4730: selectedThemeColor: String,
+    L4740: val darkShadeColor = remember(selectedThemeColor) {
+    L4741: when (selectedThemeColor) {
+    L4751: val lighterShadeColor = remember(selectedThemeColor) {
+    ... and 3 more
+--------------------------------------------------------------------------------
+Line: 1465 | Var: tripleDotScreen | Type: Inferred (TripleDotScreen.MAIN) | Owner: HomeScreen
+  Declaration: var tripleDotScreen by remember { mutableStateOf(TripleDotScreen.MAIN) }
+  Writes (3):
+    L3519: tripleDotScreen = TripleDotScreen.MAIN
+    L3751: tripleDotScreen = tripleDotScreen,
+    L3752: onTripleDotScreenChange = { tripleDotScreen = it },
+  Reads (5):
+    L13995: tripleDotScreen: TripleDotScreen,
+    L14017: if (tripleDotScreen == TripleDotScreen.MAIN) {
+    L14019: } else if (tripleDotScreen == TripleDotScreen.COLOR_SELECTION || tripleDotScreen == TripleDotScreen.PHOTO_OPTIONS) {
+    L14039: val isSubmenuColorOrNotifications = tripleDotScreen == TripleDotScreen.COLOR_SELECTION || tripleDotScreen == TripleDotScreen.PAL_NOTIFICATIONS
+    L14070: when (tripleDotScreen) {
+--------------------------------------------------------------------------------
+Line: 1466 | Var: showEditNameDialog | Type: Boolean | Owner: HomeScreen
+  Declaration: var showEditNameDialog by remember { mutableStateOf(false) }
+  Writes (3):
+    L3772: onShowEditNameDialogChange = { showEditNameDialog = it },
+    L3890: showEditNameDialog = showEditNameDialog,
+    L3891: onShowEditNameDialogChange = { showEditNameDialog = it },
+  Reads (8):
+    L1831: showEditNameDialog,
+    L1848: !showEditNameDialog &&
+    L2736: LaunchedEffect(showEditNameDialog) {
+    L2737: if (showEditNameDialog) {
+    L2845: val isOverlayVisible = showPlusMenu || showTripleDotMenu || showJoinPalFlow || showEditNameDialog
+    L3694: showEditNameDialog -> editNameBounds
+    L13463: showEditNameDialog: Boolean,
+    L13479: if (showEditNameDialog) {
+--------------------------------------------------------------------------------
+Line: 1467 | Var: notificationInterval | Type: String | Owner: HomeScreen
+  Declaration: var notificationInterval by remember { mutableStateOf("off") }
+  Writes (2):
+    L3761: notificationInterval = notificationInterval,
+    L3762: onNotificationIntervalChange = { notificationInterval = it },
+  Reads (2):
+    L14005: notificationInterval: String,
+    L14391: selected = notificationInterval == option,
+--------------------------------------------------------------------------------
+Line: 1468 | Var: userPin | Type: String | Owner: HomeScreen
+  Declaration: var userPin by remember { mutableStateOf("4A2D8B") }
+  Writes (0):
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1471 | Var: activeVlogPal | Type: PalItem? | Owner: HomeScreen
+  Declaration: var activeVlogPal by remember(currentUserId) { mutableStateOf<PalItem?>(null) }
+  Writes (15):
+    L2486: activeVlogPal = match
+    L2488: activeVlogPal = PalItem(name = savedPalCode, size = "0", code = savedPalCode, isVlog = (savedPalCode == "vlog"))
+    L2550: activeVlogPal = matchingRealPal
+    L2673: activeVlogPal = null
+    L2706: activeVlogPal = updatedPal
+    L2759: activeVlogPal = null
+    L2907: activeVlogPal = null
+    L3026: activeVlogPal = null
+    L3061: activeVlogPal = null
+    L3073: activeVlogPal = null
+    ... and 5 more
+  Reads (37):
+    L1600: val activePalSubmissions = remember(activeVlogPal, capturedVlogsPaths, capturedVlogsTimes, capturedVlogsCaptions, capturedVlogsDurations, allPalsSubmissions) {
+    L1601: val pal = activeVlogPal
+    L1636: if (activeVlogPal == null || activeVlogPal?.code == "vlog") {
+    L1742: LaunchedEffect(activeVlogPal) {
+    L1775: val isVlogTabVisible = selectedTab == "pals" && activeVlogPal == null && !showingCapturedPreview
+    L1776: val shouldPlayVlogExoPlayer = isVlogTabVisible || (activeVlogPal != null && showVlogExportDialog)
+    L1834: activeVlogPal,
+    L1851: activeVlogPal == null &&
+    L2303: if (eventPalCode != null && eventPalCode == activeVlogPal?.code) {
+    L2332: if (eventPalCode != null && eventPalCode == activeVlogPal?.code) {
+    ... and 27 more
+--------------------------------------------------------------------------------
+Line: 1472 | Var: isStateRestoredRef | Type: Boolean | Owner: HomeScreen
+  Declaration: val isStateRestoredRef = remember(currentUserId) { mutableStateOf(false) }
+  Writes (1):
+    L2495: isStateRestoredRef.value = true
+  Reads (1):
+    L2501: if (currentUserId.isNotEmpty() && isStateRestoredRef.value) {
+--------------------------------------------------------------------------------
+Line: 1473 | Var: showingCapturedPreview | Type: Boolean | Owner: HomeScreen
+  Declaration: var showingCapturedPreview by remember(currentUserId) { mutableStateOf(false) }
+  Writes (3):
+    L3332: onClose = { showingCapturedPreview = false },
+    L3483: showingCapturedPreview = false
+    L3685: showingCapturedPreview = true
+  Reads (5):
+    L1775: val isVlogTabVisible = selectedTab == "pals" && activeVlogPal == null && !showingCapturedPreview
+    L1839: showingCapturedPreview,
+    L1856: !showingCapturedPreview
+    L3320: if (showingCapturedPreview) {
+    L3660: val isCameraTabActive = selectedTab == "camera" && !showingCapturedPreview && activeVlogPal == null
+--------------------------------------------------------------------------------
+Line: 1474 | Var: capturedVideoPath | Type: String? | Owner: HomeScreen
+  Declaration: var capturedVideoPath by remember(currentUserId) { mutableStateOf<String?>(null) }
+  Writes (2):
+    L3330: capturedVideoPath = capturedVideoPath,
+    L3683: capturedVideoPath = path
+  Reads (19):
+    L2588: imageUrl = "$capturedVideoPath|||||2000",
+    L2600: val uploadedVideoUrl = if (capturedVideoPath != null) {
+    L2602: val cleanPath = if (capturedVideoPath!!.startsWith("file://")) capturedVideoPath!!.substring(7) else capturedVideoPath!!
+    L2606: uploadFileToSupabase(context, capturedVideoPath!!, "pals")
+    L2612: if (uploadedVideoUrl.startsWith("http") && capturedVideoPath != null) {
+    L2614: palPrefs.edit().putString("local_path_$uploadedVideoUrl", capturedVideoPath).apply()
+    L2615: getVlogPrefs(context).edit().putString("local_path_$uploadedVideoUrl", capturedVideoPath).apply()
+    L3334: val localVideoPath = capturedVideoPath
+    L5943: capturedVideoPath: String?,
+    L5958: val capturedTimeText = remember(capturedVideoPath) {
+    ... and 9 more
+--------------------------------------------------------------------------------
+Line: 1475 | Var: capturedVideoDuration | Type: Inferred (2000L) | Owner: HomeScreen
+  Declaration: var capturedVideoDuration by remember(currentUserId) { mutableStateOf(2000L) }
+  Writes (1):
+    L3684: capturedVideoDuration = duration
+  Reads (4):
+    L2642: "$uploadedVideoUrl|||$capturedCaptionText|||$capturedVideoDuration"
+    L3375: updatedDurations.add(0, capturedVideoDuration.toString())
+    L3387: imageUrl = "${localVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}",
+    L3442: val delimiterString = "$uploadedVideoUrl|||${caption}|||${capturedVideoDuration}"
+--------------------------------------------------------------------------------
+Line: 1476 | Var: capturedCaptionText | Type: String | Owner: HomeScreen
+  Declaration: var capturedCaptionText by remember(currentUserId) { mutableStateOf("") }
+  Writes (1):
+    L3335: capturedCaptionText = caption
+  Reads (1):
+    L2642: "$uploadedVideoUrl|||$capturedCaptionText|||$capturedVideoDuration"
+--------------------------------------------------------------------------------
+Line: 1477 | Var: capturedVideoTimeText | Type: String | Owner: HomeScreen
+  Declaration: var capturedVideoTimeText by remember(currentUserId) { mutableStateOf("") }
+  Writes (1):
+    L3338: capturedVideoTimeText = formattedTime
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1478 | Var: isMuted | Type: Boolean | Owner: HomeScreen
+  Declaration: var isMuted by remember { mutableStateOf(false) }
+  Writes (2):
+    L6366: .clickable { isMuted = !isMuted },
+    L6370: isMuted = isMuted,
+  Reads (5):
+    L5368: fun VoiceMuteIcon(isMuted: Boolean, tint: Color, modifier: Modifier = Modifier) {
+    L5391: if (isMuted) {
+    L5953: var isMuted by remember { mutableStateOf(false) }
+    L6104: LaunchedEffect(isMuted, exoPlayer) {
+    L6105: exoPlayer.volume = if (isMuted) 0f else 1f
+--------------------------------------------------------------------------------
+Line: 1479 | Var: initialSyncCompleted | Type: Boolean | Owner: HomeScreen
+  Declaration: var initialSyncCompleted by remember { mutableStateOf(false) }
+  Writes (1):
+    L2428: initialSyncCompleted = true
+  Reads (1):
+    L2389: if (currentUserId.isNotEmpty() && !initialSyncCompleted) {
+--------------------------------------------------------------------------------
+Line: 1490 | Var: filteredPathsList | Type: Inferred (ArrayList(filteredPathsList)) | Owner: HomeScreen
+  Declaration: mutableStateOf(ArrayList(filteredPathsList))
+  Writes (1):
+    L1489: val filteredPathsList = validIndices.map { paths[it] }
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1499 | Var: filteredTimesList | Type: Inferred (ArrayList(filteredTimesList)) | Owner: HomeScreen
+  Declaration: mutableStateOf(ArrayList(filteredTimesList))
+  Writes (1):
+    L1498: val filteredTimesList = validIndices.map { times.getOrNull(it) ?: "12:00" }
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1508 | Var: filteredCaptionsList | Type: Inferred (ArrayList(filteredCaptionsList)) | Owner: HomeScreen
+  Declaration: mutableStateOf(ArrayList(filteredCaptionsList))
+  Writes (1):
+    L1507: val filteredCaptionsList = validIndices.map { captions.getOrNull(it) ?: "" }
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1517 | Var: filteredDurationsList | Type: Inferred (ArrayList(filteredDurationsList)) | Owner: HomeScreen
+  Declaration: mutableStateOf(ArrayList(filteredDurationsList))
+  Writes (1):
+    L1516: val filteredDurationsList = validIndices.map { durations.getOrNull(it) ?: "2000" }
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1519 | Var: currentPlayingIndex | Type: Int | Owner: HomeScreen
+  Declaration: var currentPlayingIndex by remember { mutableStateOf(0) }
+  Writes (12):
+    L1737: currentPlayingIndex = vlogExoPlayer.currentMediaItemIndex
+    L1743: currentPlayingIndex = 0
+    L1805: currentPlayingIndex = 0
+    L2760: currentPlayingIndex = 0
+    L2908: currentPlayingIndex = 0
+    L3068: currentPlayingIndex = currentPlayingIndex,
+    L3194: currentPlayingIndex = nextIndex
+    L3196: currentPlayingIndex = 0
+    L3503: currentPlayingIndex = currentPlayingIndex,
+    L3522: currentPlayingIndex = 0
+    ... and 2 more
+  Reads (5):
+    L6716: val currentPlayingIndex: Int,
+    L8463: LaunchedEffect(currentPlayingIndex) {
+    L8464: if (currentPlayingIndex < capturedVlogsPaths.size && currentPlayingIndex >= 0) {
+    L8465: selectedPageIndex = currentPlayingIndex
+    L14520: currentPlayingIndex: Int,
+--------------------------------------------------------------------------------
+Line: 1520 | Var: vlogPlaybackProgress | Type: Float | Owner: HomeScreen
+  Declaration: var vlogPlaybackProgress by remember { mutableStateOf(0f) }
+  Writes (7):
+    L1792: vlogPlaybackProgress = (position.toFloat() / duration).coerceIn(0f, 1f)
+    L1794: vlogPlaybackProgress = 0f
+    L1799: vlogPlaybackProgress = 0f
+    L3069: vlogPlaybackProgress = vlogPlaybackProgress,
+    L3506: vlogPlaybackProgress = vlogPlaybackProgress,
+    L8039: val vlogPlaybackProgress = params.vlogPlaybackProgress
+    L14552: vlogPlaybackProgress = vlogPlaybackProgress,
+  Reads (2):
+    L6717: val vlogPlaybackProgress: Float,
+    L14523: vlogPlaybackProgress: Float,
+--------------------------------------------------------------------------------
+Line: 1521 | Var: showVlogDropdownMenu | Type: Boolean | Owner: HomeScreen
+  Declaration: var showVlogDropdownMenu by remember { mutableStateOf(false) }
+  Writes (2):
+    L2751: showVlogDropdownMenu = false
+    L2926: onShowDropdownChange = { showVlogDropdownMenu = it },
+  Reads (4):
+    L1835: showVlogDropdownMenu,
+    L1852: !showVlogDropdownMenu &&
+    L2750: } else if (showVlogDropdownMenu) {
+    L2925: showDropdown = showVlogDropdownMenu,
+--------------------------------------------------------------------------------
+Line: 1522 | Var: showVlogChatScreen | Type: Boolean | Owner: HomeScreen
+  Declaration: var showVlogChatScreen by remember { mutableStateOf(false) }
+  Writes (3):
+    L2749: showVlogChatScreen = false
+    L2928: onShowChatChange = { showVlogChatScreen = it },
+    L3074: showVlogChatScreen = false
+  Reads (5):
+    L1836: showVlogChatScreen,
+    L1853: !showVlogChatScreen &&
+    L2555: LaunchedEffect(activeVlogPal, showVlogChatScreen) {
+    L2748: if (showVlogChatScreen) {
+    L2927: showChat = showVlogChatScreen,
+--------------------------------------------------------------------------------
+Line: 1523 | Var: showEditPalFlow | Type: Boolean | Owner: HomeScreen
+  Declaration: var showEditPalFlow by remember { mutableStateOf(false) }
+  Writes (3):
+    L2726: showEditPalFlow = false
+    L2753: showEditPalFlow = false
+    L2931: showEditPalFlow = it
+  Reads (4):
+    L1837: showEditPalFlow,
+    L1854: !showEditPalFlow &&
+    L2752: } else if (showEditPalFlow) {
+    L2929: showEdit = showEditPalFlow,
+--------------------------------------------------------------------------------
+Line: 1524 | Var: showDeletePalDialog | Type: Boolean | Owner: HomeScreen
+  Declaration: var showDeletePalDialog by remember { mutableStateOf(false) }
+  Writes (2):
+    L2755: showDeletePalDialog = false
+    L2938: onShowDeleteChange = { showDeletePalDialog = it },
+  Reads (4):
+    L1832: showDeletePalDialog,
+    L1849: !showDeletePalDialog &&
+    L2754: } else if (showDeletePalDialog) {
+    L2937: showDelete = showDeletePalDialog,
+--------------------------------------------------------------------------------
+Line: 1525 | Var: showLeavePalDialog | Type: Boolean | Owner: HomeScreen
+  Declaration: var showLeavePalDialog by remember { mutableStateOf(false) }
+  Writes (2):
+    L2757: showLeavePalDialog = false
+    L2940: onShowLeaveChange = { showLeavePalDialog = it },
+  Reads (4):
+    L1833: showLeavePalDialog,
+    L1850: !showLeavePalDialog &&
+    L2756: } else if (showLeavePalDialog) {
+    L2939: showLeave = showLeavePalDialog,
+--------------------------------------------------------------------------------
+Line: 1526 | Var: showVlogExportDialog | Type: Boolean | Owner: HomeScreen
+  Declaration: var showVlogExportDialog by remember { mutableStateOf(false) }
+  Writes (1):
+    L2942: onShowExportDialogChange = { showVlogExportDialog = it },
+  Reads (4):
+    L1776: val shouldPlayVlogExoPlayer = isVlogTabVisible || (activeVlogPal != null && showVlogExportDialog)
+    L1803: LaunchedEffect(showVlogExportDialog) {
+    L1804: if (showVlogExportDialog) {
+    L2941: showExportDialog = showVlogExportDialog,
+--------------------------------------------------------------------------------
+Line: 1535 | Var: selectedDayOffset | Type: Int | Owner: HomeScreen
+  Declaration: var selectedDayOffset by remember { mutableStateOf(0) }
+  Writes (4):
+    L2909: selectedDayOffset = 0
+    L3251: selectedDayOffset = selectedDayOffset,
+    L3252: onSelectedDayOffsetChange = { selectedDayOffset = it },
+    L8044: val selectedDayOffset = params.selectedDayOffset
+  Reads (22):
+    L1590: val targetDate = remember(selectedDayOffset) {
+    L1597: activeLocalDate.minusDays(selectedDayOffset.toLong())
+    L6722: val selectedDayOffset: Int = 0,
+    L8248: val targetDate = remember(selectedDayOffset) {
+    L8255: activeLocalDate.minusDays(selectedDayOffset.toLong())
+    L8325: .pointerInput(selectedDayOffset, onSelectedDayOffsetChange) {
+    L8333: if (selectedDayOffset < 6) {
+    L8334: onSelectedDayOffsetChange(selectedDayOffset + 1)
+    L8338: if (selectedDayOffset > 0) {
+    L8339: onSelectedDayOffsetChange(selectedDayOffset - 1)
+    ... and 12 more
+--------------------------------------------------------------------------------
+Line: 1537 | Var: activeHourSubmissions | Type: Map<String, SubmissionDbItem | Owner: HomeScreen
+  Declaration: var activeHourSubmissions by remember { mutableStateOf<Map<String, SubmissionDbItem>>(emptyMap()) }
+  Writes (4):
+    L1543: activeHourSubmissions = emptyMap()
+    L1571: activeHourSubmissions = emptyMap()
+    L2228: activeHourSubmissions = itemsInThisHour.associateBy { it.userId }
+    L3819: activeHourSubmissions = emptyMap()
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1538 | Var: dailyHourHistoryMap | Type: Map<Int, List<SubmissionDbItem | Owner: HomeScreen
+  Declaration: var dailyHourHistoryMap by remember { mutableStateOf<Map<Int, List<SubmissionDbItem>>>(emptyMap()) }
+  Writes (4):
+    L1544: dailyHourHistoryMap = emptyMap()
+    L1572: dailyHourHistoryMap = emptyMap()
+    L2224: dailyHourHistoryMap = filteredSubmissions.groupBy { it.getHourBucket() }
+    L3820: dailyHourHistoryMap = emptyMap()
+  Reads (2):
+    L2227: val itemsInThisHour = dailyHourHistoryMap[currentSystemHour] ?: emptyList()
+    L2231: exportMenuDataState = dailyHourHistoryMap.toSortedMap()
+--------------------------------------------------------------------------------
+Line: 1539 | Var: exportMenuDataState | Type: Map<Int, List<SubmissionDbItem | Owner: HomeScreen
+  Declaration: var exportMenuDataState by remember { mutableStateOf<Map<Int, List<SubmissionDbItem>>>(emptyMap()) }
+  Writes (4):
+    L1546: exportMenuDataState = emptyMap()
+    L1580: exportMenuDataState = emptyMap()
+    L2231: exportMenuDataState = dailyHourHistoryMap.toSortedMap()
+    L3821: exportMenuDataState = emptyMap()
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1540 | Var: activeGroupMembersList | Type: List<UserItem | Owner: HomeScreen
+  Declaration: var activeGroupMembersList by remember { mutableStateOf<List<UserItem>>(emptyList()) }
+  Writes (1):
+    L1573: activeGroupMembersList = emptyList()
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 1587 | Var: activeReplyPreviewPath | Type: String? | Owner: HomeScreen
+  Declaration: var activeReplyPreviewPath by remember { mutableStateOf<String?>(null) }
+  Writes (4):
+    L3286: activeReplyPreviewPath = activeReplyPreviewPath,
+    L3287: onActiveReplyPreviewPathChange = { activeReplyPreviewPath = it },
+    L8051: val activeReplyPreviewPath = params.activeReplyPreviewPath
+    L10131: activeReplyPreviewPath = activeReplyPreviewPath,
+  Reads (4):
+    L6729: val activeReplyPreviewPath: String? = null,
+    L12048: activeReplyPreviewPath: String?,
+    L12054: if (activeReplyPreviewPath == null) return
+    L12055: val videoPath = activeReplyPreviewPath
+--------------------------------------------------------------------------------
+Line: 1588 | Var: activeReactionPreview | Type: Pair<String, String | Owner: HomeScreen
+  Declaration: var activeReactionPreview by remember { mutableStateOf<Pair<String, String>?>(null) }
+  Writes (5):
+    L3258: activeReactionPreview = Pair(path, emoji)
+    L3288: activeReactionPreview = activeReactionPreview,
+    L3289: onActiveReactionPreviewChange = { activeReactionPreview = it },
+    L8053: val activeReactionPreview = params.activeReactionPreview
+    L10140: activeReactionPreview = activeReactionPreview,
+  Reads (4):
+    L6731: val activeReactionPreview: Pair<String, String>? = null,
+    L12197: activeReactionPreview: Pair<String, String>?,
+    L12201: if (activeReactionPreview == null) return
+    L12202: val (videoPath, emoji) = activeReactionPreview
+--------------------------------------------------------------------------------
+Line: 1820 | Var: lastPhysicalIsRotated | Type: Boolean? | Owner: HomeScreen
+  Declaration: var lastPhysicalIsRotated by remember { mutableStateOf<Boolean?>(null) }
+  Writes (1):
+    L1880: lastPhysicalIsRotated = currentIsRotated
+  Reads (3):
+    L1840: lastPhysicalIsRotated
+    L1872: if (currentIsRotated != null && currentIsRotated != lastPhysicalIsRotated) {
+    L1873: if (lastPhysicalIsRotated != null) {
+--------------------------------------------------------------------------------
+Line: 1896 | Var: isRefreshing | Type: Boolean | Owner: HomeScreen
+  Declaration: var isRefreshing by remember { mutableStateOf(false) }
+  Writes (2):
+    L1902: isRefreshing = true
+    L1945: isRefreshing = false
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 2563 | Var: isCapturingPal | Type: Boolean | Owner: HomeScreen
+  Declaration: var isCapturingPal by remember { mutableStateOf(false) }
+  Writes (2):
+    L2681: isCapturingPal = false
+    L2922: onStartCapture = { isCapturingPal = true },
+  Reads (3):
+    L2572: LaunchedEffect(isCapturingPal) {
+    L2573: if (isCapturingPal) {
+    L2923: isCapturing = isCapturingPal,
+--------------------------------------------------------------------------------
+Line: 2564 | Var: capturingProgress | Type: Float | Owner: HomeScreen
+  Declaration: var capturingProgress by remember { mutableStateOf(0.0f) }
+  Writes (2):
+    L2574: capturingProgress = 0.0f
+    L2579: capturingProgress = step.toFloat() / steps
+  Reads (1):
+    L2924: captureProgress = capturingProgress,
+--------------------------------------------------------------------------------
+Line: 2565 | Var: vlogMenuExpandedMembers | Type: Boolean | Owner: HomeScreen
+  Declaration: var vlogMenuExpandedMembers by remember { mutableStateOf(false) }
+  Writes (1):
+    L2944: onExpandedMembersChange = { vlogMenuExpandedMembers = it },
+  Reads (1):
+    L2943: expandedMembers = vlogMenuExpandedMembers,
+--------------------------------------------------------------------------------
+Line: 2566 | Var: vlogMenuExpandedSettings | Type: Boolean | Owner: HomeScreen
+  Declaration: var vlogMenuExpandedSettings by remember { mutableStateOf(false) }
+  Writes (1):
+    L2946: onExpandedSettingsChange = { vlogMenuExpandedSettings = it },
+  Reads (1):
+    L2945: expandedSettings = vlogMenuExpandedSettings,
+--------------------------------------------------------------------------------
+Line: 2567 | Var: editPalName | Type: String | Owner: HomeScreen
+  Declaration: var editPalName by remember { mutableStateOf("") }
+  Writes (2):
+    L2933: editPalName = activeVlogPal?.name ?: ""
+    L2948: onEditNameChange = { editPalName = it },
+  Reads (4):
+    L2700: oldPal.copy(name = editPalName)
+    L2702: oldPal.copy(name = editPalName, size = editPalSize, isVlog = editPalSize == "vlog")
+    L2712: "name" to editPalName,
+    L2947: editName = editPalName,
+--------------------------------------------------------------------------------
+Line: 2568 | Var: editPalSize | Type: String | Owner: HomeScreen
+  Declaration: var editPalSize by remember { mutableStateOf("3") }
+  Writes (2):
+    L2934: editPalSize = activeVlogPal?.size ?: "3"
+    L2950: onEditSizeChange = { editPalSize = it },
+  Reads (3):
+    L2702: oldPal.copy(name = editPalName, size = editPalSize, isVlog = editPalSize == "vlog")
+    L2713: "size" to editPalSize
+    L2949: editSize = editPalSize,
+--------------------------------------------------------------------------------
+Line: 2569 | Var: isEditingPalLoading | Type: Boolean | Owner: HomeScreen
+  Declaration: var isEditingPalLoading by remember { mutableStateOf(false) }
+  Writes (2):
+    L2725: isEditingPalLoading = false
+    L2952: onStartSaveEdit = { isEditingPalLoading = true },
+  Reads (3):
+    L2685: LaunchedEffect(isEditingPalLoading) {
+    L2686: if (isEditingPalLoading) {
+    L2951: isEditingLoading = isEditingPalLoading,
+--------------------------------------------------------------------------------
+Line: 2570 | Var: editPalDots | Type: String | Owner: HomeScreen
+  Declaration: var editPalDots by remember { mutableStateOf("") }
+  Writes (4):
+    L2689: editPalDots = ""
+    L2691: editPalDots = "."
+    L2693: editPalDots = ".."
+    L2695: editPalDots = "..."
+  Reads (1):
+    L2953: editDots = editPalDots,
+--------------------------------------------------------------------------------
+Line: 2731 | Var: plusMenuBounds | Type: Rect? | Owner: HomeScreen
+  Declaration: var plusMenuBounds by remember { mutableStateOf<Rect?>(null) }
+  Writes (0):
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 2732 | Var: tripleDotMenuBounds | Type: Rect? | Owner: HomeScreen
+  Declaration: var tripleDotMenuBounds by remember { mutableStateOf<Rect?>(null) }
+  Writes (1):
+    L3775: onTripleDotMenuBoundsChange = { tripleDotMenuBounds = it }
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 2733 | Var: joinPalBounds | Type: Rect? | Owner: HomeScreen
+  Declaration: var joinPalBounds by remember { mutableStateOf<Rect?>(null) }
+  Writes (0):
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 2734 | Var: editNameBounds | Type: Rect? | Owner: HomeScreen
+  Declaration: var editNameBounds by remember { mutableStateOf<Rect?>(null) }
+  Writes (1):
+    L3901: onEditNameBoundsChange = { editNameBounds = it },
+  Reads (1):
+    L3694: showEditNameDialog -> editNameBounds
+--------------------------------------------------------------------------------
+Line: 2768 | Var: screenCornerRadius | Type: Dp | Owner: HomeScreen
+  Declaration: var screenCornerRadius by remember { mutableStateOf(28.dp) }
+  Writes (1):
+    L2831: screenCornerRadius = radiusDp
+  Reads (3):
+    L2867: .clip(RoundedCornerShape(screenCornerRadius))
+    L2869: .border(3.dp, currentBorderColor, RoundedCornerShape(screenCornerRadius))
+    L2875: .clip(RoundedCornerShape(screenCornerRadius))
+--------------------------------------------------------------------------------
+Line: 4648 | Var: activeCamera | Type: androidx.camera.core.Camera? | Owner: CameraPreview
+  Declaration: var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+  Writes (1):
+    L4677: activeCamera = camera
+  Reads (4):
+    L4684: LaunchedEffect(activeCamera, isFlashOn) {
+    L4685: val camera = activeCamera ?: return@LaunchedEffect
+    L4695: LaunchedEffect(activeCamera, zoomLevel) {
+    L4696: val camera = activeCamera ?: return@LaunchedEffect
+--------------------------------------------------------------------------------
+Line: 4762 | Var: activeSlot | Type: Int | Owner: CameraScreenContent
+  Declaration: var activeSlot by remember { mutableStateOf(1) }
+  Writes (2):
+    L4980: .clickable { activeSlot = slot }
+    L5220: activeSlot = newSlot
+  Reads (5):
+    L4962: zoomLevel = activeSlot,
+    L4977: val isSelected = activeSlot == slot
+    L5189: .pointerInput(Triple(activeSlot, isRecording, countdownSeconds)) {
+    L5218: val newSlot = (activeSlot + slotDelta).coerceIn(1, 5)
+    L5219: if (newSlot != activeSlot) {
+--------------------------------------------------------------------------------
+Line: 4763 | Var: activeTimerMode | Type: Inferred (TimerMode.DEFAULT) | Owner: CameraScreenContent
+  Declaration: var activeTimerMode by remember { mutableStateOf(TimerMode.DEFAULT) }
+  Writes (1):
+    L5320: activeTimerMode = when (activeTimerMode) {
+  Reads (4):
+    L4809: val durationMs = when (activeTimerMode) {
+    L4921: if (activeTimerMode == TimerMode.DEFAULT) {
+    L4996: if (isRecording && activeTimerMode == TimerMode.TIMELAPSE) {
+    L5329: val timerResId = when (activeTimerMode) {
+--------------------------------------------------------------------------------
+Line: 4764 | Var: flashMode | Type: String | Owner: CameraScreenContent
+  Declaration: var flashMode by remember { mutableStateOf("off") } // "off", "on", "auto"
+  Writes (1):
+    L5263: flashMode = when (flashMode) {
+  Reads (3):
+    L4961: isFlashOn = (flashMode == "on") || (flashMode == "auto" && isRecording),
+    L5271: val flashIconRes = when (flashMode) {
+    L5279: tint = if (flashMode == "on" || flashMode == "auto") Color(0xFFFFD600) else Color.White,
+--------------------------------------------------------------------------------
+Line: 4765 | Var: isCameraFlipped | Type: Boolean | Owner: CameraScreenContent
+  Declaration: var isCameraFlipped by remember { mutableStateOf(false) }
+  Writes (2):
+    L4960: isCameraFlipped = isCameraFlipped,
+    L5355: .clickable { isCameraFlipped = !isCameraFlipped },
+  Reads (3):
+    L4626: isCameraFlipped: Boolean = false,
+    L4650: LaunchedEffect(isCameraFlipped) {
+    L4663: val cameraSelector = if (isCameraFlipped) {
+--------------------------------------------------------------------------------
+Line: 4766 | Var: recordingProgress | Type: Float | Owner: CameraScreenContent
+  Declaration: var recordingProgress by remember { mutableStateOf(0.0f) }
+  Writes (4):
+    L4856: recordingProgress = 0.0f
+    L4861: recordingProgress = step.toFloat() / steps
+    L4867: recordingProgress = 0.0f
+    L4872: recordingProgress = 0.0f
+  Reads (3):
+    L5046: val currentFrame = ((recordingProgress * 10).toInt() + 1).coerceIn(1, 10)
+    L5287: if (isRecording && recordingProgress > 0.0f) {
+    L5300: .fillMaxHeight(recordingProgress)
+--------------------------------------------------------------------------------
+Line: 4767 | Var: countdownSeconds | Type: Int | Owner: CameraScreenContent
+  Declaration: var countdownSeconds by remember { mutableStateOf(0) }
+  Writes (2):
+    L4780: countdownSeconds -= 1
+    L4924: countdownSeconds = 3
+  Reads (8):
+    L4777: LaunchedEffect(countdownSeconds) {
+    L4778: if (countdownSeconds > 0) {
+    L4781: if (countdownSeconds == 0) {
+    L4920: if (!isRecording && countdownSeconds == 0) {
+    L5065: if (countdownSeconds > 0) {
+    L5071: text = countdownSeconds.toString(),
+    L5081: if (countdownSeconds == 0) {
+    L5189: .pointerInput(Triple(activeSlot, isRecording, countdownSeconds)) {
+--------------------------------------------------------------------------------
+Line: 4768 | Var: videoCaptureRef | Type: VideoCapture<Recorder | Owner: CameraScreenContent
+  Declaration: var videoCaptureRef by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
+  Writes (1):
+    L4963: onVideoCaptureCreated = { videoCaptureRef = it }
+  Reads (1):
+    L4801: val videoCapture = videoCaptureRef
+--------------------------------------------------------------------------------
+Line: 4769 | Var: activeRecordingSession | Type: Recording? | Owner: CameraScreenContent
+  Declaration: var activeRecordingSession by remember { mutableStateOf<Recording?>(null) }
+  Writes (3):
+    L4847: activeRecordingSession = session
+    L4865: activeRecordingSession = null
+    L4871: activeRecordingSession = null
+  Reads (2):
+    L4773: activeRecordingSession?.stop()
+    L4870: activeRecordingSession?.stop()
+--------------------------------------------------------------------------------
+Line: 4789 | Var: initialTime | Type: Inferred (String.format("%02d:%02d", initialTime.hour, initialTime.minute)) | Owner: CameraScreenContent
+  Declaration: mutableStateOf(String.format("%02d:%02d", initialTime.hour, initialTime.minute))
+  Writes (1):
+    L4788: val initialTime = java.time.LocalTime.now()
+  Reads (0):
+--------------------------------------------------------------------------------
+Line: 5953 | Var: isMuted | Type: Boolean | Owner: CapturedPreviewScreen
+  Declaration: var isMuted by remember { mutableStateOf(false) }
+  Writes (2):
+    L6366: .clickable { isMuted = !isMuted },
+    L6370: isMuted = isMuted,
+  Reads (5):
+    L1478: var isMuted by remember { mutableStateOf(false) }
+    L5368: fun VoiceMuteIcon(isMuted: Boolean, tint: Color, modifier: Modifier = Modifier) {
+    L5391: if (isMuted) {
+    L6104: LaunchedEffect(isMuted, exoPlayer) {
+    L6105: exoPlayer.volume = if (isMuted) 0f else 1f
+--------------------------------------------------------------------------------
+Line: 5954 | Var: captionText | Type: String | Owner: CapturedPreviewScreen
+  Declaration: var captionText by remember { mutableStateOf("") }
+  Writes (3):
+    L6272: onValueChange = { captionText = it },
+    L6402: captionText = captionText,
+    L9115: captionText = caption,
+  Reads (2):
+    L6271: value = captionText,
+    L6343: onSend(captionText, targets)
+--------------------------------------------------------------------------------
+Line: 5955 | Var: isPreviewSaving | Type: Boolean | Owner: CapturedPreviewScreen
+  Declaration: var isPreviewSaving by remember { mutableStateOf(false) }
+  Writes (2):
+    L6387: isPreviewSaving = true
+    L6416: isPreviewSaving = false
+  Reads (2):
+    L6386: if (!isPreviewSaving && !isPreviewSaved && !capturedVideoPath.isNullOrBlank()) {
+    L6423: if (isPreviewSaving) {
+--------------------------------------------------------------------------------
+Line: 5956 | Var: isPreviewSaved | Type: Boolean | Owner: CapturedPreviewScreen
+  Declaration: var isPreviewSaved by remember { mutableStateOf(false) }
+  Writes (2):
+    L6408: isPreviewSaved = true
+    L6411: isPreviewSaved = false
+  Reads (2):
+    L6386: if (!isPreviewSaving && !isPreviewSaved && !capturedVideoPath.isNullOrBlank()) {
+    L6431: isSaved = isPreviewSaved,
+--------------------------------------------------------------------------------
+Line: 5973 | Var: selectedPals | Type: Set<String | Owner: CapturedPreviewScreen
+  Declaration: var selectedPals by remember { mutableStateOf<Set<String>>(emptySet()) }
+  Writes (1):
+    L6565: selectedPals = if (isSelected) {
+  Reads (8):
+    L6221: val selectedPalNames = remember(selectedPals, createdPals) {
+    L6222: createdPals.filter { selectedPals.contains(it.code) }
+    L6319: val isButtonEnabled = selectedPals.isNotEmpty()
+    L6342: val targets = createdPals.filter { selectedPals.contains(it.code) }
+    L6398: vlogText = createdPals.filter { selectedPals.contains(it.code) }
+    L6471: val isSelected = selectedPals.contains(pal.code)
+    L6566: selectedPals - pal.code
+    L6568: selectedPals + pal.code
+--------------------------------------------------------------------------------
+Line: 6857 | Var: showDropdownMenu | Type: Boolean | Owner: GroupMemberCard
+  Declaration: var showDropdownMenu by remember { mutableStateOf(false) }
+  Writes (4):
+    L6978: .clickable { showDropdownMenu = true },
+    L6990: onDismissRequest = { showDropdownMenu = false },
+    L7002: showDropdownMenu = false
+    L7009: showDropdownMenu = false
+  Reads (1):
+    L6989: expanded = showDropdownMenu,
+--------------------------------------------------------------------------------
+Line: 6858 | Var: showEmojiOverlay | Type: Boolean | Owner: GroupMemberCard
+  Declaration: var showEmojiOverlay by remember { mutableStateOf(false) }
+  Writes (3):
+    L7041: .clickable { showEmojiOverlay = true },
+    L7119: .clickable { showEmojiOverlay = false }
+    L7134: showEmojiOverlay = false
+  Reads (1):
+    L7113: if (showEmojiOverlay) {
+--------------------------------------------------------------------------------
+Line: 6860 | Var: currentEmojis | Type: Inferred (defaultEmojis.take(5)) | Owner: GroupMemberCard
+  Declaration: var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }
+  Writes (2):
+    L7145: currentEmojis = defaultEmojis.shuffled().take(5)
+    L12881: currentEmojis = defaultEmojis.shuffled().take(5)
+  Reads (3):
+    L7127: currentEmojis.forEach { emoji ->
+    L12421: var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }
+    L12861: currentEmojis.forEach { emoji ->
+--------------------------------------------------------------------------------
+Line: 7177 | Var: groupPosX | Type: Float | Owner: GroupMemberCard
+  Declaration: var groupPosX by remember { mutableStateOf(0f) }
+  Writes (6):
+    L7184: groupPosX = (widthPx - smileySizePx) / 2f
+    L7234: groupPosX = newX
+    L7393: groupPosX = (widthPx - smileySizePx) / 2f
+    L7443: groupPosX = newX
+    L14870: groupPosX = (widthPx - smileySizePx) / 2f
+    L14920: groupPosX = newX
+  Reads (8):
+    L7200: var newX = groupPosX + vx * cappedDt
+    L7250: x = with(density) { groupPosX.toDp() },
+    L7386: var groupPosX by remember { mutableStateOf(0f) }
+    L7409: var newX = groupPosX + vx * cappedDt
+    L7460: x = with(density) { groupPosX.toDp() },
+    L14863: var groupPosX by remember { mutableStateOf(0f) }
+    L14886: var newX = groupPosX + vx * cappedDt
+    L14936: x = with(density) { groupPosX.toDp() },
+--------------------------------------------------------------------------------
+Line: 7178 | Var: groupPosY | Type: Float | Owner: GroupMemberCard
+  Declaration: var groupPosY by remember { mutableStateOf(0f) }
+  Writes (6):
+    L7185: groupPosY = (heightPx - smileySizePx) / 2f
+    L7235: groupPosY = newY
+    L7394: groupPosY = (heightPx - smileySizePx) / 2f
+    L7444: groupPosY = newY
+    L14871: groupPosY = (heightPx - smileySizePx) / 2f
+    L14921: groupPosY = newY
+  Reads (8):
+    L7201: var newY = groupPosY + vy * cappedDt
+    L7251: y = with(density) { groupPosY.toDp() }
+    L7387: var groupPosY by remember { mutableStateOf(0f) }
+    L7410: var newY = groupPosY + vy * cappedDt
+    L7461: y = with(density) { groupPosY.toDp() }
+    L14864: var groupPosY by remember { mutableStateOf(0f) }
+    L14887: var newY = groupPosY + vy * cappedDt
+    L14937: y = with(density) { groupPosY.toDp() }
+--------------------------------------------------------------------------------
+Line: 7179 | Var: groupSmileRotation | Type: Float | Owner: GroupMemberCard
+  Declaration: var groupSmileRotation by remember { mutableStateOf(0f) }
+  Writes (3):
+    L7237: groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+    L7446: groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+    L14923: groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+  Reads (5):
+    L7253: .rotate(groupSmileRotation)
+    L7388: var groupSmileRotation by remember { mutableStateOf(0f) }
+    L7463: .rotate(groupSmileRotation)
+    L14865: var groupSmileRotation by remember { mutableStateOf(0f) }
+    L14939: .rotate(groupSmileRotation)
+--------------------------------------------------------------------------------
+Line: 7180 | Var: groupSmileColorIndex | Type: Int | Owner: GroupMemberCard
+  Declaration: var groupSmileColorIndex by remember { mutableStateOf(0) }
+  Writes (3):
+    L7240: groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
+    L7449: groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
+    L14926: groupSmileColorIndex = (groupSmileColorIndex + 1) % profileColors.size
+  Reads (5):
+    L7255: .background(shufflingColors[groupSmileColorIndex]),
+    L7389: var groupSmileColorIndex by remember { mutableStateOf(0) }
+    L7465: .background(shufflingColors[groupSmileColorIndex]),
+    L14866: var groupSmileColorIndex by remember { mutableStateOf(0) }
+    L14941: .background(profileColors[groupSmileColorIndex]),
+--------------------------------------------------------------------------------
+Line: 7386 | Var: groupPosX | Type: Float | Owner: GroupMemberCard
+  Declaration: var groupPosX by remember { mutableStateOf(0f) }
+  Writes (6):
+    L7184: groupPosX = (widthPx - smileySizePx) / 2f
+    L7234: groupPosX = newX
+    L7393: groupPosX = (widthPx - smileySizePx) / 2f
+    L7443: groupPosX = newX
+    L14870: groupPosX = (widthPx - smileySizePx) / 2f
+    L14920: groupPosX = newX
+  Reads (8):
+    L7177: var groupPosX by remember { mutableStateOf(0f) }
+    L7200: var newX = groupPosX + vx * cappedDt
+    L7250: x = with(density) { groupPosX.toDp() },
+    L7409: var newX = groupPosX + vx * cappedDt
+    L7460: x = with(density) { groupPosX.toDp() },
+    L14863: var groupPosX by remember { mutableStateOf(0f) }
+    L14886: var newX = groupPosX + vx * cappedDt
+    L14936: x = with(density) { groupPosX.toDp() },
+--------------------------------------------------------------------------------
+Line: 7387 | Var: groupPosY | Type: Float | Owner: GroupMemberCard
+  Declaration: var groupPosY by remember { mutableStateOf(0f) }
+  Writes (6):
+    L7185: groupPosY = (heightPx - smileySizePx) / 2f
+    L7235: groupPosY = newY
+    L7394: groupPosY = (heightPx - smileySizePx) / 2f
+    L7444: groupPosY = newY
+    L14871: groupPosY = (heightPx - smileySizePx) / 2f
+    L14921: groupPosY = newY
+  Reads (8):
+    L7178: var groupPosY by remember { mutableStateOf(0f) }
+    L7201: var newY = groupPosY + vy * cappedDt
+    L7251: y = with(density) { groupPosY.toDp() }
+    L7410: var newY = groupPosY + vy * cappedDt
+    L7461: y = with(density) { groupPosY.toDp() }
+    L14864: var groupPosY by remember { mutableStateOf(0f) }
+    L14887: var newY = groupPosY + vy * cappedDt
+    L14937: y = with(density) { groupPosY.toDp() }
+--------------------------------------------------------------------------------
+Line: 7388 | Var: groupSmileRotation | Type: Float | Owner: GroupMemberCard
+  Declaration: var groupSmileRotation by remember { mutableStateOf(0f) }
+  Writes (3):
+    L7237: groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+    L7446: groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+    L14923: groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+  Reads (5):
+    L7179: var groupSmileRotation by remember { mutableStateOf(0f) }
+    L7253: .rotate(groupSmileRotation)
+    L7463: .rotate(groupSmileRotation)
+    L14865: var groupSmileRotation by remember { mutableStateOf(0f) }
+    L14939: .rotate(groupSmileRotation)
+--------------------------------------------------------------------------------
+Line: 7389 | Var: groupSmileColorIndex | Type: Int | Owner: GroupMemberCard
+  Declaration: var groupSmileColorIndex by remember { mutableStateOf(0) }
+  Writes (3):
+    L7240: groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
+    L7449: groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
+    L14926: groupSmileColorIndex = (groupSmileColorIndex + 1) % profileColors.size
+  Reads (5):
+    L7180: var groupSmileColorIndex by remember { mutableStateOf(0) }
+    L7255: .background(shufflingColors[groupSmileColorIndex]),
+    L7465: .background(shufflingColors[groupSmileColorIndex]),
+    L14866: var groupSmileColorIndex by remember { mutableStateOf(0) }
+    L14941: .background(profileColors[groupSmileColorIndex]),
+--------------------------------------------------------------------------------
+Line: 8091 | Var: N/A | Type: Unknown | Owner: VlogScreenContent
+  Declaration: mutableStateOf(initialList)
+  Writes (1):
+    Unknown (no var name)
+  Reads (1):
+    Unknown (no var name)
+--------------------------------------------------------------------------------
+Line: 8246 | Var: selectedMemberIndex | Type: Int | Owner: VlogScreenContent
+  Declaration: var selectedMemberIndex by remember(pal.code) { mutableStateOf(0) }
+  Writes (6):
+    L7656: selectedMemberIndex = selectedMemberIndex,
+    L7720: selectedMemberIndex = selectedMemberIndex,
+    L7773: selectedMemberIndex = selectedMemberIndex,
+    L7832: selectedMemberIndex = selectedMemberIndex,
+    L8393: selectedMemberIndex = selectedMemberIndex,
+    L8394: onSelectedMemberIndexChange = { selectedMemberIndex = it },
+  Reads (2):
+    L6751: selectedMemberIndex: Int,
+    L7586: selectedMemberIndex: Int,
+--------------------------------------------------------------------------------
+Line: 8297 | Var: selectedPageIndex | Type: Int | Owner: VlogScreenContent
+  Declaration: var selectedPageIndex by remember(pal.code) { mutableStateOf(0) }
+  Writes (7):
+    L8397: selectedPageIndex = selectedPageIndex,
+    L8398: onSelectedPageIndexChange = { selectedPageIndex = it },
+    L8465: selectedPageIndex = currentPlayingIndex
+    L8625: selectedPageIndex -= 1
+    L8639: selectedPageIndex += 1
+    L10096: selectedPageIndex = selectedPageIndex,
+    L10097: onSelectedPageIndexChange = { selectedPageIndex = it },
+  Reads (18):
+    L7590: selectedPageIndex: Int,
+    L8314: val existingCaption = capturedVlogsCaptions.getOrNull(selectedPageIndex) ?: ""
+    L8470: LaunchedEffect(selectedPageIndex) {
+    L8471: if (vlogExoPlayer.currentMediaItemIndex != selectedPageIndex && selectedPageIndex < capturedVlogsPaths.size) {
+    L8472: vlogExoPlayer.seekTo(selectedPageIndex, 0L)
+    L8477: targetState = selectedPageIndex,
+    L8624: if (selectedPageIndex > 0) {
+    L8638: if (selectedPageIndex < capturedVlogsPaths.lastIndex) {
+    L8730: if (isEditingCaption && page == selectedPageIndex) {
+    L8819: if (isEditingCaption && page == selectedPageIndex) {
+    ... and 8 more
+--------------------------------------------------------------------------------
+Line: 8298 | Var: inMembersSubMenu | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var inMembersSubMenu by remember { mutableStateOf(false) }
+  Writes (3):
+    L9451: inMembersSubMenu = false
+    L9563: .clickable { inMembersSubMenu = false }
+    L9644: .clickable { inMembersSubMenu = true }
+  Reads (2):
+    L9454: val isSubMenuOpen = inSettingsSubMenu || inMembersSubMenu
+    L9556: } else if (inMembersSubMenu) {
+--------------------------------------------------------------------------------
+Line: 8299 | Var: capsuleLeftDp | Type: Dp | Owner: VlogScreenContent
+  Declaration: var capsuleLeftDp by remember { mutableStateOf(0.dp) }
+  Writes (2):
+    L9270: capsuleLeftDp = with(density) { localPos.x.toDp() }
+    L9361: capsuleLeftDp = with(density) { localPos.x.toDp() }
+  Reads (1):
+    L9461: .padding(start = capsuleLeftDp, top = 78.dp) // Aligns with the capsule's left edge
+--------------------------------------------------------------------------------
+Line: 8300 | Var: inSettingsSubMenu | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var inSettingsSubMenu by remember { mutableStateOf(false) }
+  Writes (6):
+    L9450: inSettingsSubMenu = false
+    L9482: .clickable { inSettingsSubMenu = false }
+    L9500: inSettingsSubMenu = false
+    L9522: inSettingsSubMenu = false
+    L9541: inSettingsSubMenu = false
+    L9668: .clickable { inSettingsSubMenu = true }
+  Reads (2):
+    L9454: val isSubMenuOpen = inSettingsSubMenu || inMembersSubMenu
+    L9475: if (inSettingsSubMenu) {
+--------------------------------------------------------------------------------
+Line: 8301 | Var: showArchiveView | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var showArchiveView by remember { mutableStateOf(false) }
+  Writes (2):
+    L8376: onDismiss = { showArchiveView = false }
+    L9601: showArchiveView = true
+  Reads (1):
+    L8368: if (showArchiveView) {
+--------------------------------------------------------------------------------
+Line: 8302 | Var: currentMonth | Type: Inferred (java.time.YearMonth.now()) | Owner: VlogScreenContent
+  Declaration: var currentMonth by remember { mutableStateOf(java.time.YearMonth.now()) }
+  Writes (2):
+    L14672: .clickable { currentMonth = currentMonth.minusMonths(1) }
+    L14687: .clickable { currentMonth = currentMonth.plusMonths(1) }
+  Reads (5):
+    L14583: var currentMonth by remember { mutableStateOf(java.time.YearMonth.now()) }
+    L14675: text = "${currentMonth.month.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US)} ${currentMonth.year}",
+    L14709: val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
+    L14710: val daysInMonth = currentMonth.lengthOfMonth()
+    L14729: val date = currentMonth.atDay(dayNum)
+--------------------------------------------------------------------------------
+Line: 8303 | Var: showTripleDotMenu | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var showTripleDotMenu by remember { mutableStateOf(false) }
+  Writes (10):
+    L3518: showTripleDotMenu = true
+    L3749: showTripleDotMenu = showTripleDotMenu,
+    L3750: onShowTripleDotMenuChange = { showTripleDotMenu = it },
+    L3764: showTripleDotMenu = false
+    L3768: showTripleDotMenu = false
+    L8358: showTripleDotMenu = false
+    L8800: .clickable { showTripleDotMenu = true },
+    L9079: showTripleDotMenu = false
+    L9126: showTripleDotMenu = false
+    L9166: showTripleDotMenu = false
+  Reads (8):
+    L1217: var showTripleDotMenu by remember { mutableStateOf(false) }
+    L1827: showTripleDotMenu,
+    L1844: !showTripleDotMenu &&
+    L2845: val isOverlayVisible = showPlusMenu || showTripleDotMenu || showJoinPalFlow || showEditNameDialog
+    L8350: if (showTripleDotMenu) {
+    L9058: if (showTripleDotMenu) {
+    L13993: showTripleDotMenu: Boolean,
+    L14014: if (showTripleDotMenu) {
+--------------------------------------------------------------------------------
+Line: 8304 | Var: isEditingCaption | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var isEditingCaption by remember { mutableStateOf(false) }
+  Writes (4):
+    L8399: isEditingCaption = isEditingCaption,
+    L8400: onIsEditingCaptionChange = { isEditingCaption = it },
+    L8829: isEditingCaption = false
+    L9080: isEditingCaption = true
+  Reads (6):
+    L7592: isEditingCaption: Boolean,
+    L7876: if (isEditingCaption) {
+    L8312: LaunchedEffect(isEditingCaption) {
+    L8313: if (isEditingCaption) {
+    L8730: if (isEditingCaption && page == selectedPageIndex) {
+    L8819: if (isEditingCaption && page == selectedPageIndex) {
+--------------------------------------------------------------------------------
+Line: 8305 | Var: showDeleteVlogConfirmation | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var showDeleteVlogConfirmation by remember { mutableStateOf(false) }
+  Writes (5):
+    L8401: showDeleteVlogConfirmation = showDeleteVlogConfirmation,
+    L8402: onShowDeleteVlogConfirmationChange = { showDeleteVlogConfirmation = it },
+    L9167: showDeleteVlogConfirmation = true
+    L10093: showDeleteVlogConfirmation = showDeleteVlogConfirmation,
+    L10098: onShowDeleteVlogConfirmationChange = { showDeleteVlogConfirmation = it },
+  Reads (3):
+    L7594: showDeleteVlogConfirmation: Boolean,
+    L11953: showDeleteVlogConfirmation: Boolean,
+    L11961: if (!showDeleteVlogConfirmation) return
+--------------------------------------------------------------------------------
+Line: 8306 | Var: savedVlogPaths | Type: Set | Owner: VlogScreenContent
+  Declaration: var savedVlogPaths by remember { mutableStateOf(setOf<String>()) }
+  Writes (1):
+    L9122: savedVlogPaths = savedVlogPaths + currentPath
+  Reads (1):
+    L9072: val isSaved = savedVlogPaths.contains(currentPath) || isDropdownSaved
+--------------------------------------------------------------------------------
+Line: 8307 | Var: editCaptionText | Type: Inferred (androidx.compose.ui.text.input.TextFieldValue("")) | Owner: VlogScreenContent
+  Declaration: var editCaptionText by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
+  Writes (4):
+    L8315: editCaptionText = androidx.compose.ui.text.input.TextFieldValue(
+    L8403: editCaptionText = editCaptionText,
+    L8404: onEditCaptionTextChange = { editCaptionText = it },
+    L8738: onValueChange = { editCaptionText = it },
+  Reads (6):
+    L7596: editCaptionText: androidx.compose.ui.text.input.TextFieldValue,
+    L7904: value = editCaptionText,
+    L7959: onUpdateVlogCaption(userFilteredIndex, editCaptionText.text.trim())
+    L8737: value = editCaptionText,
+    L8758: if (editCaptionText.text.isEmpty()) {
+    L8828: onUpdateVlogCaption(selectedPageIndex, editCaptionText.text.trim())
+--------------------------------------------------------------------------------
+Line: 8309 | Var: isDropdownSaving | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var isDropdownSaving by remember { mutableStateOf(false) }
+  Writes (2):
+    L9099: isDropdownSaving = true
+    L9131: isDropdownSaving = false
+  Reads (2):
+    L9098: if (!isDropdownSaving && !isSaved && currentPath.isNotEmpty()) {
+    L9146: if (isDropdownSaving) {
+--------------------------------------------------------------------------------
+Line: 8310 | Var: isDropdownSaved | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var isDropdownSaved by remember { mutableStateOf(false) }
+  Writes (2):
+    L9121: isDropdownSaved = true
+    L9125: isDropdownSaved = false
+  Reads (1):
+    L9072: val isSaved = savedVlogPaths.contains(currentPath) || isDropdownSaved
+--------------------------------------------------------------------------------
+Line: 8871 | Var: localPosX | Type: Float | Owner: VlogScreenContent
+  Declaration: var localPosX by remember { mutableStateOf(0f) }
+  Writes (2):
+    L8879: localPosX = (widthPx - smileySizePx) / 2f
+    L8929: localPosX = newX
+  Reads (2):
+    L8895: var newX = localPosX + vx * cappedDt
+    L8946: x = with(density) { localPosX.toDp() },
+--------------------------------------------------------------------------------
+Line: 8872 | Var: localPosY | Type: Float | Owner: VlogScreenContent
+  Declaration: var localPosY by remember { mutableStateOf(0f) }
+  Writes (2):
+    L8880: localPosY = (heightPx - smileySizePx) / 2f
+    L8930: localPosY = newY
+  Reads (2):
+    L8896: var newY = localPosY + vy * cappedDt
+    L8947: y = with(density) { localPosY.toDp() }
+--------------------------------------------------------------------------------
+Line: 8873 | Var: localSmileRotation | Type: Float | Owner: VlogScreenContent
+  Declaration: var localSmileRotation by remember { mutableStateOf(0f) }
+  Writes (1):
+    L8932: localSmileRotation = (localSmileRotation + 120f * cappedDt) % 360f
+  Reads (1):
+    L8949: .rotate(localSmileRotation)
+--------------------------------------------------------------------------------
+Line: 8874 | Var: localSmileColorIndex | Type: Int | Owner: VlogScreenContent
+  Declaration: var localSmileColorIndex by remember { mutableStateOf(0) }
+  Writes (1):
+    L8935: localSmileColorIndex = (localSmileColorIndex + 1) % profileColors.size
+  Reads (1):
+    L8951: .background(profileColors[localSmileColorIndex]),
+--------------------------------------------------------------------------------
+Line: 10147 | Var: isExportSavingVideo | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var isExportSavingVideo by remember { mutableStateOf(false) }
+  Writes (2):
+    L10597: isExportSavingVideo = true
+    L10633: isExportSavingVideo = false
+  Reads (3):
+    L10577: if (isExportSavingVideo) {
+    L10596: if (!isExportSavingVideo && !isExportSharingVideo && !isExportSaved && hasItemsToExport) {
+    L10660: if (!isExportSavingVideo && !isExportSharingVideo && hasItemsToExport) {
+--------------------------------------------------------------------------------
+Line: 10148 | Var: isExportSharingVideo | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var isExportSharingVideo by remember { mutableStateOf(false) }
+  Writes (2):
+    L10661: isExportSharingVideo = true
+    L10705: isExportSharingVideo = false
+  Reads (3):
+    L10596: if (!isExportSavingVideo && !isExportSharingVideo && !isExportSaved && hasItemsToExport) {
+    L10642: if (isExportSharingVideo) {
+    L10660: if (!isExportSavingVideo && !isExportSharingVideo && hasItemsToExport) {
+--------------------------------------------------------------------------------
+Line: 10149 | Var: isExportSaved | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var isExportSaved by remember { mutableStateOf(false) }
+  Writes (2):
+    L10625: isExportSaved = true
+    L10628: isExportSaved = false
+  Reads (3):
+    L10585: isSaved = isExportSaved,
+    L10591: label = if (isExportSaved) "saved" else "save",
+    L10596: if (!isExportSavingVideo && !isExportSharingVideo && !isExportSaved && hasItemsToExport) {
+--------------------------------------------------------------------------------
+Line: 10152 | Var: showEditExportSheet | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var showEditExportSheet by remember { mutableStateOf(false) }
+  Writes (3):
+    L10570: showEditExportSheet = true
+    L10724: .clickable { showEditExportSheet = false },
+    L10801: .clickable { showEditExportSheet = false }
+  Reads (1):
+    L10715: if (showEditExportSheet) {
+--------------------------------------------------------------------------------
+Line: 10153 | Var: exportBackground | Type: String | Owner: VlogScreenContent
+  Declaration: var exportBackground by remember { mutableStateOf("black") }
+  Writes (4):
+    L10497: exportBackground = exportBackground,
+    L10620: exportBackground = exportBackground
+    L10684: exportBackground = exportBackground
+    L10753: exportBackground = if (exportBackground == "black") "white" else "black"
+  Reads (4):
+    L10500: textColor = if (exportBackground == "white") Color.Black else Color.White,
+    L10761: append(exportBackground)
+    L15112: exportBackground: String,
+    L15200: .background(if (videoPaths.isNotEmpty()) Color.Black else (if (exportBackground == "white") Color.White else Color.Black)),
+--------------------------------------------------------------------------------
+Line: 10154 | Var: exportMissedText | Type: String | Owner: VlogScreenContent
+  Declaration: var exportMissedText by remember { mutableStateOf("💤") }
+  Writes (4):
+    L10498: exportMissedText = exportMissedText,
+    L10874: exportMissedText = it.text
+    L10914: exportMissedText = tempMissedText
+    L10928: exportMissedText = textVal.text
+  Reads (4):
+    L10774: tempMissedText = exportMissedText
+    L10784: append(exportMissedText)
+    L15113: exportMissedText: String,
+    L15357: text = exportMissedText,
+--------------------------------------------------------------------------------
+Line: 10155 | Var: showMissedTextDialog | Type: Boolean | Owner: VlogScreenContent
+  Declaration: var showMissedTextDialog by remember { mutableStateOf(false) }
+  Writes (4):
+    L10775: showMissedTextDialog = true
+    L10829: .clickable { showMissedTextDialog = false },
+    L10915: showMissedTextDialog = false
+    L10929: showMissedTextDialog = false
+  Reads (1):
+    L10809: if (showMissedTextDialog) {
+--------------------------------------------------------------------------------
+Line: 10156 | Var: tempMissedText | Type: String | Owner: VlogScreenContent
+  Declaration: var tempMissedText by remember { mutableStateOf("💤") }
+  Writes (1):
+    L10774: tempMissedText = exportMissedText
+  Reads (3):
+    L10854: text = tempMissedText,
+    L10855: selection = androidx.compose.ui.text.TextRange(tempMissedText.length)
+    L10914: exportMissedText = tempMissedText
+--------------------------------------------------------------------------------
+Line: 10242 | Var: exportActiveIndex | Type: Int | Owner: VlogScreenContent
+  Declaration: var exportActiveIndex by remember { mutableStateOf(0) }
+  Writes (1):
+    L10277: exportActiveIndex = exportLocalPlayer.currentMediaItemIndex
+  Reads (1):
+    L10380: val originalIndex = (capturedVlogsPaths.lastIndex - exportActiveIndex).coerceIn(0, capturedVlogsPaths.lastIndex.coerceAtLeast(0))
+--------------------------------------------------------------------------------
+Line: 10852 | Var: textVal | Type: Unknown | Owner: VlogScreenContent
+  Declaration: mutableStateOf(
+  Writes (1):
+    L10873: textVal = it
+  Reads (3):
+    L10851: var textVal by remember {
+    L10871: value = textVal,
+    L10928: exportMissedText = textVal.text
+--------------------------------------------------------------------------------
+Line: 11339 | Var: isCameraGranted | Type: Unknown | Owner: PermissionsScreen
+  Declaration: mutableStateOf(
+  Writes (1):
+    L11400: isCameraGranted = true
+  Reads (4):
+    L11338: var isCameraGranted by remember {
+    L11370: if (!isCameraGranted) 1
+    L11451: if (isCameraGranted) {
+    L11544: if (isCameraGranted && isMicrophoneGranted && isStorageGranted) {
+--------------------------------------------------------------------------------
+Line: 11347 | Var: isMicrophoneGranted | Type: Unknown | Owner: PermissionsScreen
+  Declaration: mutableStateOf(
+  Writes (1):
+    L11391: isMicrophoneGranted = true
+  Reads (4):
+    L11346: var isMicrophoneGranted by remember {
+    L11371: else if (!isMicrophoneGranted) 2
+    L11486: if (isMicrophoneGranted) {
+    L11544: if (isCameraGranted && isMicrophoneGranted && isStorageGranted) {
+--------------------------------------------------------------------------------
+Line: 11361 | Var: isStorageGranted | Type: Unknown | Owner: PermissionsScreen
+  Declaration: mutableStateOf(
+  Writes (1):
+    L11381: isStorageGranted = true
+  Reads (4):
+    L11360: var isStorageGranted by remember {
+    L11372: else if (!isStorageGranted) 3
+    L11514: if (isStorageGranted) {
+    L11544: if (isCameraGranted && isMicrophoneGranted && isStorageGranted) {
+--------------------------------------------------------------------------------
+Line: 11369 | Var: permissionSubStep | Type: Unknown | Owner: PermissionsScreen
+  Declaration: mutableStateOf(
+  Writes (3):
+    L11382: permissionSubStep = 4
+    L11392: permissionSubStep = 3
+    L11401: permissionSubStep = 2
+  Reads (5):
+    L11368: var permissionSubStep by remember {
+    L11459: } else if (permissionSubStep == 1) {
+    L11494: } else if (permissionSubStep == 2) {
+    L11522: } else if (permissionSubStep == 3) {
+    L11561: when (permissionSubStep) {
+--------------------------------------------------------------------------------
+Line: 11577 | Var: bitmap | Type: android.graphics.Bitmap? | Owner: VideoThumbnail
+  Declaration: var bitmap by remember(videoPath) { mutableStateOf<android.graphics.Bitmap?>(null) }
+  Writes (5):
+    L203: val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+    L543: val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    L574: bitmap = imageBitmap!!,
+    L11590: bitmap = bmp
+    L11605: bitmap = bitmap!!.asImageBitmap(),
+  Reads (6):
+    L204: if (bitmap != null) {
+    L207: bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, outputStream)
+    L209: bitmap.recycle()
+    L564: if (bitmap != null) {
+    L565: imageBitmap = bitmap.asImageBitmap()
+    L11603: if (bitmap != null) {
+--------------------------------------------------------------------------------
+Line: 11643 | Var: resolvedPaths | Type: List<String | Owner: VideoPlayerItem
+  Declaration: var resolvedPaths by remember(videoPaths) { mutableStateOf<List<String>>(emptyList()) }
+  Writes (3):
+    L10601: val resolvedPaths = pathsToProcess.map { path ->
+    L10665: val resolvedPaths = pathsToProcess.map { path ->
+    L11651: resolvedPaths = list
+  Reads (8):
+    L10606: val vlogsToProcess = if (pal.isVlog) List(resolvedPaths.size) { "vlog" } else {
+    L10614: inputPaths = resolvedPaths,
+    L10670: val vlogsToProcess = if (pal.isVlog) List(resolvedPaths.size) { "vlog" } else {
+    L10678: inputPaths = resolvedPaths,
+    L11644: var isVideoReady by remember(resolvedPaths) { mutableStateOf(false) }
+    L11654: val localPlayer = remember(resolvedPaths) {
+    L11655: if (resolvedPaths.isEmpty()) null else {
+    L11677: resolvedPaths.forEach { resolvedPath ->
+--------------------------------------------------------------------------------
+Line: 11644 | Var: isVideoReady | Type: Boolean | Owner: VideoPlayerItem
+  Declaration: var isVideoReady by remember(resolvedPaths) { mutableStateOf(false) }
+  Writes (4):
+    L11663: isVideoReady = true
+    L11668: isVideoReady = true
+    L11673: isVideoReady = true
+    L11700: isVideoReady = true
+  Reads (1):
+    L11798: if (!isVideoReady) {
+--------------------------------------------------------------------------------
+Line: 11823 | Var: isPlaying | Type: Boolean | Owner: VoiceNotePlayerItem
+  Declaration: var isPlaying by remember { mutableStateOf(false) }
+  Writes (3):
+    L11853: isPlaying = false
+    L11894: isPlaying = false
+    L11897: isPlaying = true
+  Reads (13):
+    L6213: if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+    L8605: if (!localPlayer.isPlaying && localPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+    L11666: override fun onIsPlayingChanged(isPlaying: Boolean) {
+    L11667: if (isPlaying) {
+    L11699: if (playbackState == androidx.media3.common.Player.STATE_READY || isPlaying) {
+    L11860: LaunchedEffect(isPlaying) {
+    L11861: if (isPlaying) {
+    L11862: while (isPlaying) {
+    L11892: if (isPlaying) {
+    L11906: text = if (isPlaying) "⏸" else "▶",
+    ... and 3 more
+--------------------------------------------------------------------------------
+Line: 11824 | Var: progress | Type: Float | Owner: VoiceNotePlayerItem
+  Declaration: var progress by remember { mutableStateOf(0f) }
+  Writes (2):
+    L11854: progress = 0f
+    L11864: progress = (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+  Reads (16):
+    L5433: val progress by androidx.compose.animation.core.animateFloatAsState(
+    L5447: val trayLeftX = lerp(0.25f, 5f / 24f, progress) * w
+    L5448: val trayRightX = lerp(0.75f, 19f / 24f, progress) * w
+    L5449: val trayY = lerp(0.8f, 19f / 24f, progress) * h
+    L5461: val stemAlpha = (1f - progress).coerceIn(0f, 1f)
+    L5464: val stemBottomY = lerp(h * 0.65f, 16f / 24f * h, progress)
+    L5465: val stemX = lerp(w / 2f, 9.55f / 24f * w, progress)
+    L5476: val leftStartPointX = lerp(w / 2f, 9.55f / 24f * w, progress)
+    L5477: val leftStartPointY = lerp(h * 0.65f, 16f / 24f * h, progress)
+    L5478: val leftEndPointX = lerp(w * 0.3f, 3.88f / 24f * w, progress)
+    ... and 6 more
+--------------------------------------------------------------------------------
+Line: 11825 | Var: duration | Type: Int | Owner: VoiceNotePlayerItem
+  Declaration: var duration by remember { mutableStateOf(1) }
+  Writes (5):
+    L1605: val duration = capturedVlogsDurations.getOrNull(idx) ?: "2000"
+    L1670: val duration = capturedVlogsDurations.getOrNull(idx) ?: "2000"
+    L1789: val duration = vlogExoPlayer.duration
+    L2013: val duration = parts.getOrNull(2) ?: "2000"
+    L11850: duration = mp.duration.coerceAtLeast(1)
+  Reads (8):
+    L1625: imageUrl = "$path|||$caption|||$duration",
+    L1690: imageUrl = "$path|||$caption|||$duration",
+    L1791: if (duration > 0) {
+    L1792: vlogPlaybackProgress = (position.toFloat() / duration).coerceIn(0f, 1f)
+    L2038: durations.add(duration)
+    L3682: onCaptureSuccess = { path, duration ->
+    L3684: capturedVideoDuration = duration
+    L11864: progress = (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+--------------------------------------------------------------------------------
+Line: 11826 | Var: currentPosition | Type: Int | Owner: VoiceNotePlayerItem
+  Declaration: var currentPosition by remember { mutableStateOf(0) }
+  Writes (2):
+    L11855: currentPosition = 0
+    L11863: currentPosition = mediaPlayer.currentPosition
+  Reads (2):
+    L1790: val position = vlogExoPlayer.currentPosition
+    L11864: progress = (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+--------------------------------------------------------------------------------
+Line: 12070 | Var: replyInput | Type: String | Owner: ReplyPreviewOverlay
+  Declaration: var replyInput by remember { mutableStateOf("") }
+  Writes (1):
+    L12149: onValueChange = { replyInput = it },
+  Reads (4):
+    L12148: value = replyInput,
+    L12159: if (replyInput.isEmpty()) {
+    L12172: val isReplyValid = replyInput.trim().isNotEmpty()
+    L12179: onSendReply(videoPath, replyInput.trim())
+--------------------------------------------------------------------------------
+Line: 12418 | Var: messageInput | Type: String | Owner: PalChatOverlay
+  Declaration: var messageInput by remember { mutableStateOf("") }
+  Writes (2):
+    L12985: onValueChange = { messageInput = it },
+    L13016: messageInput = ""
+  Reads (4):
+    L12984: value = messageInput,
+    L12995: if (messageInput.isEmpty()) {
+    L13008: val isInputValid = messageInput.trim().isNotEmpty()
+    L13015: onSendMessage(messageInput.trim())
+--------------------------------------------------------------------------------
+Line: 12421 | Var: currentEmojis | Type: Inferred (defaultEmojis.take(5)) | Owner: PalChatOverlay
+  Declaration: var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }
+  Writes (2):
+    L7145: currentEmojis = defaultEmojis.shuffled().take(5)
+    L12881: currentEmojis = defaultEmojis.shuffled().take(5)
+  Reads (3):
+    L6860: var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }
+    L7127: currentEmojis.forEach { emoji ->
+    L12861: currentEmojis.forEach { emoji ->
+--------------------------------------------------------------------------------
+Line: 12506 | Var: showEmojiOverlayForPath | Type: String? | Owner: PalChatOverlay
+  Declaration: var showEmojiOverlayForPath by remember { mutableStateOf<String?>(null) }
+  Writes (3):
+    L12786: showEmojiOverlayForPath = feedItem.path
+    L12850: showEmojiOverlayForPath = null
+    L12868: showEmojiOverlayForPath = null
+  Reads (2):
+    L12841: if (showEmojiOverlayForPath != null) {
+    L12842: val path = showEmojiOverlayForPath!!
+--------------------------------------------------------------------------------
+Line: 13192 | Var: isFocused | Type: Boolean | Owner: JoinPalDialogOverlay
+  Declaration: var isFocused by remember { mutableStateOf(false) }
+  Writes (1):
+    L13352: isFocused = it.isFocused
+  Reads (4):
+    L10886: if (focusState.isFocused) {
+    L13194: targetValue = if (isFocused) 0f else 1f,
+    L13241: .padding(horizontal = 16.dp, vertical = if (isFocused) 0.dp else 24.dp)
+    L13353: if (it.isFocused) {
+--------------------------------------------------------------------------------
+Line: 13709 | Var: isSaving | Type: Boolean | Owner: CreatePalDialogOverlay
+  Declaration: var isSaving by remember { mutableStateOf(false) }
+  Writes (1):
+    L13980: isSaving = true
+  Reads (9):
+    L13712: if (!isCreatingPal && !isSaving) {
+    L13739: .clickable(enabled = !isSaving) {
+    L13772: .clickable(enabled = isFormValid && !isSaving) {
+    L13831: enabled = !isSaving,
+    L13880: .clickable(enabled = !isSaving) { onNewPalSizeChange(size) },
+    L13912: .clickable(enabled = !isSaving) { onNewPalSizeChange(size) },
+    L13957: .clickable(enabled = !isSaving) {
+    L13972: text = if (isSaving) "creating..." else "done →",
+    L13979: .clickable(enabled = !isSaving) {
+--------------------------------------------------------------------------------
+Line: 14583 | Var: currentMonth | Type: Inferred (java.time.YearMonth.now()) | Owner: VlogArchiveCard
+  Declaration: var currentMonth by remember { mutableStateOf(java.time.YearMonth.now()) }
+  Writes (2):
+    L14672: .clickable { currentMonth = currentMonth.minusMonths(1) }
+    L14687: .clickable { currentMonth = currentMonth.plusMonths(1) }
+  Reads (5):
+    L8302: var currentMonth by remember { mutableStateOf(java.time.YearMonth.now()) }
+    L14675: text = "${currentMonth.month.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US)} ${currentMonth.year}",
+    L14709: val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
+    L14710: val daysInMonth = currentMonth.lengthOfMonth()
+    L14729: val date = currentMonth.atDay(dayNum)
+--------------------------------------------------------------------------------
+Line: 14863 | Var: groupPosX | Type: Float | Owner: VlogEmptyStateContent
+  Declaration: var groupPosX by remember { mutableStateOf(0f) }
+  Writes (6):
+    L7184: groupPosX = (widthPx - smileySizePx) / 2f
+    L7234: groupPosX = newX
+    L7393: groupPosX = (widthPx - smileySizePx) / 2f
+    L7443: groupPosX = newX
+    L14870: groupPosX = (widthPx - smileySizePx) / 2f
+    L14920: groupPosX = newX
+  Reads (8):
+    L7177: var groupPosX by remember { mutableStateOf(0f) }
+    L7200: var newX = groupPosX + vx * cappedDt
+    L7250: x = with(density) { groupPosX.toDp() },
+    L7386: var groupPosX by remember { mutableStateOf(0f) }
+    L7409: var newX = groupPosX + vx * cappedDt
+    L7460: x = with(density) { groupPosX.toDp() },
+    L14886: var newX = groupPosX + vx * cappedDt
+    L14936: x = with(density) { groupPosX.toDp() },
+--------------------------------------------------------------------------------
+Line: 14864 | Var: groupPosY | Type: Float | Owner: VlogEmptyStateContent
+  Declaration: var groupPosY by remember { mutableStateOf(0f) }
+  Writes (6):
+    L7185: groupPosY = (heightPx - smileySizePx) / 2f
+    L7235: groupPosY = newY
+    L7394: groupPosY = (heightPx - smileySizePx) / 2f
+    L7444: groupPosY = newY
+    L14871: groupPosY = (heightPx - smileySizePx) / 2f
+    L14921: groupPosY = newY
+  Reads (8):
+    L7178: var groupPosY by remember { mutableStateOf(0f) }
+    L7201: var newY = groupPosY + vy * cappedDt
+    L7251: y = with(density) { groupPosY.toDp() }
+    L7387: var groupPosY by remember { mutableStateOf(0f) }
+    L7410: var newY = groupPosY + vy * cappedDt
+    L7461: y = with(density) { groupPosY.toDp() }
+    L14887: var newY = groupPosY + vy * cappedDt
+    L14937: y = with(density) { groupPosY.toDp() }
+--------------------------------------------------------------------------------
+Line: 14865 | Var: groupSmileRotation | Type: Float | Owner: VlogEmptyStateContent
+  Declaration: var groupSmileRotation by remember { mutableStateOf(0f) }
+  Writes (3):
+    L7237: groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+    L7446: groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+    L14923: groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
+  Reads (5):
+    L7179: var groupSmileRotation by remember { mutableStateOf(0f) }
+    L7253: .rotate(groupSmileRotation)
+    L7388: var groupSmileRotation by remember { mutableStateOf(0f) }
+    L7463: .rotate(groupSmileRotation)
+    L14939: .rotate(groupSmileRotation)
+--------------------------------------------------------------------------------
+Line: 14866 | Var: groupSmileColorIndex | Type: Int | Owner: VlogEmptyStateContent
+  Declaration: var groupSmileColorIndex by remember { mutableStateOf(0) }
+  Writes (3):
+    L7240: groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
+    L7449: groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
+    L14926: groupSmileColorIndex = (groupSmileColorIndex + 1) % profileColors.size
+  Reads (5):
+    L7180: var groupSmileColorIndex by remember { mutableStateOf(0) }
+    L7255: .background(shufflingColors[groupSmileColorIndex]),
+    L7389: var groupSmileColorIndex by remember { mutableStateOf(0) }
+    L7465: .background(shufflingColors[groupSmileColorIndex]),
+    L14941: .background(profileColors[groupSmileColorIndex]),
+--------------------------------------------------------------------------------

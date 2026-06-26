@@ -1,5 +1,11 @@
 package com.finrein.pals.presentation.home
 
+import com.finrein.pals.domain.model.PalItem
+import com.finrein.pals.domain.model.MessageDbItem
+import com.finrein.pals.domain.model.SubmissionDbItem
+import com.finrein.pals.domain.model.UserPalMapping
+import com.finrein.pals.domain.model.PalDbItem
+import com.finrein.pals.domain.model.VlogRecord
 import android.os.Build
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
@@ -313,13 +319,7 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
     }
 }
 
-@Serializable
-data class VlogRecord(
-    @SerialName("user_id") val user_id: String,
-    @SerialName("pal_code") val pal_code: String,
-    @SerialName("video_url") val video_url: String,
-    @SerialName("captured_at") val captured_at: String
-)
+
 
 suspend fun sendVideoPalToVlog(context: android.content.Context, localUri: android.net.Uri, userId: String, palCode: String) {
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -361,71 +361,44 @@ suspend fun deleteVlogPostPermanently(userId: String, videoUrl: String, palCode:
     }
 }
 
-@Serializable
-data class PalDbItem(
-    @SerialName("pal_code") val code: String,
-    val name: String,
-    val size: String? = null,
-    @SerialName("created_at") val createdAt: String? = null
-)
 
-@Serializable
-data class UserPalMapping(
-    val id: String? = null,
-    @SerialName("user_id") val userId: String,
-    @SerialName("pal_code") val palCode: String,
-    @SerialName("user_display_name") val userDisplayName: String? = null,
-    @SerialName("user_avatar_url") val userAvatarUrl: String? = null,
-    @SerialName("joined_at") val createdAt: String? = null
-)
 
-@Serializable
-data class SubmissionDbItem(
-    val id: String? = null,
-    @SerialName("pal_code") val palCode: String,
-    @SerialName("user_id") val userId: String,
-    @SerialName("user_display_name") val userDisplayName: String,
-    @SerialName("image_url") val imageUrl: String,
-    @SerialName("created_at") val createdAt: String? = null
-) {
-    fun getHourBucket(): Int {
-        val dateStr = createdAt ?: return 0
-        return try {
-            val instant = java.time.Instant.parse(dateStr)
-            instant.atZone(java.time.ZoneId.systemDefault()).hour
-        } catch (e: Exception) {
-            try {
-                java.time.ZonedDateTime.parse(dateStr).withZoneSameInstant(java.time.ZoneId.systemDefault()).hour
-            } catch (e2: Exception) {
-                try {
-                    java.time.LocalDateTime.parse(dateStr).hour
-                } catch (e3: Exception) {
-                    0
-                }
-            }
-        }
+class HomeViewModelMapWrapper(
+    private val stateProvider: () -> Map<String, List<MessageDbItem>>,
+    private val onPut: (String, List<MessageDbItem>) -> Unit,
+    private val onRemove: (String) -> Unit
+) : MutableMap<String, List<MessageDbItem>> {
+    override val entries: MutableSet<MutableMap.MutableEntry<String, List<MessageDbItem>>>
+        get() = throw UnsupportedOperationException()
+    override val keys: MutableSet<String>
+        get() = stateProvider().keys.toMutableSet()
+    override val size: Int
+        get() = stateProvider().size
+    override val values: MutableCollection<List<MessageDbItem>>
+        get() = stateProvider().values.toMutableList()
+    override fun clear() {
+        throw UnsupportedOperationException()
     }
+    override fun isEmpty(): Boolean = stateProvider().isEmpty()
+    override fun remove(key: String): List<MessageDbItem>? {
+        val old = stateProvider()[key]
+        onRemove(key)
+        return old
+    }
+    override fun putAll(from: Map<out String, List<MessageDbItem>>) {
+        from.forEach { (k, v) -> put(k, v) }
+    }
+    override fun put(key: String, value: List<MessageDbItem>): List<MessageDbItem>? {
+        val old = stateProvider()[key]
+        onPut(key, value)
+        return old
+    }
+    override fun get(key: String): List<MessageDbItem>? {
+        return stateProvider()[key]
+    }
+    override fun containsValue(value: List<MessageDbItem>): Boolean = stateProvider().containsValue(value)
+    override fun containsKey(key: String): Boolean = stateProvider().containsKey(key)
 }
-
-@Serializable
-data class MessageDbItem(
-    val id: String? = null,
-    @SerialName("pal_code") val palCode: String,
-    @SerialName("user_id") val userId: String,
-    @SerialName("message_text") val messageText: String,
-    @SerialName("created_at") val createdAt: String? = null
-) {
-    val senderName: String get() = userId
-    val content: String get() = messageText
-}
-
-data class PalItem(
-    val name: String,
-    val size: String,
-    val code: String,
-    val isVlog: Boolean = false,
-    val isCreator: Boolean = true
-)
 
 data class UserItem(
     val userId: String,
@@ -1089,7 +1062,8 @@ fun HomeScreen(
     authRepository: com.finrein.pals.domain.repository.AuthRepository,
     onSignOut: () -> Unit,
     onDeleteAccount: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: com.finrein.pals.presentation.home.HomeViewModel
 ) {
     val isDark by rememberUpdatedState(isSystemInDarkTheme())
     val context = LocalContext.current
@@ -1379,31 +1353,6 @@ fun HomeScreen(
         }
     }
 
-    var createdPals by remember(currentUserId) {
-        val saved = getVlogPrefs(context).getString("created_pals", "") ?: ""
-        val initialList = if (saved.isEmpty()) {
-            listOf(PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true))
-        } else {
-            saved.split(";;;").mapNotNull { s ->
-                val parts = s.split(":")
-                if (parts.size < 5) null else {
-                    PalItem(
-                        name = parts[0].replace("\\:", ":"),
-                        size = parts[1],
-                        code = parts[2],
-                        isVlog = parts[3].toBoolean(),
-                        isCreator = parts[4].toBoolean()
-                    )
-                }
-            }
-        }
-        mutableStateOf(initialList)
-    }
-
-    LaunchedEffect(createdPals) {
-        val serialized = createdPals.joinToString(";;;") { "${it.name.replace(":", "\\:")}:${it.size}:${it.code}:${it.isVlog}:${it.isCreator}" }
-        getVlogPrefs(context).edit().putString("created_pals", serialized).apply()
-    }
 
     val groupDatabase = remember {
         mutableStateMapOf<String, PalItem>().apply {
@@ -1525,11 +1474,57 @@ fun HomeScreen(
     var showLeavePalDialog by remember { mutableStateOf(false) }
     var showVlogExportDialog by remember { mutableStateOf(false) }
     val palPalsCount = remember { mutableStateMapOf<String, Int>() }
-    val palMessages = remember { mutableStateMapOf<String, List<MessageDbItem>>() }
+    val palMessagesState = viewModel.palMessages.collectAsState()
+    val palMessages = remember(viewModel) {
+        HomeViewModelMapWrapper(
+            stateProvider = { palMessagesState.value },
+            onPut = { key, value -> viewModel.updatePalMessages(key, value) },
+            onRemove = { key -> viewModel.removePalMessages(key) }
+        )
+    }
     val allPalsSubmissions = remember { mutableStateMapOf<String, List<SubmissionDbItem>>() }
     val allPalsMessages = remember { mutableStateMapOf<String, List<MessageDbItem>>() }
     val allPalsMembers = remember { mutableStateMapOf<String, List<String>>() }
     val locallyDeletedPals = remember { mutableStateMapOf<String, Boolean>() }
+
+    val createdPalsState = viewModel.createdPals.collectAsState()
+    var createdPals by remember(viewModel) {
+        object : MutableState<List<PalItem>> {
+            override var value: List<PalItem>
+                get() = createdPalsState.value.filterNot { locallyDeletedPals.containsKey(it.code) }
+                set(value) {
+                    viewModel.updateCreatedPals(value)
+                }
+            override fun component1(): List<PalItem> = value
+            override fun component2(): (List<PalItem>) -> Unit = { value = it }
+        }
+    }
+
+    LaunchedEffect(createdPals) {
+        val serialized = createdPals.joinToString(";;;") { "${it.name.replace(":", "\\:")}:${it.size}:${it.code}:${it.isVlog}:${it.isCreator}" }
+        getVlogPrefs(context).edit().putString("created_pals", serialized).apply()
+    }
+
+    LaunchedEffect(currentUserId) {
+        val saved = getVlogPrefs(context).getString("created_pals", "") ?: ""
+        val initialList = if (saved.isEmpty()) {
+            listOf(PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true))
+        } else {
+            saved.split(";;;").mapNotNull { s ->
+                val parts = s.split(":")
+                if (parts.size < 5) null else {
+                    PalItem(
+                        name = parts[0].replace("\\:", ":"),
+                        size = parts[1],
+                        code = parts[2],
+                        isVlog = parts[3].toBoolean(),
+                        isCreator = parts[4].toBoolean()
+                    )
+                }
+            }
+        }
+        viewModel.updateCreatedPals(initialList)
+    }
     val locallyDeletedSubmissions = remember { mutableStateMapOf<String, Boolean>() }
     val pendingProfileInserts = remember { mutableStateMapOf<String, Boolean>() }
     var selectedDayOffset by remember { mutableStateOf(0) }
@@ -1900,45 +1895,7 @@ fun HomeScreen(
         coroutineScope.launch {
             try {
                 isRefreshing = true
-                
-                // 🚀 Replaces all sequential client queries with one single database transaction
-                val rawResponseString = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    supabaseClient.postgrest.rpc(
-                        function = "get_clean_homescreen_dashboard",
-                        parameters = mapOf("current_user_uuid" to currentUserId)
-                    ).data
-                }
-
-                // Parse unified payload array
-                val jsonObject = kotlinx.serialization.json.Json.parseToJsonElement(rawResponseString).jsonObject
-                val vlogBoxSize = jsonObject["vlog_box_size"]?.jsonPrimitive?.content ?: ""
-                val groupsArray = jsonObject["groups"]?.jsonArray ?: kotlinx.serialization.json.JsonArray(emptyList())
-
-                val defaultVlog = PalItem(
-                    name = "vlog",
-                    size = vlogBoxSize, 
-                    code = "vlog",
-                    isVlog = true,
-                    isCreator = false
-                )
-
-                val mappedPals = groupsArray.map { element ->
-                    val obj = element.jsonObject
-                    PalItem(
-                        name = obj["name"]?.jsonPrimitive?.content ?: "",
-                        size = obj["size"]?.jsonPrimitive?.content ?: "1",
-                        code = obj["code"]?.jsonPrimitive?.content ?: "",
-                        isVlog = false,
-                        isCreator = obj["is_creator"]?.jsonPrimitive?.boolean ?: false
-                    )
-                }
-
-                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    createdPals = (listOf(defaultVlog) + mappedPals)
-                        .distinctBy { it.code }
-                        .filterNot { locallyDeletedPals.containsKey(it.code) }
-                }
-
+                viewModel.refreshPals(currentUserId)
             } catch (e: Exception) {
                 android.util.Log.e("RPC_Dashboard_Error", "Transaction request bypassed: ${e.message}")
             } finally {
@@ -2243,20 +2200,7 @@ fun HomeScreen(
         if (currentUserId.isEmpty() || palCode == "vlog") return
         coroutineScope.launch {
             try {
-                val dbMessages = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    supabaseClient.postgrest.from("messages")
-                        .select {
-                            filter {
-                                eq("pal_code", palCode)
-                            }
-                            order(column = "created_at", order = io.github.jan.supabase.postgrest.query.Order.ASCENDING)
-                        }
-                        .decodeList<MessageDbItem>()
-                }
-                val oldMsgs = palMessages[palCode] ?: emptyList()
-                if (oldMsgs != dbMessages) {
-                    palMessages[palCode] = dbMessages
-                }
+                viewModel.refreshMessages(palCode)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
