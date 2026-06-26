@@ -2406,17 +2406,25 @@ fun HomeScreen(
                     // Ignore if already exists or RLS blocks
                 }
             }
-            refreshPals()
-            refreshVlogs()
-            initialSyncCompleted = true
-        }
-    }
-
-    LaunchedEffect(createdPals, currentDisplayName) {
-        createdPals.forEach { pal ->
-            if (!pal.isVlog) {
-                refreshActivePalDetails(pal.code)
+            
+            // ⚡ CLEAN STARTUP: No separate POST/GET/PATCH spams allowed
+            try {
+                // 1. Let the database handle the homescreen setup in 1 single network hop
+                refreshPals() 
+                
+                // 2. Load your group-specific or user-specific details cleanly
+                refreshVlogs()
+                
+                activeVlogPal?.code?.let { code ->
+                    if (code != "vlog") {
+                        refreshActivePalDetails(code)
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("StartupSync", "Clean launch bypassed: ${e.message}")
             }
+            
+            initialSyncCompleted = true
         }
     }
 
@@ -3806,80 +3814,47 @@ fun HomeScreen(
             onSaveGroupClick = { newGroupName, _ ->
                 coroutineScope.launch {
                     try {
-                        // ⚡ THE FIX: Instantly empty Pals cached metrics before hitting database pipelines
+                        // 1. Immediately wipe historical collections locally to keep things clean
                         activeHourSubmissions = emptyMap()
                         dailyHourHistoryMap = emptyMap()
                         exportMenuDataState = emptyMap()
-                        allPalsMessages.clear() // Clear group chats only
+                        allPalsMessages.clear()
 
-                        var insertionSuccessful = false
-                        var finalGeneratedCode = ""
-                        var retryCount = 0
-                        val maxRetries = 5
-
-                        // 🔄 Auto-Check Loop: Keeps regenerating a unique code if a 409 conflict hits
                         withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            while (!insertionSuccessful && retryCount < maxRetries) {
-                                // Generate a fresh random alphanumeric string for the room
-                                finalGeneratedCode = (1..6)
-                                    .map { (('a'..'z') + ('0'..'9')).random() }
-                                    .joinToString("")
+                            // 2. Ask the database to generate a guaranteed unique group string code natively
+                            val uniqueServerCode = supabaseClient.postgrest.rpc("generate_unique_pal_code").data.trim('"')
 
-                                try {
-                                    val newPalDb = PalDbItem(code = finalGeneratedCode, name = newGroupName)
-                                    
-                                    // Try inserting the new group definition record (using insert to detect collision)
-                                    supabaseClient.postgrest.from("pals").insert(newPalDb)
-                                    
-                                    // Map the creator account membership status safely
-                                    val newMapping = UserPalMapping(
-                                        userId = currentUserId,
-                                        palCode = finalGeneratedCode,
-                                        userDisplayName = currentDisplayName,
-                                        userAvatarUrl = customAvatarUriString
-                                    )
-                                    supabaseClient.postgrest.from("user_pals").insert(newMapping)
-                                    
-                                    insertionSuccessful = true // Breaks the loop naturally
-                                    
-                                } catch (restException: io.github.jan.supabase.exceptions.RestException) {
-                                    // 🛡️ Catch unique constraint violations (409 / 23505) safely
-                                    val errorMsg = restException.message ?: ""
-                                    if (errorMsg.contains("409") || errorMsg.contains("23505") || errorMsg.contains("conflict") || errorMsg.contains("duplicate")) {
-                                        retryCount++
-                                        android.util.Log.w("CodeCollisionGuard", "Collision on '$finalGeneratedCode'. Regenerating new code (Attempt $retryCount)...")
-                                    } else {
-                                        throw restException // Pass any other error (like connection failure) out to main catch
-                                    }
-                                }
-                            }
-                        }
-
-                        // 2. Refresh the UI elements using the successfully verified group code context
-                        if (insertionSuccessful) {
-                            val freshPalItem = PalItem(
-                                name = newGroupName,
-                                size = "1", 
-                                code = finalGeneratedCode,
-                                isVlog = false,
-                                isCreator = true
+                            // 3. Perform insertions using the verified server code token string
+                            val newPalDb = PalDbItem(code = uniqueServerCode, name = newGroupName)
+                            supabaseClient.postgrest.from("pals").insert(newPalDb)
+                            
+                            val newMapping = UserPalMapping(
+                                userId = currentUserId,
+                                palCode = uniqueServerCode,
+                                userDisplayName = currentDisplayName,
+                                userAvatarUrl = customAvatarUriString
                             )
-                            activeVlogPal = freshPalItem
+                            supabaseClient.postgrest.from("user_pals").insert(newMapping)
 
+                            // 4. Update memory pointers on the Main thread using the finalized code
                             withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                val freshPalItem = PalItem(
+                                    name = newGroupName,
+                                    size = "1", 
+                                    code = uniqueServerCode,
+                                    isVlog = false,
+                                    isCreator = true
+                                )
+                                activeVlogPal = freshPalItem
+                                
                                 createdPals = (createdPals + freshPalItem).distinctBy { it.code }
-                                refreshPals() // Rebuild main sidebar panel map records
-                                refreshActivePalDetails(finalGeneratedCode)
-                            }
-                        } else {
-                            android.util.Log.e("GroupCreationError", "Failed to clear unique allocation spaces after max retries.")
-                            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                android.widget.Toast.makeText(context, "Failed to generate unique group code. Please try again.", android.widget.Toast.LENGTH_SHORT).show()
+                                refreshPals() // Triggers your single-shot RPC dashboard function
+                                refreshActivePalDetails(uniqueServerCode)
                             }
                         }
                         
                     } catch (e: Exception) {
-                        android.util.Log.e("GroupCreationGuard", "Pipeline execution error handled safely: ${e.message}")
+                        android.util.Log.e("UniqueGroupCreation", "Server side generation aborted safely: ${e.message}")
                         withContext(kotlinx.coroutines.Dispatchers.Main) {
                             android.widget.Toast.makeText(context, "Failed to create group: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
                         }
