@@ -91,6 +91,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.CornerRadius
@@ -4521,24 +4524,50 @@ fun CameraScreenContent(
                 .padding(bottom = cameraFrameBottomPadding)
                 .width(cameraWidth)
                 .height(cameraHeight)
-                .clip(cameraViewShape)
-                .border(
-                    BorderStroke(width = 1.5.dp, color = selectedProfileColor),
-                    shape = cameraViewShape
-                )
+                // Draw the ambient outer glow behind the camera frame (not clipped!)
+                .drawBehind {
+                    drawIntoCanvas { canvas ->
+                        val paint = android.graphics.Paint().apply {
+                            isAntiAlias = true
+                            color = selectedProfileColor.toArgb()
+                            style = android.graphics.Paint.Style.STROKE
+                            strokeWidth = 1.5.dp.toPx()
+                            setShadowLayer(
+                                16.dp.toPx(), // Soft outer glow spread
+                                0f, 0f,
+                                selectedProfileColor.copy(alpha = 0.8f).toArgb() // Bright, rich neon glow opacity!
+                            )
+                        }
+                        val path = android.graphics.Path().apply {
+                            val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
+                            val rx = 32.dp.toPx() * scale
+                            addRoundRect(rect, rx, rx, android.graphics.Path.Direction.CW)
+                        }
+                        canvas.nativeCanvas.drawPath(path, paint)
+                    }
+                }
         ) {
-            GlassmorphicCard(
-                modifier = Modifier.fillMaxSize(),
-                borderRadius = 32.dp * scale,
-                isDark = isDark,
-                gradientColors = if (isDark) listOf(Color(0xFF161616), Color(0xFF161616)) else listOf(Color(0xFFEBEBEB), Color(0xFFEBEBEB)),
-                borderColor = Color.Transparent
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(cameraViewShape)
+                    .border(
+                        BorderStroke(width = 1.5.dp, color = selectedProfileColor),
+                        shape = cameraViewShape
+                    )
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(cameraViewShape)
+                GlassmorphicCard(
+                    modifier = Modifier.fillMaxSize(),
+                    borderRadius = 32.dp * scale,
+                    isDark = isDark,
+                    gradientColors = if (isDark) listOf(Color(0xFF161616), Color(0xFF161616)) else listOf(Color(0xFFEBEBEB), Color(0xFFEBEBEB)),
+                    borderColor = Color.Transparent
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(cameraViewShape)
+                    ) {
                     // Actual Camera Preview Feed!
                     CameraPreview(
                         modifier = Modifier.fillMaxSize(),
@@ -4762,6 +4791,7 @@ fun CameraScreenContent(
                 }
             }
         }
+    }
 
         // Capture Button (R.drawable.capture_smile) centered on the bottom border of 9:16 frame exactly half-in, half-out
         Box(

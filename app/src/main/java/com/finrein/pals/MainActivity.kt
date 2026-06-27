@@ -229,57 +229,71 @@ fun DynamicGlowScreenContainer(
         else -> Color(0xFFFFE600)
     }
 
-    // Concentric correction: if screen radius is R, and we have padding of 4.dp,
-    // the inner border radius should be R - 4.dp to look perfectly concentric and symmetric!
-    val adjustedRadius = (cornerRadiusDp - 4.dp).coerceAtLeast(0.dp)
-    val deviceSmoothRadius = RoundedCornerShape(adjustedRadius)
+    val deviceSmoothRadius = RoundedCornerShape(cornerRadiusDp)
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(4.dp)
-            // 🌟 1. DRAW THE OUTER NEON GLOW BLUR EXTENSION EFFECT USING THE DYNAMIC ADAPTIVE PATH
-            .drawBehind {
-                drawIntoCanvas { canvas ->
-                    val paint = Paint().asFrameworkPaint().apply {
-                        color = themeColorOption.toArgb()
-                        // Generates an anti-aliased radial ambient shadow footprint
-                        setShadowLayer(
-                            24.dp.toPx(),  // Soft ambient blur radius matching image_9a4e44.jpg
-                            0f, 0f,        // Perfectly centered alignment offsets
-                            themeColorOption.toArgb()
-                        )
-                    }
-                    // Draws the invisible shadow geometry backing node layer
-                    val path = android.graphics.Path().apply {
-                        val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
-                        val rx = adjustedRadius.toPx()
-                        addRoundRect(rect, rx, rx, android.graphics.Path.Direction.CW)
-                    }
-                    canvas.nativeCanvas.drawPath(path, paint)
-                }
-            }
-    ) {
-        // Content container Box
+    if (cornerRadiusDp > 0.dp) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(deviceSmoothRadius)
+                // 🌟 1. DRAW THE INNER NEON GLOW BLUR EXTENSION EFFECT USING CANVAS CLIPPING
+                .drawBehind {
+                    drawIntoCanvas { canvas ->
+                        val path = android.graphics.Path().apply {
+                            val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
+                            val rx = cornerRadiusDp.toPx()
+                            addRoundRect(rect, rx, rx, android.graphics.Path.Direction.CW)
+                        }
+                        
+                        // Clip the canvas to prevent the glow from bleeding outside the screen boundaries
+                        canvas.nativeCanvas.save()
+                        canvas.nativeCanvas.clipPath(path)
+
+                        val paint = android.graphics.Paint().apply {
+                            isAntiAlias = true
+                            color = themeColorOption.toArgb()
+                            style = android.graphics.Paint.Style.STROKE
+                            strokeWidth = 4.dp.toPx()
+                            setShadowLayer(
+                                24.dp.toPx(),  // Ambient blur radius
+                                0f, 0f,
+                                themeColorOption.toArgb()
+                            )
+                        }
+                        canvas.nativeCanvas.drawPath(path, paint)
+                        canvas.nativeCanvas.restore()
+                    }
+                }
+        ) {
+            // Content container Box
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(deviceSmoothRadius)
+                    .background(Color.Black)
+            ) {
+                content()
+            }
+
+            // Overlay Border Box: drawn strictly on top so its lines are never clipped and have exact width of 2.dp allthrough the wrapper!
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .border(
+                        width = 2.dp,
+                        color = themeColorOption,
+                        shape = deviceSmoothRadius
+                    )
+            )
+        }
+    } else {
+        // Plain fullscreen layout when no physical rounded corners are detected (square screen / API fallback)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
                 .background(Color.Black)
         ) {
             content()
         }
-
-        // Overlay Border Box: drawn strictly on top so its lines are never clipped and have exact width of 2.dp allthrough the wrapper!
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .border(
-                    width = 2.dp,
-                    color = themeColorOption,
-                    shape = deviceSmoothRadius
-                )
-        )
     }
 }
 
