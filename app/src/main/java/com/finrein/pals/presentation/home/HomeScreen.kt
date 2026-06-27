@@ -3482,9 +3482,6 @@ fun HomeScreen(
                 coroutineScope.launch {
                     try {
                         // 1. Immediately wipe historical collections locally to keep things clean
-                        activeHourSubmissions = emptyMap()
-                        dailyHourHistoryMap = emptyMap()
-                        exportMenuDataState = emptyMap()
                         allPalsMessages.clear()
 
                         withContext(kotlinx.coroutines.Dispatchers.IO) {
