@@ -5292,6 +5292,7 @@ fun GroupMembersSmileysRow(
     smileySize: Dp = 24.dp,
     innerSize: Dp = 16.dp,
     unlitAlpha: Float = 0.25f,
+    showOnlyLit: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val displayCount = members.size.coerceIn(1, 10)
@@ -5303,9 +5304,42 @@ fun GroupMembersSmileysRow(
         Color(0xFFB000FF), // Purple
         Color(0xFFFF073A)  // Red
     )
+
+    // Pre-calculate which members are lit so we can filter them if showOnlyLit is true
+    val itemsToRender = mutableListOf<Pair<Int, Boolean>>() // index in members, isLit
+    for (i in 0 until displayCount) {
+        val memberInfo = members.getOrNull(i) ?: ""
+        val memberParts = memberInfo.split("|||")
+        val (memberId, memberName, _) = if (memberParts.size >= 2) {
+            Triple(memberParts[0], memberParts[1], memberParts.getOrNull(2))
+        } else {
+            Triple(null, memberInfo, null)
+        }
+        val isLit = if (memberName.isEmpty()) {
+            false
+        } else {
+            if (memberId != null && memberId != "legacy_id") {
+                submissions.any { it.userId == memberId }
+            } else {
+                if (memberName == userFirstName || memberName.contains("(You)") || memberName == "only you") {
+                    submissions.any { it.userId == currentUserId }
+                } else {
+                    submissions.any { sub ->
+                        val cleanSubName = parseUserDisplayName(sub.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                        cleanSubName.equals(memberName, ignoreCase = true)
+                    }
+                }
+            }
+        }
+        if (showOnlyLit && !isLit) {
+            continue
+        }
+        itemsToRender.add(Pair(i, isLit))
+    }
+
     val spacing = when {
-        displayCount <= 4 -> 4.dp
-        displayCount <= 6 -> 3.dp
+        itemsToRender.size <= 4 -> 4.dp
+        itemsToRender.size <= 6 -> 3.dp
         else -> 2.dp
     }
     Row(
@@ -5313,31 +5347,7 @@ fun GroupMembersSmileysRow(
         horizontalArrangement = Arrangement.spacedBy(spacing),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        for (i in 0 until displayCount) {
-            val memberInfo = members.getOrNull(i) ?: ""
-            val memberParts = memberInfo.split("|||")
-            val (memberId, memberName, _) = if (memberParts.size >= 2) {
-                Triple(memberParts[0], memberParts[1], memberParts.getOrNull(2))
-            } else {
-                Triple(null, memberInfo, null)
-            }
-            val isLit = if (memberName.isEmpty()) {
-                false
-            } else {
-                if (memberId != null && memberId != "legacy_id") {
-                    submissions.any { it.userId == memberId }
-                } else {
-                    if (memberName == userFirstName || memberName.contains("(You)") || memberName == "only you") {
-                        submissions.any { it.userId == currentUserId }
-                    } else {
-                        submissions.any { sub ->
-                            val cleanSubName = parseUserDisplayName(sub.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                            cleanSubName.equals(memberName, ignoreCase = true)
-                        }
-                    }
-                }
-            }
-            
+        itemsToRender.forEach { (i, isLit) ->
             val outerColor = shufflingColors[i % 6]
             val innerColor = shufflingColors[(i + 3) % 6]
             
@@ -6052,12 +6062,15 @@ fun CapturedPreviewScreen(
                     }
                 }
                 
+                val descriptionLength = description.length
                 val descriptionFontSize = if (pal.isVlog) 13.sp else {
                     when {
-                        allMemberFirstNames.size <= 2 -> 13.sp
-                        allMemberFirstNames.size <= 4 -> 11.sp
-                        allMemberFirstNames.size <= 7 -> 9.sp
-                        else -> 7.sp
+                        descriptionLength <= 15 -> 13.sp
+                        descriptionLength <= 22 -> 13.sp
+                        descriptionLength <= 30 -> 11.5.sp
+                        descriptionLength <= 40 -> 10.sp
+                        descriptionLength <= 50 -> 8.5.sp
+                        else -> 7.5.sp
                     }
                 }
                 
@@ -6186,14 +6199,18 @@ fun CapturedPreviewScreen(
                                 fontFamily = FontFamily.SansSerif,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color.White else Color.Black
+                                color = if (isDark) Color.White else Color.Black,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             if (isHourlyRestricted && hourlySentText.isNotEmpty()) {
                                 Text(
                                     text = "($hourlySentText)",
                                     fontFamily = FontFamily.SansSerif,
                                     fontSize = 11.sp,
-                                    color = Color.Red.copy(alpha = 0.7f)
+                                    color = Color.Red.copy(alpha = 0.7f),
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -8987,10 +9004,30 @@ fun VlogScreenContent(
                     }
 
                     // Horizontal row of small smileys showing the pals sent to vlog menu count (spaced 12.5dp below capsule, filled with boundary/accentColor, with active ring)
-                    GroupHoursSmileysRow(
-                        submissions = activePalSubmissions,
+                    val memberCount = groupMembers.size
+                    val computedSmileySize = when {
+                        memberCount <= 4 -> 22.dp
+                        memberCount <= 6 -> 16.dp
+                        memberCount <= 8 -> 12.dp
+                        else -> 9.dp
+                    }
+                    val computedInnerSize = when {
+                        memberCount <= 4 -> 15.dp
+                        memberCount <= 6 -> 11.dp
+                        memberCount <= 8 -> 8.5.dp
+                        else -> 6.5.dp
+                    }
+                    GroupMembersSmileysRow(
+                        members = groupMembers,
+                        submissions = filteredSubmissions,
                         isDark = isDark,
                         accentColor = accentColor,
+                        palTextLogoColor = palTextLogoColor,
+                        currentUserId = currentUserId,
+                        userFirstName = userFirstName,
+                        smileySize = computedSmileySize,
+                        innerSize = computedInnerSize,
+                        showOnlyLit = true,
                         modifier = Modifier.offset(y = 27.5.dp)
                     )
                 }
