@@ -158,13 +158,20 @@ object VlogPlayerManager {
 
     fun getOrCreatePlayer(context: android.content.Context, videoUrl: String): androidx.media3.exoplayer.ExoPlayer {
         return playerCache.getOrPut(videoUrl) {
-            androidx.media3.exoplayer.ExoPlayer.Builder(context.applicationContext).build().apply {
-                setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUrl))
-                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                volume = 0f // Muted feed
-                prepare()
-                playWhenReady = true
-            }
+            androidx.media3.exoplayer.ExoPlayer.Builder(context.applicationContext)
+                .setRenderersFactory(
+                    androidx.media3.exoplayer.DefaultRenderersFactory(context.applicationContext).apply {
+                        setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
+                        setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                    }
+                )
+                .build().apply {
+                    setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUrl))
+                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                    volume = 0f // Muted feed
+                    prepare()
+                    playWhenReady = true
+                }
         }
     }
 
@@ -1026,6 +1033,8 @@ fun HomeScreen(
     authRepository: com.finrein.pals.domain.repository.AuthRepository,
     onSignOut: () -> Unit,
     onDeleteAccount: () -> Unit = {},
+    selectedThemeColor: String = "yellow",
+    onSelectedThemeColorChange: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: com.finrein.pals.presentation.home.HomeViewModel
 ) {
@@ -1325,7 +1334,17 @@ fun HomeScreen(
         }
     }
 
-    var selectedThemeColor by remember { mutableStateOf("yellow") }
+    var selectedThemeColor by remember(selectedThemeColor) {
+        val state = mutableStateOf(selectedThemeColor)
+        object : MutableState<String> by state {
+            override var value: String
+                get() = state.value
+                set(newValue) {
+                    state.value = newValue
+                    onSelectedThemeColorChange(newValue)
+                }
+        }
+    }
     val themeConfig = remember(selectedThemeColor) { PalThemes[selectedThemeColor] ?: PalThemes["yellow"]!! }
     val accentColor = themeConfig.accentColor
     val logoColor = themeConfig.logoColor
@@ -1680,11 +1699,18 @@ fun HomeScreen(
     }
 
     val vlogExoPlayer = remember {
-        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-            volume = 0f
-            playWhenReady = false
-        }
+        androidx.media3.exoplayer.ExoPlayer.Builder(context)
+            .setRenderersFactory(
+                androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                    setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
+                    setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                }
+            )
+            .build().apply {
+                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                volume = 0f
+                playWhenReady = false
+            }
     }
 
     LaunchedEffect(vlogExoPlayer) {
@@ -5640,10 +5666,17 @@ fun CapturedPreviewScreen(
 
     // 1. Initialize ExoPlayer safely
     val exoPlayer = remember(capturedVideoPath) {
-        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL // Seamless infinite loop matching the vlog vibe
-            playWhenReady = true
-        }
+        androidx.media3.exoplayer.ExoPlayer.Builder(context)
+            .setRenderersFactory(
+                androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                    setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
+                    setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                }
+            )
+            .build().apply {
+                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL // Seamless infinite loop matching the vlog vibe
+                playWhenReady = true
+            }
     }
 
     // 2. FORCE RE-EVALUATION FLOW:
@@ -8098,9 +8131,16 @@ fun VlogScreenContent(
                             if (path != null) {
                                 // Separate local ExoPlayer for each page to allow rendering adjacent videos during transitions (no black screens)
                                 val localPlayer = remember(path) {
-                                    androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-                                        repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                                        volume = 0f
+                                    androidx.media3.exoplayer.ExoPlayer.Builder(context)
+                                        .setRenderersFactory(
+                                            androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                                                setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
+                                                setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                                            }
+                                        )
+                                        .build().apply {
+                                            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                                            volume = 0f
                                         val localPath = getVlogPrefs(context).getString("local_path_$path", null)
                                         val resolvedPath = localPath ?: path
                                         if (resolvedPath.startsWith("http")) {
@@ -9767,7 +9807,7 @@ fun VlogScreenContent(
         // --- Reply Preview Overlay ---
         ReplyPreviewOverlay(
             activeReplyPreviewPath = activeReplyPreviewPath,
-            palName = pal.name,
+            palName = "vlog",
             accentColor = accentColor,
             onActiveReplyPreviewPathChange = onActiveReplyPreviewPathChange,
             onSendReply = params.onSendReply
@@ -9776,7 +9816,7 @@ fun VlogScreenContent(
         // --- Reaction Preview Overlay ---
         ReactionPreviewOverlay(
             activeReactionPreview = activeReactionPreview,
-            palName = pal.name,
+            palName = "vlog",
             onActiveReactionPreviewChange = onActiveReactionPreviewChange
         )
         
@@ -9865,10 +9905,17 @@ fun VlogScreenContent(
                                     )
                                 } else {
                                     val exportLocalPlayer = remember(capturedVlogsPaths) {
-                                        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-                                            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                                            volume = 0f
-                                        }
+                                        androidx.media3.exoplayer.ExoPlayer.Builder(context)
+                                            .setRenderersFactory(
+                                                androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                                                    setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
+                                                    setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                                                }
+                                            )
+                                            .build().apply {
+                                                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                                                volume = 0f
+                                            }
                                     }
 
                                     DisposableEffect(exportLocalPlayer) {
@@ -11218,14 +11265,18 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val retriever = android.media.MediaMetadataRetriever()
+                val resolvedPath = ensureVideoCached(context, videoPath)
                 val cleanPath = when {
-                    videoPath.startsWith("file://") -> videoPath.substring(7)
-                    else -> videoPath
+                    resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
+                    else -> resolvedPath
                 }
-                retriever.setDataSource(cleanPath)
-                val bmp = retriever.getFrameAtTime(0)
+                val file = java.io.File(cleanPath)
+                if (file.exists()) {
+                    retriever.setDataSource(cleanPath)
+                    val bmp = retriever.getFrameAtTime(0)
+                    bitmap = bmp
+                }
                 retriever.release()
-                bitmap = bmp
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -11291,9 +11342,16 @@ fun VideoPlayerItem(
 
     val localPlayer = remember(resolvedPaths) {
         if (resolvedPaths.isEmpty()) null else {
-            androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                volume = 0f
+            androidx.media3.exoplayer.ExoPlayer.Builder(context)
+                .setRenderersFactory(
+                    androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                        setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
+                        setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                    }
+                )
+                .build().apply {
+                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                    volume = 0f
                 
                 addListener(object : androidx.media3.common.Player.Listener {
                     override fun onPlaybackStateChanged(state: Int) {
@@ -12054,6 +12112,7 @@ fun PalChatOverlay(
             )
     ) {
         var messageInput by remember { mutableStateOf("") }
+        var selectedVlogPreviewItem by remember { mutableStateOf<FeedItem?>(null) }
         val context = LocalContext.current
         val defaultEmojis = remember { listOf("😂", "❤️", "😭", "✨", "🥺", "🔥", "🥰", "🎉", "💀", "👍", "🙏", "💯", "😎", "👀") }
         var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }
@@ -12141,6 +12200,22 @@ fun PalChatOverlay(
             feedItems.groupBy { it.localDate }
         }
 
+        val vlogGroups = remember(feedItems) {
+            val sortedItems = feedItems.sortedBy { it.rawInstant }
+            val groups = LinkedHashMap<String, MutableList<FeedItem>>()
+            sortedItems.forEach { item ->
+                val today = java.time.LocalDate.now()
+                val dayLabel = when (item.localDate) {
+                    today -> "Today"
+                    today.minusDays(1) -> "Yesterday"
+                    else -> item.localDate.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d", java.util.Locale.US))
+                }
+                val header = "$dayLabel ${item.timeStr}"
+                groups.getOrPut(header) { mutableListOf() }.add(item)
+            }
+            groups.toList()
+        }
+
         var showEmojiOverlayForPath by remember { mutableStateOf<String?>(null) }
 
         Box(
@@ -12170,116 +12245,155 @@ fun PalChatOverlay(
                         .padding(top = 64.dp, bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    val sortedKeys = if (pal.isVlog) groupedByDay.keys.sortedDescending() else groupedByDay.keys.sorted()
-                    sortedKeys.forEach { dayDate ->
-                        val dayFeed = groupedByDay[dayDate] ?: emptyList()
-                        val today = java.time.LocalDate.now()
-                        val dayLabel = when (dayDate) {
-                            today -> "Today"
-                            today.minusDays(1) -> "Yesterday"
-                            else -> dayDate.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d", java.util.Locale.US))
-                        }
-
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            dayFeed.forEach { feedItem ->
-                                val headerText = "$dayLabel ${feedItem.timeStr}"
-
-                                val feedReactions = remember(messages, feedItem.path, allPalsMembers, currentDisplayName, customAvatarUriString) {
-                                    messages.filter { msg ->
-                                        if (msg.content.startsWith("REACTION|||")) {
-                                            val parts = msg.content.split("|||")
-                                            val targetPath = parts.getOrNull(3) ?: ""
-                                            targetPath == feedItem.path
-                                        } else {
-                                            false
-                                        }
-                                    }.map { msg ->
-                                        val parts = msg.content.split("|||")
-                                        val emoji = parts.getOrNull(4) ?: ""
-                                        val membersList = allPalsMembers[pal.code] ?: emptyList()
-                                        val senderMember = membersList.firstOrNull { it.startsWith("${msg.userId}|||") }
-                                        val (senderName, senderAvatar) = if (senderMember != null) {
-                                            val sParts = senderMember.split("|||")
-                                            Pair(sParts.getOrNull(1) ?: "Pal", sParts.getOrNull(2))
-                                        } else {
-                                            if (msg.userId == currentUserId) {
-                                                Pair(currentDisplayName, customAvatarUriString)
-                                            } else {
-                                                Pair("Pal", null)
-                                            }
-                                        }
-                                        Triple(senderName, senderAvatar, emoji)
-                                    }.distinctBy { it.first }
-                                }
-
-                                val feedReplies = remember(messages, feedItem.path, allPalsMembers, currentDisplayName, customAvatarUriString) {
-                                    messages.filter { msg ->
-                                        if (msg.content.startsWith("REPLY|||")) {
-                                            val parts = msg.content.split("|||")
-                                            val targetPath = parts.getOrNull(3) ?: ""
-                                            targetPath == feedItem.path
-                                        } else {
-                                            false
-                                        }
-                                    }.map { msg ->
-                                        val parts = msg.content.split("|||")
-                                        val replyText = parts.getOrNull(4) ?: ""
-                                        val membersList = allPalsMembers[pal.code] ?: emptyList()
-                                        val senderMember = membersList.firstOrNull { it.startsWith("${msg.userId}|||") }
-                                        val (senderName, senderAvatar) = if (senderMember != null) {
-                                            val sParts = senderMember.split("|||")
-                                            Pair(sParts.getOrNull(1) ?: "Pal", sParts.getOrNull(2))
-                                        } else {
-                                            if (msg.userId == currentUserId) {
-                                                Pair(currentDisplayName, customAvatarUriString)
-                                            } else {
-                                                Pair("Pal", null)
-                                            }
-                                        }
-                                        Triple(senderName, senderAvatar, replyText)
-                                    }
-                                }
-
-                                Column(
+                    if (pal.isVlog) {
+                        vlogGroups.forEach { (headerText, items) ->
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // 1. Centered Date/Time header
+                                Box(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    // 1. Centered Date/Time header
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = headerText,
-                                            color = textColor.copy(alpha = 0.6f),
-                                            fontSize = 13.sp,
-                                            fontFamily = FontFamily.SansSerif,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                    Text(
+                                        text = headerText,
+                                        color = textColor.copy(alpha = 0.6f),
+                                        fontSize = 13.sp,
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                // 2. Video thumbnails stacked vertically on the right
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(end = 17.dp),
+                                    horizontalAlignment = Alignment.End,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items.forEach { feedItem ->
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth(0.5f)
+                                                .aspectRatio(1.6f)
+                                                .clip(RoundedCornerShape(24.dp))
+                                                .background(Color.Black)
+                                                .clickable {
+                                                    selectedVlogPreviewItem = feedItem
+                                                }
+                                        ) {
+                                            VideoThumbnail(
+                                                videoPath = feedItem.path,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        val sortedKeys = groupedByDay.keys.sorted()
+                        sortedKeys.forEach { dayDate ->
+                            val dayFeed = groupedByDay[dayDate] ?: emptyList()
+                            val today = java.time.LocalDate.now()
+                            val dayLabel = when (dayDate) {
+                                today -> "Today"
+                                today.minusDays(1) -> "Yesterday"
+                                else -> dayDate.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d", java.util.Locale.US))
+                            }
+
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                dayFeed.forEach { feedItem ->
+                                    val headerText = "$dayLabel ${feedItem.timeStr}"
+
+                                    val feedReactions = remember(messages, feedItem.path, allPalsMembers, currentDisplayName, customAvatarUriString) {
+                                        messages.filter { msg ->
+                                            if (msg.content.startsWith("REACTION|||")) {
+                                                val parts = msg.content.split("|||")
+                                                val targetPath = parts.getOrNull(3) ?: ""
+                                                targetPath == feedItem.path
+                                            } else {
+                                                false
+                                            }
+                                        }.map { msg ->
+                                            val parts = msg.content.split("|||")
+                                            val emoji = parts.getOrNull(4) ?: ""
+                                            val membersList = allPalsMembers[pal.code] ?: emptyList()
+                                            val senderMember = membersList.firstOrNull { it.startsWith("${msg.userId}|||") }
+                                            val (senderName, senderAvatar) = if (senderMember != null) {
+                                                val sParts = senderMember.split("|||")
+                                                Pair(sParts.getOrNull(1) ?: "Pal", sParts.getOrNull(2))
+                                            } else {
+                                                if (msg.userId == currentUserId) {
+                                                    Pair(currentDisplayName, customAvatarUriString)
+                                                } else {
+                                                    Pair("Pal", null)
+                                                }
+                                            }
+                                            Triple(senderName, senderAvatar, emoji)
+                                        }.distinctBy { it.first }
                                     }
 
-                                    // 2. Aligned message body
-                                    if (feedItem.isUser) {
-                                        // USER (Right Aligned)
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(end = 17.dp),
-                                            horizontalAlignment = Alignment.End
-                                        ) {
-                                            if (pal.isVlog) {
-                                                Text(
-                                                    text = feedItem.userDisplayName,
-                                                    fontFamily = FontFamily.SansSerif,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Normal,
-                                                    color = textColor.copy(alpha = 0.6f),
-                                                    modifier = Modifier.padding(bottom = 2.dp, end = 4.dp)
-                                                )
+                                    val feedReplies = remember(messages, feedItem.path, allPalsMembers, currentDisplayName, customAvatarUriString) {
+                                        messages.filter { msg ->
+                                            if (msg.content.startsWith("REPLY|||")) {
+                                                val parts = msg.content.split("|||")
+                                                val targetPath = parts.getOrNull(3) ?: ""
+                                                targetPath == feedItem.path
                                             } else {
+                                                false
+                                            }
+                                        }.map { msg ->
+                                            val parts = msg.content.split("|||")
+                                            val replyText = parts.getOrNull(4) ?: ""
+                                            val membersList = allPalsMembers[pal.code] ?: emptyList()
+                                            val senderMember = membersList.firstOrNull { it.startsWith("${msg.userId}|||") }
+                                            val (senderName, senderAvatar) = if (senderMember != null) {
+                                                val sParts = senderMember.split("|||")
+                                                Pair(sParts.getOrNull(1) ?: "Pal", sParts.getOrNull(2))
+                                            } else {
+                                                if (msg.userId == currentUserId) {
+                                                    Pair(currentDisplayName, customAvatarUriString)
+                                                } else {
+                                                    Pair("Pal", null)
+                                                }
+                                            }
+                                            Triple(senderName, senderAvatar, replyText)
+                                        }
+                                    }
+
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        // 1. Centered Date/Time header
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = headerText,
+                                                color = textColor.copy(alpha = 0.6f),
+                                                fontSize = 13.sp,
+                                                fontFamily = FontFamily.SansSerif,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+
+                                        // 2. Aligned message body
+                                        if (feedItem.isUser) {
+                                            // USER (Right Aligned)
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(end = 17.dp),
+                                                horizontalAlignment = Alignment.End
+                                            ) {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -12321,76 +12435,7 @@ fun PalChatOverlay(
                                                         }
                                                     }
                                                 }
-                                            }
 
-                                            VideoPlayerItem(
-                                                videoPath = feedItem.path,
-                                                modifier = Modifier
-                                                    .width(210.dp)
-                                                    .height(125.dp)
-                                                    .clip(RoundedCornerShape(16.dp))
-                                            )
-
-                                            FeedReactionsAndReplies(
-                                                feedReactions = feedReactions,
-                                                feedReplies = feedReplies,
-                                                textColor = textColor,
-                                                isDark = isDark,
-                                                accentColor = accentColor
-                                            )
-                                        }
-                                    } else {
-                                        // OTHERS (Left Aligned)
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(start = 24.dp),
-                                            horizontalAlignment = Alignment.Start
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                modifier = Modifier.padding(bottom = 4.dp)
-                                            ) {
-                                                val (displayName, avatarUrl) = parseUserDisplayName(feedItem.userDisplayName)
-                                                if (!avatarUrl.isNullOrEmpty()) {
-                                                    UriImage(
-                                                        uriString = avatarUrl,
-                                                        modifier = Modifier
-                                                            .size(24.dp)
-                                                            .clip(CircleShape)
-                                                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                                    )
-                                                } else {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(24.dp)
-                                                            .clip(CircleShape)
-                                                            .background(accentColor),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Image(
-                                                            painter = painterResource(id = R.drawable.smile_medium),
-                                                            contentDescription = null,
-                                                            modifier = Modifier
-                                                                .fillMaxSize()
-                                                                .rotate(180f)
-                                                        )
-                                                    }
-                                                }
-                                                val cleanName = displayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                                                Text(
-                                                    text = cleanName,
-                                                    color = textColor,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontFamily = FontFamily.SansSerif
-                                                )
-                                            }
-
-                                            Column(
-                                                modifier = Modifier.width(210.dp)
-                                            ) {
                                                 VideoPlayerItem(
                                                     videoPath = feedItem.path,
                                                     modifier = Modifier
@@ -12398,48 +12443,115 @@ fun PalChatOverlay(
                                                         .height(125.dp)
                                                         .clip(RoundedCornerShape(16.dp))
                                                 )
-                                                Spacer(modifier = Modifier.height(4.dp))
+
+                                                FeedReactionsAndReplies(
+                                                    feedReactions = feedReactions,
+                                                    feedReplies = feedReplies,
+                                                    textColor = textColor,
+                                                    isDark = isDark,
+                                                    accentColor = accentColor
+                                                )
+                                            }
+                                        } else {
+                                            // OTHERS (Left Aligned)
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = 24.dp),
+                                                horizontalAlignment = Alignment.Start
+                                            ) {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    modifier = Modifier.padding(bottom = 4.dp)
                                                 ) {
-                                                    Icon(
-                                                        imageVector = Icons.AutoMirrored.Filled.Reply,
-                                                        contentDescription = "Reply",
-                                                        tint = textColor.copy(alpha = 0.8f),
+                                                    val (displayName, avatarUrl) = parseUserDisplayName(feedItem.userDisplayName)
+                                                    if (!avatarUrl.isNullOrEmpty()) {
+                                                        UriImage(
+                                                            uriString = avatarUrl,
+                                                            modifier = Modifier
+                                                                .size(24.dp)
+                                                                .clip(CircleShape)
+                                                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                                        )
+                                                    } else {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(24.dp)
+                                                                .clip(CircleShape)
+                                                                .background(accentColor),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Image(
+                                                                painter = painterResource(id = R.drawable.smile_medium),
+                                                                contentDescription = null,
+                                                                modifier = Modifier
+                                                                    .fillMaxSize()
+                                                                    .rotate(180f)
+                                                            )
+                                                        }
+                                                    }
+                                                    val cleanName = displayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                                    Text(
+                                                        text = cleanName,
+                                                        color = textColor,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontFamily = FontFamily.SansSerif
+                                                    )
+                                                }
+
+                                                Column(
+                                                    modifier = Modifier.width(210.dp)
+                                                ) {
+                                                    VideoPlayerItem(
+                                                        videoPath = feedItem.path,
                                                         modifier = Modifier
-                                                            .graphicsLayer(scaleX = -1f)
-                                                            .size(20.dp)
-                                                            .clickable {
-                                                                onActiveReplyPreviewPathChange(feedItem.path)
-                                                            }
+                                                            .width(210.dp)
+                                                            .height(125.dp)
+                                                            .clip(RoundedCornerShape(16.dp))
                                                     )
-                                                    Icon(
-                                                        imageVector = Icons.Default.FavoriteBorder,
-                                                        contentDescription = "Love",
-                                                        tint = textColor.copy(alpha = 0.8f),
-                                                        modifier = Modifier
-                                                            .size(20.dp)
-                                                            .clickable {
-                                                                showEmojiOverlayForPath = feedItem.path
-                                                            }
-                                                    )
-                                                    
-                                                    FeedReactionsAndReplies(
-                                                        feedReactions = feedReactions,
-                                                        feedReplies = feedReplies,
-                                                        textColor = textColor,
-                                                        isDark = isDark,
-                                                        accentColor = accentColor
-                                                    )
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.AutoMirrored.Filled.Reply,
+                                                            contentDescription = "Reply",
+                                                            tint = textColor.copy(alpha = 0.8f),
+                                                            modifier = Modifier
+                                                                .graphicsLayer(scaleX = -1f)
+                                                                .size(20.dp)
+                                                                .clickable {
+                                                                    onActiveReplyPreviewPathChange(feedItem.path)
+                                                                }
+                                                        )
+                                                        Icon(
+                                                            imageVector = Icons.Default.FavoriteBorder,
+                                                            contentDescription = "Love",
+                                                            tint = textColor.copy(alpha = 0.8f),
+                                                            modifier = Modifier
+                                                                .size(20.dp)
+                                                                .clickable {
+                                                                    showEmojiOverlayForPath = feedItem.path
+                                                                }
+                                                        )
+                                                        
+                                                        FeedReactionsAndReplies(
+                                                            feedReactions = feedReactions,
+                                                            feedReplies = feedReplies,
+                                                            textColor = textColor,
+                                                            isDark = isDark,
+                                                            accentColor = accentColor
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
 
-                            if (!pal.isVlog) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -12558,16 +12670,28 @@ fun PalChatOverlay(
                     )
                 }
 
-                Text(
-                    text = pal.name,
-                    fontFamily = BricolageVariableFontFamily,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
+                val headerTitleText = if (pal.isVlog) "vlog" else pal.name
+                Box(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .offset(y = 2.dp)
-                )
+                        .height(40.dp)
+                        .then(
+                            if (headerTitleText.length <= 3) Modifier.width(40.dp) else Modifier.padding(horizontal = 16.dp)
+                        )
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF161616) else Color(0xFFEBEBEB))
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = headerTitleText,
+                        fontFamily = BricolageVariableFontFamily,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = textColor
+                    )
+                }
             }
 
             // 3. Footer Row
@@ -12661,6 +12785,200 @@ fun PalChatOverlay(
                         tint = if (isInputValid) Color.White else textColor.copy(alpha = 0.4f),
                         modifier = Modifier.size(18.dp)
                     )
+                }
+            }
+
+            // 4. Vlog Fullscreen Preview Overlay
+            if (selectedVlogPreviewItem != null) {
+                val item = selectedVlogPreviewItem!!
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.85f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            selectedVlogPreviewItem = null
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    // X Close button inside a dark circle at top-left
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(top = 16.dp, start = 24.dp)
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .clickable {
+                                selectedVlogPreviewItem = null
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Vlog Card (exactly how vlog box displays with 16:9 ratio and rounded corners)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.9f)
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.Black)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {} // Consume click inside video box
+                            )
+                    ) {
+                        VideoPlayerItem(
+                            videoPath = item.path,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        // Top-left profile avatar and user name
+                        val (displayName, avatarUrl) = parseUserDisplayName(item.userDisplayName)
+                        val cleanName = displayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(top = 16.dp, start = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (!avatarUrl.isNullOrEmpty()) {
+                                UriImage(
+                                    uriString = avatarUrl,
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(accentColor),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = R.drawable.smile_medium),
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .rotate(180f)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = cleanName,
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.SansSerif,
+                                style = TextStyle(
+                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                        color = Color.Black.copy(alpha = 0.5f),
+                                        offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                        blurRadius = 3f
+                                    )
+                                )
+                            )
+                        }
+
+                        // Middle-left: "vlog" text in BricolageVariableFontFamily
+                        Text(
+                            text = "vlog",
+                            fontFamily = BricolageVariableFontFamily,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 16.dp),
+                            style = TextStyle(
+                                shadow = androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                    blurRadius = 3f
+                                )
+                            )
+                        )
+
+                        // Middle-right: capture time text in RobotoFontFamily
+                        Text(
+                            text = item.timeStr,
+                            fontFamily = RobotoFontFamily,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 16.dp),
+                            style = TextStyle(
+                                shadow = androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                    blurRadius = 3f
+                                )
+                            )
+                        )
+
+                        // Center: Large bold hour-only time slot (e.g. 23:00) and caption if any
+                        val captureHourOnlyText = try {
+                            val zonedDateTime = item.rawInstant.atZone(java.time.ZoneId.systemDefault())
+                            String.format(java.util.Locale.US, "%02d:00", zonedDateTime.hour)
+                        } catch (e: Exception) {
+                            item.timeStr
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(horizontal = 48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = captureHourOnlyText,
+                                fontFamily = DelaGothicOneFontFamily,
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                style = TextStyle(
+                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                        color = Color.Black.copy(alpha = 0.6f),
+                                        offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                                        blurRadius = 4f
+                                    )
+                                )
+                            )
+                            if (item.caption.isNotEmpty()) {
+                                Text(
+                                    text = item.caption,
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center,
+                                    style = TextStyle(
+                                        shadow = androidx.compose.ui.graphics.Shadow(
+                                            color = Color.Black.copy(alpha = 0.5f),
+                                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                            blurRadius = 3f
+                                        )
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -14840,10 +15158,17 @@ private fun GroupExportMemberSlot(
     ) {
         if (videoPaths.isNotEmpty()) {
             val localPlayer = remember(videoPaths) {
-                androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                    volume = 0f
-                }
+                androidx.media3.exoplayer.ExoPlayer.Builder(context)
+                    .setRenderersFactory(
+                        androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                            setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
+                            setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                        }
+                    )
+                    .build().apply {
+                        repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                        volume = 0f
+                    }
             }
             DisposableEffect(localPlayer) {
                 onDispose {

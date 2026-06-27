@@ -25,6 +25,14 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.ClearCredentialStateRequest
 import javax.inject.Inject
 import com.finrein.pals.domain.repository.AuthRepository
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -57,75 +65,51 @@ class MainActivity : ComponentActivity() {
         val sessionManager = com.finrein.pals.data.local.SessionManager(applicationContext)
 
         setContent {
-            PalTheme {
-                var currentUser by remember { 
-                    mutableStateOf<com.finrein.pals.domain.model.User?>(sessionManager.getUser()) 
-                }
+            var selectedThemeColor by remember { 
+                mutableStateOf(sessionManager.getThemeColor()) 
+            }
 
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = com.finrein.pals.presentation.theme.PalBackground
-                ) {
-                    if (currentUser == null) {
-                        OnboardingScreen(
-                            viewModel = authViewModel,
-                            onAuthSuccess = { user ->
-                                sessionManager.saveUser(user)
-                                currentUser = user
-                            }
-                        )
-                    } else {
-                        HomeScreen(
-                            user = currentUser,
-                            authRepository = authRepository,
-                            viewModel = homeViewModel,
-                            onSignOut = {
-                                lifecycleScope.launch {
-                                    try {
-                                        val credentialManager = CredentialManager.create(this@MainActivity)
-                                        credentialManager.clearCredentialState(ClearCredentialStateRequest())
-                                    } catch (e: Exception) {
-                                        // Ignore credential manager clearing exception
-                                    }
-                                    try {
-                                        PalApplication.supabase.auth.signOut()
-                                    } catch (e: Exception) {
-                                        // Ignore session/network exception on signout
-                                    }
+            PalTheme {
+                SmoothScreenEdgeContainer(selectedThemeColor = selectedThemeColor) {
+                    var currentUser by remember { 
+                        mutableStateOf<com.finrein.pals.domain.model.User?>(sessionManager.getUser()) 
+                    }
+
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = com.finrein.pals.presentation.theme.PalBackground
+                    ) {
+                        if (currentUser == null) {
+                            OnboardingScreen(
+                                viewModel = authViewModel,
+                                onAuthSuccess = { user ->
+                                    sessionManager.saveUser(user)
+                                    currentUser = user
                                 }
-                                authViewModel.resetState()
-                                sessionManager.clearUser()
-                                val sharedPrefs = applicationContext.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
-                                sharedPrefs.edit().clear().apply()
-                                val palPrefs = applicationContext.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
-                                palPrefs.edit().clear().apply()
-                                try {
-                                    applicationContext.cacheDir.deleteRecursively()
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                                currentUser = null
-                            },
-                            onDeleteAccount = {
-                                val userId = currentUser?.id
-                                lifecycleScope.launch {
-                                    if (userId != null) {
+                            )
+                        } else {
+                            HomeScreen(
+                                user = currentUser,
+                                authRepository = authRepository,
+                                viewModel = homeViewModel,
+                                selectedThemeColor = selectedThemeColor,
+                                onSelectedThemeColorChange = { color ->
+                                    selectedThemeColor = color
+                                    sessionManager.saveThemeColor(color)
+                                },
+                                onSignOut = {
+                                    lifecycleScope.launch {
                                         try {
-                                            authViewModel.softDeleteAccount(userId)
+                                            val credentialManager = CredentialManager.create(this@MainActivity)
+                                            credentialManager.clearCredentialState(ClearCredentialStateRequest())
                                         } catch (e: Exception) {
-                                            e.printStackTrace()
+                                            // Ignore credential manager clearing exception
                                         }
-                                    }
-                                    try {
-                                        val credentialManager = CredentialManager.create(this@MainActivity)
-                                        credentialManager.clearCredentialState(ClearCredentialStateRequest())
-                                    } catch (e: Exception) {
-                                        // Ignore credential manager clearing exception
-                                    }
-                                    try {
-                                        PalApplication.supabase.auth.signOut()
-                                    } catch (e: Exception) {
-                                        // Ignore session/network exception on signout
+                                        try {
+                                            PalApplication.supabase.auth.signOut()
+                                        } catch (e: Exception) {
+                                            // Ignore session/network exception on signout
+                                        }
                                     }
                                     authViewModel.resetState()
                                     sessionManager.clearUser()
@@ -139,12 +123,81 @@ class MainActivity : ComponentActivity() {
                                         e.printStackTrace()
                                     }
                                     currentUser = null
+                                },
+                                onDeleteAccount = {
+                                    val userId = currentUser?.id
+                                    lifecycleScope.launch {
+                                        if (userId != null) {
+                                            try {
+                                                authViewModel.softDeleteAccount(userId)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                        }
+                                        try {
+                                            val credentialManager = CredentialManager.create(this@MainActivity)
+                                            credentialManager.clearCredentialState(ClearCredentialStateRequest())
+                                        } catch (e: Exception) {
+                                            // Ignore credential manager clearing exception
+                                        }
+                                        try {
+                                            PalApplication.supabase.auth.signOut()
+                                        } catch (e: Exception) {
+                                            // Ignore session/network exception on signout
+                                        }
+                                        authViewModel.resetState()
+                                        sessionManager.clearUser()
+                                        val sharedPrefs = applicationContext.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+                                        sharedPrefs.edit().clear().apply()
+                                        val palPrefs = applicationContext.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+                                        palPrefs.edit().clear().apply()
+                                        try {
+                                            applicationContext.cacheDir.deleteRecursively()
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                        currentUser = null
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun SmoothScreenEdgeContainer(
+    selectedThemeColor: String,
+    content: @Composable () -> Unit
+) {
+    val deviceSmoothRadius = RoundedCornerShape(44.dp)
+    
+    val accentEdgeColor = when (selectedThemeColor) {
+        "yellow" -> Color(0xFFFFE600) // Neon Yellow
+        "orange" -> Color(0xFFFF6700) // Neon Orange
+        "pink" -> Color(0xFFFF007F)   // Neon Pink
+        "blue" -> Color(0xFF00F0FF)   // Neon Cyan/Blue
+        "purple" -> Color(0xFFB000FF) // Neon Purple
+        "red" -> Color(0xFFFF073A)    // Neon Red
+        else -> Color(0xFFFFE600)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(4.dp) 
+            .clip(deviceSmoothRadius)
+            .border(
+                BorderStroke(width = 2.dp, color = accentEdgeColor),
+                shape = deviceSmoothRadius
+            ),
+        color = Color.Black
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            content()
         }
     }
 }

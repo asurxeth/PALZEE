@@ -97,10 +97,6 @@ android {
     }
 }
 
-tasks.withType<JavaCompile>().configureEach {
-    options.compilerArgs.add("-Xlint:-deprecation")
-    options.compilerArgs.add("-Xlint:-unchecked")
-}
 
 dependencies {
     // Core AndroidX
@@ -175,7 +171,15 @@ dependencies {
 
 
 tasks.withType<JavaCompile>().configureEach {
-    options.compilerArgs.add("-Xlint:-deprecation")
+    options.isWarnings = false
+    options.compilerArgs.addAll(
+        listOf(
+            "-Xlint:-deprecation",
+            "-Xlint:-unchecked",
+            "-nowarn",
+            "-Xlint:none"
+        )
+    )
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {

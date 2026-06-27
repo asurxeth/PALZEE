@@ -60,4 +60,12 @@ class SessionManager(context: Context) {
     fun hasLoggedInBefore(): Boolean {
         return prefs.getBoolean("has_logged_in_before", false)
     }
+
+    fun saveThemeColor(color: String) {
+        prefs.edit().putString("selected_theme_color", color).apply()
+    }
+
+    fun getThemeColor(): String {
+        return prefs.getString("selected_theme_color", "yellow") ?: "yellow"
+    }
 }
