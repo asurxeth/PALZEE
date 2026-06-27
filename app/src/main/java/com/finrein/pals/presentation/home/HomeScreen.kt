@@ -11274,7 +11274,18 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier) {
                 if (file.exists()) {
                     retriever.setDataSource(cleanPath)
                     val bmp = retriever.getFrameAtTime(0)
-                    bitmap = bmp
+                    if (bmp != null) {
+                        val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                        val rotation = rotationStr?.toIntOrNull() ?: 0
+                        val finalRotation = rotation
+                        if (finalRotation != 0) {
+                            val matrix = android.graphics.Matrix().apply { postRotate(finalRotation.toFloat()) }
+                            val rotatedBmp = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                            bitmap = rotatedBmp
+                        } else {
+                            bitmap = bmp
+                        }
+                    }
                 }
                 retriever.release()
             } catch (e: Exception) {
@@ -12261,7 +12272,7 @@ fun PalChatOverlay(
                                         color = textColor.copy(alpha = 0.6f),
                                         fontSize = 13.sp,
                                         fontFamily = FontFamily.SansSerif,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Normal
                                     )
                                 }
 
@@ -12671,17 +12682,21 @@ fun PalChatOverlay(
                 }
 
                 val headerTitleText = if (pal.isVlog) "vlog" else pal.name
+                val isShort = headerTitleText.length <= 3
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .offset(y = 2.dp)
                         .height(40.dp)
                         .then(
-                            if (headerTitleText.length <= 3) Modifier.width(40.dp) else Modifier.padding(horizontal = 16.dp)
+                            if (isShort) Modifier.width(40.dp) else Modifier.wrapContentWidth()
                         )
                         .clip(CircleShape)
                         .background(if (isDark) Color(0xFF161616) else Color(0xFFEBEBEB))
-                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f), CircleShape),
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f), CircleShape)
+                        .then(
+                            if (!isShort) Modifier.padding(horizontal = 16.dp) else Modifier
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -12848,7 +12863,7 @@ fun PalChatOverlay(
                         Row(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .padding(top = 16.dp, start = 16.dp),
+                                .padding(top = 5.5.dp, start = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -12856,14 +12871,14 @@ fun PalChatOverlay(
                                 UriImage(
                                     uriString = avatarUrl,
                                     modifier = Modifier
-                                        .size(32.dp)
+                                        .size(15.dp)
                                         .clip(CircleShape)
                                         .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
                                 )
                             } else {
                                 Box(
                                     modifier = Modifier
-                                        .size(32.dp)
+                                        .size(15.dp)
                                         .clip(CircleShape)
                                         .background(accentColor),
                                     contentAlignment = Alignment.Center
@@ -12880,8 +12895,8 @@ fun PalChatOverlay(
                             Text(
                                 text = cleanName,
                                 color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Normal,
                                 fontFamily = FontFamily.SansSerif,
                                 style = TextStyle(
                                     shadow = androidx.compose.ui.graphics.Shadow(
@@ -12893,45 +12908,7 @@ fun PalChatOverlay(
                             )
                         }
 
-                        // Middle-left: "vlog" text in BricolageVariableFontFamily
-                        Text(
-                            text = "vlog",
-                            fontFamily = BricolageVariableFontFamily,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = 16.dp),
-                            style = TextStyle(
-                                shadow = androidx.compose.ui.graphics.Shadow(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                    blurRadius = 3f
-                                )
-                            )
-                        )
-
-                        // Middle-right: capture time text in RobotoFontFamily
-                        Text(
-                            text = item.timeStr,
-                            fontFamily = RobotoFontFamily,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = Color.White,
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .padding(end = 16.dp),
-                            style = TextStyle(
-                                shadow = androidx.compose.ui.graphics.Shadow(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                    blurRadius = 3f
-                                )
-                            )
-                        )
-
-                        // Center: Large bold hour-only time slot (e.g. 23:00) and caption if any
+                        // Center: Large bold hour-only time slot (e.g. 23:00)
                         val captureHourOnlyText = try {
                             val zonedDateTime = item.rawInstant.atZone(java.time.ZoneId.systemDefault())
                             String.format(java.util.Locale.US, "%02d:00", zonedDateTime.hour)
@@ -12939,45 +12916,21 @@ fun PalChatOverlay(
                             item.timeStr
                         }
 
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(horizontal = 48.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = captureHourOnlyText,
-                                fontFamily = DelaGothicOneFontFamily,
-                                fontSize = 32.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                style = TextStyle(
-                                    shadow = androidx.compose.ui.graphics.Shadow(
-                                        color = Color.Black.copy(alpha = 0.6f),
-                                        offset = androidx.compose.ui.geometry.Offset(2f, 2f),
-                                        blurRadius = 4f
-                                    )
+                        Text(
+                            text = captureHourOnlyText,
+                            fontFamily = DelaGothicOneFontFamily,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.align(Alignment.Center),
+                            style = TextStyle(
+                                shadow = androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black.copy(alpha = 0.6f),
+                                    offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                                    blurRadius = 4f
                                 )
                             )
-                            if (item.caption.isNotEmpty()) {
-                                Text(
-                                    text = item.caption,
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center,
-                                    style = TextStyle(
-                                        shadow = androidx.compose.ui.graphics.Shadow(
-                                            color = Color.Black.copy(alpha = 0.5f),
-                                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                            blurRadius = 3f
-                                        )
-                                    )
-                                )
-                            }
-                        }
+                        )
                     }
                 }
             }
