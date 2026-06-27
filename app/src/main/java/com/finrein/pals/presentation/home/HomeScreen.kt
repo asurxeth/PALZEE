@@ -3387,185 +3387,83 @@ fun HomeScreen(
         }
 
         // ----------------------------------------------------
-        // 7. FLOATING MENUS & OVERLAYS
+        // 7. FLOATING MENUS & OVERLAYS (Delegated to sub-composable to avoid JIT instruction limit crash)
         // ----------------------------------------------------
-
-        // Plus (+) Menu Overlay
-        PlusMenuOverlay(
-            showPlusMenu = showPlusMenu,
-            onShowPlusMenuChange = { showPlusMenu = it },
-            overlayBackdropColor = overlayBackdropColor,
-            isDark = isDark,
-            navBarBgColor = navBarBgColor,
-            textColor = textColor,
-            onCreatePalClick = {
-                newPalName = ""
-                newPalSize = "4"
-                createPalStep = 1
-                showCreatePalFlow = true
-            },
-            onJoinPalClick = {
-                joinPalCode = ""
-                showJoinPalFlow = true
-            }
-        )
-
-        // Triple Dot (...) Menu Overlay
-        TripleDotMenuOverlay(
-            showTripleDotMenu = showTripleDotMenu,
-            onShowTripleDotMenuChange = { showTripleDotMenu = it },
-            tripleDotScreen = tripleDotScreen,
-            onTripleDotScreenChange = { tripleDotScreen = it },
-            isDark = isDark,
-            customAvatarUriString = customAvatarUriString,
-            accentColor = accentColor,
-            currentDisplayName = currentDisplayName,
-            textColor = textColor,
-            mutedTextColor = mutedTextColor,
-            selectedThemeColor = selectedThemeColor,
-            onSelectedThemeColorChange = { selectedThemeColor = it },
-            notificationInterval = notificationInterval,
-            onNotificationIntervalChange = { notificationInterval = it },
-            onChoosePhotoClick = {
-                showTripleDotMenu = false
-                photoPickerLauncher.launch("image/*")
-            },
-            onDeletePhotoClick = {
-                showTripleDotMenu = false
-                sessionManager.saveAvatarUri(null)
-                customAvatarUriString = null
-            },
-            onShowEditNameDialogChange = { showEditNameDialog = it },
-            onSignOut = { VlogPlayerManager.clearAll(); onSignOut() },
-            onDeleteAccount = { VlogPlayerManager.clearAll(); onDeleteAccount() },
-            onTripleDotMenuBoundsChange = { tripleDotMenuBounds = it }
-        )
-
-        // Activity Screen Overlay
-        ActivityScreenOverlay(
-            showActivityScreen = showActivityScreen,
-            onShowActivityScreenChange = { showActivityScreen = it },
-            backgroundColor = backgroundColor,
-            textColor = textColor,
-            mutedTextColor = mutedTextColor
-        )
-
-        // Create Pal Flow Screen
-        CreatePalDialogOverlay(
-            showCreatePalFlow = showCreatePalFlow,
-            onShowCreatePalFlowChange = { showCreatePalFlow = it },
-            isCreatingPal = isCreatingPal,
-            onIsCreatingPalChange = { isCreatingPal = it },
-            createPalStep = createPalStep,
-            onCreatePalStepChange = { createPalStep = it },
-            newPalName = newPalName,
-            onNewPalNameChange = { newPalName = it },
-            newPalSize = newPalSize,
-            onNewPalSizeChange = { newPalSize = it },
-            generatedPalCode = generatedPalCode,
-            creationDots = creationDots,
-            createdPals = createdPals,
-            onCreatedPalsChange = { createdPals = it },
-            currentUserId = currentUserId,
-            groupDatabase = groupDatabase,
-            createPalFocusRequester = createPalFocusRequester,
-            isDark = isDark,
-            accentColor = accentColor,
-            textColor = textColor,
-            mutedTextColor = mutedTextColor,
-            palTextLogoColor = palTextLogoColor,
-            backgroundColor = backgroundColor,
-            supabaseClient = supabaseClient,
-            currentDisplayName = currentDisplayName,
-            customAvatarUriString = customAvatarUriString,
-            onSaveGroupClick = { newGroupName, _ ->
-                coroutineScope.launch {
-                    try {
-                        // 1. Immediately wipe historical collections locally to keep things clean
-                        allPalsMessages.clear()
-
-                        withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            // 2. Ask the database to generate a guaranteed unique group string code natively
-                            val uniqueServerCode = supabaseClient.postgrest.rpc("generate_unique_pal_code").data.trim('"')
-
-                            // 3. Perform insertions using the verified server code token string
-                            val newPalDb = PalDbItem(code = uniqueServerCode, name = newGroupName, size = newPalSize)
-                            supabaseClient.postgrest.from("pals").insert(newPalDb)
-                            
-                            val newMapping = UserPalMapping(
-                                userId = currentUserId,
-                                palCode = uniqueServerCode,
-                                userDisplayName = currentDisplayName,
-                                userAvatarUrl = customAvatarUriString
-                            )
-                            supabaseClient.postgrest.from("user_pals").insert(newMapping)
-
-                            // 4. Update memory pointers on the Main thread using the finalized code
-                            withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                val freshPalItem = PalItem(
-                                    name = newGroupName,
-                                    size = newPalSize, 
-                                    code = uniqueServerCode,
-                                    isVlog = false,
-                                    isCreator = true
-                                )
-                                activeVlogPal = freshPalItem
-                                
-                                createdPals = (createdPals + freshPalItem).distinctBy { it.code }
-                                refreshPals() // Triggers your single-shot RPC dashboard function
-                                refreshActivePalDetails(uniqueServerCode)
-                            }
-                        }
-                        
-                    } catch (e: Exception) {
-                        android.util.Log.e("UniqueGroupCreation", "Server side generation aborted safely: ${e.message}")
-                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            android.widget.Toast.makeText(context, "Failed to create group: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    } finally {
-                        withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            showCreatePalFlow = false
-                        }
-                    }
-                }
-            }
-        )
-
-        // Join Pal Dialog Flow (Overlay Card at bottom / center based on focus)
-        JoinPalDialogOverlay(
-            showJoinPalFlow = showJoinPalFlow,
-            onShowJoinPalFlowChange = { showJoinPalFlow = it },
-            joinPalCode = joinPalCode,
-            onJoinPalCodeChange = { joinPalCode = it.lowercase(java.util.Locale.ROOT) },
-            isDark = isDark,
-            accentColor = accentColor,
-            currentUserId = currentUserId,
-            createdPals = createdPals,
-            onCreatedPalsChange = { createdPals = it },
-            refreshPals = { refreshPals() },
-            supabaseClient = supabaseClient,
-            currentDisplayName = currentDisplayName,
-            customAvatarUriString = customAvatarUriString
-        )
-
-        // Edit Name Dialog Flow (Centered Screen Overlay)
-        EditNameDialogOverlay(
-            showEditNameDialog = showEditNameDialog,
-            onShowEditNameDialogChange = { showEditNameDialog = it },
-            isDark = isDark,
-            accentColor = accentColor,
-            textColor = textColor,
-            mutedTextColor = mutedTextColor,
-            editFirstName = editFirstName,
-            onEditFirstNameChange = { editFirstName = it },
-            editLastName = editLastName,
-            onEditLastNameChange = { editLastName = it },
-            editNameFocusRequester = editNameFocusRequester,
-            onEditNameBoundsChange = { editNameBounds = it },
-            currentDisplayName = currentDisplayName,
-            onCurrentDisplayNameChange = { currentDisplayName = it },
-            useDarkTextOnAccent = themeConfig.useDarkTextOnAccent
-        )
+        if (initialSyncCompleted) {
+            HomeScreenOverlays(
+                showPlusMenu = showPlusMenu,
+                onShowPlusMenuChange = { showPlusMenu = it },
+                showTripleDotMenu = showTripleDotMenu,
+                onShowTripleDotMenuChange = { showTripleDotMenu = it },
+                showActivityScreen = showActivityScreen,
+                onShowActivityScreenChange = { showActivityScreen = it },
+                showCreatePalFlow = showCreatePalFlow,
+                onShowCreatePalFlowChange = { showCreatePalFlow = it },
+                showJoinPalFlow = showJoinPalFlow,
+                onShowJoinPalFlowChange = { showJoinPalFlow = it },
+                showEditNameDialog = showEditNameDialog,
+                onShowEditNameDialogChange = { showEditNameDialog = it },
+                tripleDotScreen = tripleDotScreen,
+                onTripleDotScreenChange = { tripleDotScreen = it },
+                editFirstName = editFirstName,
+                onEditFirstNameChange = { editFirstName = it },
+                editLastName = editLastName,
+                onEditLastNameChange = { editLastName = it },
+                editNameFocusRequester = editNameFocusRequester,
+                tripleDotMenuBounds = tripleDotMenuBounds,
+                onTripleDotMenuBoundsChange = { tripleDotMenuBounds = it },
+                createPalStep = createPalStep,
+                onCreatePalStepChange = { createPalStep = it },
+                joinPalCode = joinPalCode,
+                onJoinPalCodeChange = { joinPalCode = it },
+                newPalName = newPalName,
+                onNewPalNameChange = { newPalName = it },
+                newPalSize = newPalSize,
+                onNewPalSizeChange = { newPalSize = it },
+                generatedPalCode = generatedPalCode,
+                onGeneratedPalCodeChange = { generatedPalCode = it },
+                creationDots = creationDots,
+                onCreationDotsChange = { creationDots = it },
+                isCreatingPal = isCreatingPal,
+                onIsCreatingPalChange = { isCreatingPal = it },
+                createPalFocusRequester = createPalFocusRequester,
+                groupDatabase = groupDatabase,
+                createdPals = createdPals,
+                onCreatedPalsChange = { createdPals = it },
+                activeVlogPal = activeVlogPal,
+                onActiveVlogPalChange = { activeVlogPal = it },
+                currentUserId = currentUserId,
+                currentDisplayName = currentDisplayName,
+                onCurrentDisplayNameChange = { currentDisplayName = it },
+                customAvatarUriString = customAvatarUriString,
+                onCustomAvatarUriStringChange = { customAvatarUriString = it },
+                notificationInterval = notificationInterval,
+                onNotificationIntervalChange = { notificationInterval = it },
+                selectedThemeColor = selectedThemeColor,
+                onSelectedThemeColorChange = { selectedThemeColor = it },
+                themeConfig = themeConfig,
+                accentColor = accentColor,
+                palTextLogoColor = palTextLogoColor,
+                backgroundColor = backgroundColor,
+                textColor = textColor,
+                mutedTextColor = mutedTextColor,
+                navBarBgColor = navBarBgColor,
+                overlayBackdropColor = overlayBackdropColor,
+                isDark = isDark,
+                photoPickerLauncher = photoPickerLauncher,
+                sessionManager = sessionManager,
+                refreshPals = { refreshPals() },
+                refreshActivePalDetails = { refreshActivePalDetails(it) },
+                onSignOut = onSignOut,
+                onDeleteAccount = onDeleteAccount,
+                context = context,
+                coroutineScope = coroutineScope,
+                supabaseClient = supabaseClient,
+                allPalsMessages = allPalsMessages,
+                editNameBounds = editNameBounds,
+                onEditNameBoundsChange = { editNameBounds = it }
+            )
+        }
     }
 }
 
@@ -15093,7 +14991,261 @@ fun VideoVlogBoxItem(
             modifier = Modifier.padding(top = 4.dp)
         )
     }
+
 }
+
+@Composable
+fun HomeScreenOverlays(
+    showPlusMenu: Boolean,
+    onShowPlusMenuChange: (Boolean) -> Unit,
+    showTripleDotMenu: Boolean,
+    onShowTripleDotMenuChange: (Boolean) -> Unit,
+    showActivityScreen: Boolean,
+    onShowActivityScreenChange: (Boolean) -> Unit,
+    showCreatePalFlow: Boolean,
+    onShowCreatePalFlowChange: (Boolean) -> Unit,
+    showJoinPalFlow: Boolean,
+    onShowJoinPalFlowChange: (Boolean) -> Unit,
+    showEditNameDialog: Boolean,
+    onShowEditNameDialogChange: (Boolean) -> Unit,
+    tripleDotScreen: TripleDotScreen,
+    onTripleDotScreenChange: (TripleDotScreen) -> Unit,
+    editFirstName: String,
+    onEditFirstNameChange: (String) -> Unit,
+    editLastName: String,
+    onEditLastNameChange: (String) -> Unit,
+    editNameFocusRequester: FocusRequester,
+    tripleDotMenuBounds: Rect?,
+    onTripleDotMenuBoundsChange: (Rect?) -> Unit,
+    createPalStep: Int,
+    onCreatePalStepChange: (Int) -> Unit,
+    joinPalCode: String,
+    onJoinPalCodeChange: (String) -> Unit,
+    newPalName: String,
+    onNewPalNameChange: (String) -> Unit,
+    newPalSize: String,
+    onNewPalSizeChange: (String) -> Unit,
+    generatedPalCode: String,
+    onGeneratedPalCodeChange: (String) -> Unit,
+    creationDots: String,
+    onCreationDotsChange: (String) -> Unit,
+    isCreatingPal: Boolean,
+    onIsCreatingPalChange: (Boolean) -> Unit,
+    createPalFocusRequester: FocusRequester,
+    groupDatabase: androidx.compose.runtime.snapshots.SnapshotStateMap<String, PalItem>,
+    createdPals: List<PalItem>,
+    onCreatedPalsChange: (List<PalItem>) -> Unit,
+    activeVlogPal: PalItem?,
+    onActiveVlogPalChange: (PalItem?) -> Unit,
+    currentUserId: String,
+    currentDisplayName: String,
+    onCurrentDisplayNameChange: (String) -> Unit,
+    customAvatarUriString: String?,
+    onCustomAvatarUriStringChange: (String?) -> Unit,
+    notificationInterval: String,
+    onNotificationIntervalChange: (String) -> Unit,
+    selectedThemeColor: String,
+    onSelectedThemeColorChange: (String) -> Unit,
+    themeConfig: PalThemeConfig,
+    accentColor: Color,
+    palTextLogoColor: Color,
+    backgroundColor: Color,
+    textColor: Color,
+    mutedTextColor: Color,
+    navBarBgColor: Color,
+    overlayBackdropColor: Color,
+    isDark: Boolean,
+    photoPickerLauncher: androidx.activity.result.ActivityResultLauncher<String>,
+    sessionManager: com.finrein.pals.data.local.SessionManager,
+    refreshPals: () -> Unit,
+    refreshActivePalDetails: (String) -> Unit,
+    onSignOut: () -> Unit,
+    onDeleteAccount: () -> Unit,
+    context: android.content.Context,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    supabaseClient: io.github.jan.supabase.SupabaseClient,
+    allPalsMessages: androidx.compose.runtime.snapshots.SnapshotStateMap<String, List<MessageDbItem>>,
+    editNameBounds: Rect?,
+    onEditNameBoundsChange: (Rect?) -> Unit
+) {
+    // Plus (+) Menu Overlay
+    PlusMenuOverlay(
+        showPlusMenu = showPlusMenu,
+        onShowPlusMenuChange = onShowPlusMenuChange,
+        overlayBackdropColor = overlayBackdropColor,
+        isDark = isDark,
+        navBarBgColor = navBarBgColor,
+        textColor = textColor,
+        onCreatePalClick = {
+            onNewPalNameChange("")
+            onNewPalSizeChange("4")
+            onCreatePalStepChange(1)
+            onShowCreatePalFlowChange(true)
+        },
+        onJoinPalClick = {
+            onJoinPalCodeChange("")
+            onShowJoinPalFlowChange(true)
+        }
+    )
+
+    // Triple Dot (...) Menu Overlay
+    TripleDotMenuOverlay(
+        showTripleDotMenu = showTripleDotMenu,
+        onShowTripleDotMenuChange = onShowTripleDotMenuChange,
+        tripleDotScreen = tripleDotScreen,
+        onTripleDotScreenChange = onTripleDotScreenChange,
+        isDark = isDark,
+        customAvatarUriString = customAvatarUriString,
+        accentColor = accentColor,
+        currentDisplayName = currentDisplayName,
+        textColor = textColor,
+        mutedTextColor = mutedTextColor,
+        selectedThemeColor = selectedThemeColor,
+        onSelectedThemeColorChange = onSelectedThemeColorChange,
+        notificationInterval = notificationInterval,
+        onNotificationIntervalChange = onNotificationIntervalChange,
+        onChoosePhotoClick = {
+            onShowTripleDotMenuChange(false)
+            photoPickerLauncher.launch("image/*")
+        },
+        onDeletePhotoClick = {
+            onShowTripleDotMenuChange(false)
+            sessionManager.saveAvatarUri(null)
+            onCustomAvatarUriStringChange(null)
+        },
+        onShowEditNameDialogChange = onShowEditNameDialogChange,
+        onSignOut = { VlogPlayerManager.clearAll(); onSignOut() },
+        onDeleteAccount = { VlogPlayerManager.clearAll(); onDeleteAccount() },
+        onTripleDotMenuBoundsChange = onTripleDotMenuBoundsChange
+    )
+
+    // Activity Screen Overlay
+    ActivityScreenOverlay(
+        showActivityScreen = showActivityScreen,
+        onShowActivityScreenChange = onShowActivityScreenChange,
+        backgroundColor = backgroundColor,
+        textColor = textColor,
+        mutedTextColor = mutedTextColor
+    )
+
+    // Create Pal Flow Screen
+    CreatePalDialogOverlay(
+        showCreatePalFlow = showCreatePalFlow,
+        onShowCreatePalFlowChange = onShowCreatePalFlowChange,
+        isCreatingPal = isCreatingPal,
+        onIsCreatingPalChange = onIsCreatingPalChange,
+        createPalStep = createPalStep,
+        onCreatePalStepChange = onCreatePalStepChange,
+        newPalName = newPalName,
+        onNewPalNameChange = onNewPalNameChange,
+        newPalSize = newPalSize,
+        onNewPalSizeChange = onNewPalSizeChange,
+        generatedPalCode = generatedPalCode,
+        creationDots = creationDots,
+        createdPals = createdPals,
+        onCreatedPalsChange = onCreatedPalsChange,
+        currentUserId = currentUserId,
+        groupDatabase = groupDatabase,
+        createPalFocusRequester = createPalFocusRequester,
+        isDark = isDark,
+        accentColor = accentColor,
+        textColor = textColor,
+        mutedTextColor = mutedTextColor,
+        palTextLogoColor = palTextLogoColor,
+        backgroundColor = backgroundColor,
+        supabaseClient = supabaseClient,
+        currentDisplayName = currentDisplayName,
+        customAvatarUriString = customAvatarUriString,
+        onSaveGroupClick = { newGroupName, _ ->
+            coroutineScope.launch {
+                try {
+                    // 1. Immediately wipe historical collections locally to keep things clean
+                    allPalsMessages.clear()
+
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        // 2. Ask the database to generate a guaranteed unique group string code natively
+                        val uniqueServerCode = supabaseClient.postgrest.rpc("generate_unique_pal_code").data.trim('"')
+
+                        // 3. Perform insertions using the verified server code token string
+                        val newPalDb = PalDbItem(code = uniqueServerCode, name = newGroupName, size = newPalSize)
+                        supabaseClient.postgrest.from("pals").insert(newPalDb)
+                        
+                        val newMapping = UserPalMapping(
+                            userId = currentUserId,
+                            palCode = uniqueServerCode,
+                            userDisplayName = currentDisplayName,
+                            userAvatarUrl = customAvatarUriString
+                        )
+                        supabaseClient.postgrest.from("user_pals").insert(newMapping)
+
+                        // 4. Update memory pointers on the Main thread using the finalized code
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            val freshPalItem = PalItem(
+                                name = newGroupName,
+                                size = newPalSize, 
+                                code = uniqueServerCode,
+                                isVlog = false,
+                                isCreator = true
+                            )
+                            onActiveVlogPalChange(freshPalItem)
+                            
+                            onCreatedPalsChange((createdPals + freshPalItem).distinctBy { it.code })
+                            refreshPals() // Triggers your single-shot RPC dashboard function
+                            refreshActivePalDetails(uniqueServerCode)
+                        }
+                    }
+                    
+                } catch (e: Exception) {
+                    android.util.Log.e("UniqueGroupCreation", "Server side generation aborted safely: ${e.message}")
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, "Failed to create group: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                } finally {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onShowCreatePalFlowChange(false)
+                    }
+                }
+            }
+        }
+    )
+
+    // Join Pal Dialog Flow (Overlay Card at bottom / center based on focus)
+    JoinPalDialogOverlay(
+        showJoinPalFlow = showJoinPalFlow,
+        onShowJoinPalFlowChange = onShowJoinPalFlowChange,
+        joinPalCode = joinPalCode,
+        onJoinPalCodeChange = { onJoinPalCodeChange(it.lowercase(java.util.Locale.ROOT)) },
+        isDark = isDark,
+        accentColor = accentColor,
+        currentUserId = currentUserId,
+        createdPals = createdPals,
+        onCreatedPalsChange = onCreatedPalsChange,
+        refreshPals = refreshPals,
+        supabaseClient = supabaseClient,
+        currentDisplayName = currentDisplayName,
+        customAvatarUriString = customAvatarUriString
+    )
+
+    // Edit Name Dialog Flow (Centered Screen Overlay)
+    EditNameDialogOverlay(
+        showEditNameDialog = showEditNameDialog,
+        onShowEditNameDialogChange = onShowEditNameDialogChange,
+        isDark = isDark,
+        accentColor = accentColor,
+        textColor = textColor,
+        mutedTextColor = mutedTextColor,
+        editFirstName = editFirstName,
+        onEditFirstNameChange = onEditFirstNameChange,
+        editLastName = editLastName,
+        onEditLastNameChange = onEditLastNameChange,
+        editNameFocusRequester = editNameFocusRequester,
+        onEditNameBoundsChange = onEditNameBoundsChange,
+        currentDisplayName = currentDisplayName,
+        onCurrentDisplayNameChange = onCurrentDisplayNameChange,
+        useDarkTextOnAccent = themeConfig.useDarkTextOnAccent
+    )
+}
+
 
 
 

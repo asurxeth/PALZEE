@@ -43,9 +43,11 @@ class DashboardRepositoryImpl @Inject constructor(
 
             val mappedPals = groupsArray.map { element ->
                 val obj = element.jsonObject
+                val rawSize = obj["size"]?.jsonPrimitive?.content
+                val groupSize = if (rawSize.isNullOrEmpty() || rawSize == "1") "4" else rawSize
                 PalItem(
                     name = obj["name"]?.jsonPrimitive?.content ?: "",
-                    size = obj["size"]?.jsonPrimitive?.content ?: "1",
+                    size = groupSize,
                     code = obj["code"]?.jsonPrimitive?.content ?: "",
                     isVlog = false,
                     isCreator = obj["is_creator"]?.jsonPrimitive?.boolean ?: false
