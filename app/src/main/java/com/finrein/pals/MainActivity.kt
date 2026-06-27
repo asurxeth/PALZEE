@@ -33,6 +33,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import android.os.Build
+import android.view.RoundedCorner
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.toArgb
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -70,24 +80,24 @@ class MainActivity : ComponentActivity() {
             }
 
             PalTheme {
-                SmoothScreenEdgeContainer(selectedThemeColor = selectedThemeColor) {
-                    var currentUser by remember { 
-                        mutableStateOf<com.finrein.pals.domain.model.User?>(sessionManager.getUser()) 
-                    }
+                var currentUser by remember { 
+                    mutableStateOf<com.finrein.pals.domain.model.User?>(sessionManager.getUser()) 
+                }
 
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = com.finrein.pals.presentation.theme.PalBackground
-                    ) {
-                        if (currentUser == null) {
-                            OnboardingScreen(
-                                viewModel = authViewModel,
-                                onAuthSuccess = { user ->
-                                    sessionManager.saveUser(user)
-                                    currentUser = user
-                                }
-                            )
-                        } else {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = com.finrein.pals.presentation.theme.PalBackground
+                ) {
+                    if (currentUser == null) {
+                        OnboardingScreen(
+                            viewModel = authViewModel,
+                            onAuthSuccess = { user ->
+                                sessionManager.saveUser(user)
+                                currentUser = user
+                            }
+                        )
+                    } else {
+                        DynamicGlowScreenContainer(selectedThemeColor = selectedThemeColor) {
                             HomeScreen(
                                 user = currentUser,
                                 authRepository = authRepository,
@@ -169,13 +179,47 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun SmoothScreenEdgeContainer(
+fun DynamicGlowScreenContainer(
     selectedThemeColor: String,
     content: @Composable () -> Unit
 ) {
-    val deviceSmoothRadius = RoundedCornerShape(44.dp)
-    
-    val accentEdgeColor = when (selectedThemeColor) {
+    val view = LocalView.current
+    val density = LocalDensity.current
+    var cornerRadiusDp by remember { mutableStateOf(0.dp) }
+
+    DisposableEffect(view) {
+        val listener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val insets = view.rootWindowInsets
+                if (insets != null) {
+                    val topLeft = insets.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)
+                    val topRight = insets.getRoundedCorner(RoundedCorner.POSITION_TOP_RIGHT)
+                    val radiusPx = topLeft?.radius ?: topRight?.radius ?: 0
+                    if (radiusPx > 0) {
+                        cornerRadiusDp = (radiusPx / density.density).dp
+                    }
+                }
+            }
+        }
+        view.addOnLayoutChangeListener(listener)
+        // Check immediately in case view is already attached and laid out
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val insets = view.rootWindowInsets
+            if (insets != null) {
+                val topLeft = insets.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)
+                val topRight = insets.getRoundedCorner(RoundedCorner.POSITION_TOP_RIGHT)
+                val radiusPx = topLeft?.radius ?: topRight?.radius ?: 0
+                if (radiusPx > 0) {
+                    cornerRadiusDp = (radiusPx / density.density).dp
+                }
+            }
+        }
+        onDispose {
+            view.removeOnLayoutChangeListener(listener)
+        }
+    }
+
+    val themeColorOption = when (selectedThemeColor) {
         "yellow" -> Color(0xFFFFE600) // Neon Yellow
         "orange" -> Color(0xFFFF6700) // Neon Orange
         "pink" -> Color(0xFFFF007F)   // Neon Pink
@@ -185,20 +229,57 @@ fun SmoothScreenEdgeContainer(
         else -> Color(0xFFFFE600)
     }
 
-    Surface(
+    // Concentric correction: if screen radius is R, and we have padding of 4.dp,
+    // the inner border radius should be R - 4.dp to look perfectly concentric and symmetric!
+    val adjustedRadius = (cornerRadiusDp - 4.dp).coerceAtLeast(0.dp)
+    val deviceSmoothRadius = RoundedCornerShape(adjustedRadius)
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(4.dp) 
-            .clip(deviceSmoothRadius)
-            .border(
-                BorderStroke(width = 2.dp, color = accentEdgeColor),
-                shape = deviceSmoothRadius
-            ),
-        color = Color.Black
+            .padding(4.dp)
+            // 🌟 1. DRAW THE OUTER NEON GLOW BLUR EXTENSION EFFECT USING THE DYNAMIC ADAPTIVE PATH
+            .drawBehind {
+                drawIntoCanvas { canvas ->
+                    val paint = Paint().asFrameworkPaint().apply {
+                        color = themeColorOption.toArgb()
+                        // Generates an anti-aliased radial ambient shadow footprint
+                        setShadowLayer(
+                            24.dp.toPx(),  // Soft ambient blur radius matching image_9a4e44.jpg
+                            0f, 0f,        // Perfectly centered alignment offsets
+                            themeColorOption.toArgb()
+                        )
+                    }
+                    // Draws the invisible shadow geometry backing node layer
+                    val path = android.graphics.Path().apply {
+                        val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
+                        val rx = adjustedRadius.toPx()
+                        addRoundRect(rect, rx, rx, android.graphics.Path.Direction.CW)
+                    }
+                    canvas.nativeCanvas.drawPath(path, paint)
+                }
+            }
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        // Content container Box
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(deviceSmoothRadius)
+                .background(Color.Black)
+        ) {
             content()
         }
+
+        // Overlay Border Box: drawn strictly on top so its lines are never clipped and have exact width of 2.dp allthrough the wrapper!
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .border(
+                    width = 2.dp,
+                    color = themeColorOption,
+                    shape = deviceSmoothRadius
+                )
+        )
     }
 }
 

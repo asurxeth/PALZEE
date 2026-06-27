@@ -4514,24 +4514,22 @@ fun CameraScreenContent(
         }
 
         // Camera Viewfinder Box (9:16 rounded card) wrapped in a glow container
+        val cameraViewShape = RoundedCornerShape(32.dp * scale)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = cameraFrameBottomPadding)
                 .width(cameraWidth)
                 .height(cameraHeight)
-                .background(selectedProfileColor.copy(alpha = 0.30f), RoundedCornerShape(29.dp * scale)) // soft glow layer
-                .padding(1.dp * scale) // thin inset
+                .clip(cameraViewShape)
+                .border(
+                    BorderStroke(width = 1.5.dp, color = selectedProfileColor),
+                    shape = cameraViewShape
+                )
         ) {
             GlassmorphicCard(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .border(
-                        width = 3.5.dp * scale,
-                        color = selectedProfileColor.copy(alpha = 0.30f), // visible light glow line
-                        shape = RoundedCornerShape(28.dp * scale)
-                    ),
-                borderRadius = 28.dp * scale,
+                modifier = Modifier.fillMaxSize(),
+                borderRadius = 32.dp * scale,
                 isDark = isDark,
                 gradientColors = if (isDark) listOf(Color(0xFF161616), Color(0xFF161616)) else listOf(Color(0xFFEBEBEB), Color(0xFFEBEBEB)),
                 borderColor = Color.Transparent
@@ -4539,7 +4537,7 @@ fun CameraScreenContent(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(28.dp * scale))
+                        .clip(cameraViewShape)
                 ) {
                     // Actual Camera Preview Feed!
                     CameraPreview(
@@ -12919,15 +12917,15 @@ fun PalChatOverlay(
                         Text(
                             text = captureHourOnlyText,
                             fontFamily = DelaGothicOneFontFamily,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Normal,
                             color = Color.White,
                             modifier = Modifier.align(Alignment.Center),
                             style = TextStyle(
                                 shadow = androidx.compose.ui.graphics.Shadow(
-                                    color = Color.Black.copy(alpha = 0.6f),
-                                    offset = androidx.compose.ui.geometry.Offset(2f, 2f),
-                                    blurRadius = 4f
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                    blurRadius = 2f
                                 )
                             )
                         )
