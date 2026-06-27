@@ -5303,9 +5303,14 @@ fun GroupMembersSmileysRow(
         Color(0xFFB000FF), // Purple
         Color(0xFFFF073A)  // Red
     )
+    val spacing = when {
+        displayCount <= 4 -> 4.dp
+        displayCount <= 6 -> 3.dp
+        else -> 2.dp
+    }
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
         verticalAlignment = Alignment.CenterVertically
     ) {
         for (i in 0 until displayCount) {
@@ -5367,7 +5372,7 @@ fun GroupMembersSmileysRow(
                         contentDescription = "Smiley",
                         modifier = Modifier
                             .fillMaxSize()
-                            .rotate(if (isLit) 180f else 0f),
+                            .rotate(if (isLit) 0f else 180f),
                         colorFilter = ColorFilter.tint(
                             if (isLit) {
                                 Color.Black
@@ -6033,16 +6038,26 @@ fun CapturedPreviewScreen(
                 val groupName = pal.name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
                 
                 val members = groupMembersMap[pal.code] ?: emptyList()
-                val otherMembers = members.map { entry ->
+                val allMemberFirstNames = members.map { entry ->
                     val parts = entry.split("|||")
-                    if (parts.size >= 2) parts[1] else entry
-                }.filter { it != userFirstName && !it.contains("(You)") && it != "only you" }
+                    val displayName = if (parts.size >= 2) parts[1] else entry
+                    displayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                }
                 
                 val description = if (pal.isVlog) "only you" else {
-                    if (otherMembers.isEmpty()) "only you" else {
-                        otherMembers.take(3).joinToString(", ") { name ->
+                    if (allMemberFirstNames.isEmpty() || allMemberFirstNames.size <= 1) "only you" else {
+                        allMemberFirstNames.joinToString(", ") { name ->
                             name.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
                         }
+                    }
+                }
+                
+                val descriptionFontSize = if (pal.isVlog) 13.sp else {
+                    when {
+                        allMemberFirstNames.size <= 2 -> 13.sp
+                        allMemberFirstNames.size <= 4 -> 11.sp
+                        allMemberFirstNames.size <= 7 -> 9.sp
+                        else -> 7.sp
                     }
                 }
                 
@@ -6185,7 +6200,7 @@ fun CapturedPreviewScreen(
                         Text(
                             text = description,
                             fontFamily = FontFamily.SansSerif,
-                            fontSize = 13.sp,
+                            fontSize = descriptionFontSize,
                             fontWeight = FontWeight.Normal,
                             color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.4f)
                         )
@@ -6193,32 +6208,55 @@ fun CapturedPreviewScreen(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Right Smiley Face List
-                    if (pal.isVlog) {
-                        val vlogSubmissions = if (capturedVlogsPaths.isNotEmpty()) {
-                            listOf(SubmissionDbItem(palCode = "vlog", userId = currentUserId, userDisplayName = currentDisplayName, imageUrl = ""))
+                    // Right Smiley Face List (takes 1f weight to divide 50/50)
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterEnd
+                    ) {
+                        if (pal.isVlog) {
+                            val vlogSubmissions = if (capturedVlogsPaths.isNotEmpty()) {
+                                listOf(SubmissionDbItem(palCode = "vlog", userId = currentUserId, userDisplayName = currentDisplayName, imageUrl = ""))
+                            } else {
+                                emptyList()
+                            }
+                            GroupMembersSmileysRow(
+                                members = listOf("only you"),
+                                submissions = vlogSubmissions,
+                                isDark = isDark,
+                                accentColor = accentColor,
+                                palTextLogoColor = palTextLogoColor,
+                                currentUserId = currentUserId,
+                                userFirstName = userFirstName,
+                                smileySize = 24.dp,
+                                innerSize = 18.dp
+                            )
                         } else {
-                            emptyList()
+                            val groupMembersList = groupMembersMap[pal.code] ?: emptyList()
+                            val memberCount = groupMembersList.size
+                            val computedSmileySize = when {
+                                memberCount <= 4 -> 24.dp
+                                memberCount <= 6 -> 18.dp
+                                memberCount <= 8 -> 14.dp
+                                else -> 11.dp
+                            }
+                            val computedInnerSize = when {
+                                memberCount <= 4 -> 16.dp
+                                memberCount <= 6 -> 12.dp
+                                memberCount <= 8 -> 10.dp
+                                else -> 8.dp
+                            }
+                            GroupMembersSmileysRow(
+                                members = groupMembersList,
+                                submissions = groupSubmissionsMap[pal.code] ?: emptyList(),
+                                isDark = isDark,
+                                accentColor = accentColor,
+                                palTextLogoColor = palTextLogoColor,
+                                currentUserId = currentUserId,
+                                userFirstName = userFirstName,
+                                smileySize = computedSmileySize,
+                                innerSize = computedInnerSize
+                            )
                         }
-                        GroupMembersSmileysRow(
-                            members = listOf("only you"),
-                            submissions = vlogSubmissions,
-                            isDark = isDark,
-                            accentColor = accentColor,
-                            palTextLogoColor = palTextLogoColor,
-                            currentUserId = currentUserId,
-                            userFirstName = userFirstName,
-                            smileySize = 24.dp,
-                            innerSize = 18.dp
-                        )
-                    } else {
-                        // For Groups
-                        val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
-                        GroupHoursSmileysRow(
-                            submissions = groupSubs,
-                            isDark = isDark,
-                            accentColor = accentColor
-                        )
                     }
                 }
             }
@@ -8769,11 +8807,13 @@ fun VlogScreenContent(
 
         // Group font size: base is 16f. We reduce it as length increases.
         val groupFontSize = when {
-            textLength <= 8 -> 16.0f
-            textLength <= 14 -> 16.0f - (textLength - 8) * 0.6f
-            textLength <= 20 -> 12.4f - (textLength - 14) * 0.4f
-            else -> 10.0f - (textLength - 20) * 0.15f
-        }.coerceAtLeast(9f).sp
+            textLength <= 6 -> 16.0f
+            textLength <= 10 -> 14.5f
+            textLength <= 14 -> 13.0f
+            textLength <= 18 -> 11.5f
+            textLength <= 22 -> 10.0f
+            else -> 8.5f
+        }.sp
 
         Box(
             modifier = Modifier
@@ -8830,7 +8870,7 @@ fun VlogScreenContent(
                                 val localPos = coordinates.positionInRoot()
                                 capsuleLeftDp = with(density) { localPos.x.toDp() }
                             }
-                            .widthIn(max = (screenWidthDp - 215.dp).coerceAtLeast(100.dp))
+                            .widthIn(max = (screenWidthDp - 225.dp).coerceAtLeast(100.dp))
                             .padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(1.5.dp)
@@ -8921,7 +8961,7 @@ fun VlogScreenContent(
                                 val localPos = coordinates.positionInRoot()
                                 capsuleLeftDp = with(density) { localPos.x.toDp() }
                             }
-                            .widthIn(max = (screenWidthDp - 215.dp).coerceAtLeast(100.dp))
+                            .widthIn(max = (screenWidthDp - 225.dp).coerceAtLeast(100.dp))
                             .padding(horizontal = 13.5.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(1.5.dp)
