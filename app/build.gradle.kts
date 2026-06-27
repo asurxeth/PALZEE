@@ -97,6 +97,11 @@ android {
     }
 }
 
+tasks.withType<JavaCompile>().configureEach {
+    options.compilerArgs.add("-Xlint:-deprecation")
+    options.compilerArgs.add("-Xlint:-unchecked")
+}
+
 dependencies {
     // Core AndroidX
     implementation(libs.androidx.core.ktx)
