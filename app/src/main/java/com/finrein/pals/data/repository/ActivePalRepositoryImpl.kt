@@ -86,10 +86,6 @@ class ActivePalRepositoryImpl @Inject constructor(
                             } catch (e: Exception) {
                                 // Ignore conflict to preserve original group name
                             }
-
-                            // Insert profile token row safely
-                            supabaseClient.postgrest.from("submissions").insert(profileSub)
-                            finalSubmissionsList = dbSubmissions + profileSub
                         } finally {
                             syncMutex.unlock()
                         }

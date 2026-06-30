@@ -37,8 +37,8 @@ import android.os.Build
 import android.view.RoundedCorner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.Paint
@@ -97,7 +97,13 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     } else {
-                        DynamicGlowScreenContainer(selectedThemeColor = selectedThemeColor) {
+                        var onboardingCompleted by remember(currentUser) {
+                            mutableStateOf(sessionManager.isOnboardingCompleted())
+                        }
+                        DynamicGlowScreenContainer(
+                            selectedThemeColor = selectedThemeColor,
+                            showBorder = onboardingCompleted
+                        ) {
                             HomeScreen(
                                 user = currentUser,
                                 authRepository = authRepository,
@@ -106,6 +112,9 @@ class MainActivity : ComponentActivity() {
                                 onSelectedThemeColorChange = { color ->
                                     selectedThemeColor = color
                                     sessionManager.saveThemeColor(color)
+                                },
+                                onOnboardingCompleted = {
+                                    onboardingCompleted = true
                                 },
                                 onSignOut = {
                                     lifecycleScope.launch {
@@ -181,6 +190,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DynamicGlowScreenContainer(
     selectedThemeColor: String,
+    showBorder: Boolean,
     content: @Composable () -> Unit
 ) {
     val view = LocalView.current
@@ -219,7 +229,7 @@ fun DynamicGlowScreenContainer(
         }
     }
 
-    val themeColorOption = when (selectedThemeColor) {
+    val accentEdgeColor = when (selectedThemeColor) {
         "yellow" -> Color(0xFFFFE600) // Neon Yellow
         "orange" -> Color(0xFFFF6700) // Neon Orange
         "pink" -> Color(0xFFFF007F)   // Neon Pink
@@ -229,71 +239,48 @@ fun DynamicGlowScreenContainer(
         else -> Color(0xFFFFE600)
     }
 
-    val deviceSmoothRadius = RoundedCornerShape(cornerRadiusDp)
+    val effectiveRadius = if (cornerRadiusDp > 0.dp) cornerRadiusDp else 24.dp
+    val deviceSmoothRadius = RoundedCornerShape(effectiveRadius)
 
-    if (cornerRadiusDp > 0.dp) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                // 🌟 1. DRAW THE INNER NEON GLOW BLUR EXTENSION EFFECT USING CANVAS CLIPPING
-                .drawBehind {
-                    drawIntoCanvas { canvas ->
-                        val path = android.graphics.Path().apply {
-                            val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
-                            val rx = cornerRadiusDp.toPx()
-                            addRoundRect(rect, rx, rx, android.graphics.Path.Direction.CW)
-                        }
-                        
-                        // Clip the canvas to prevent the glow from bleeding outside the screen boundaries
-                        canvas.nativeCanvas.save()
-                        canvas.nativeCanvas.clipPath(path)
+    val baseModifier = Modifier
+        .fillMaxSize()
+        .clip(deviceSmoothRadius)
+        .background(Color.Black)
 
-                        val paint = android.graphics.Paint().apply {
-                            isAntiAlias = true
-                            color = themeColorOption.toArgb()
-                            style = android.graphics.Paint.Style.STROKE
-                            strokeWidth = 4.dp.toPx()
-                            setShadowLayer(
-                                24.dp.toPx(),  // Ambient blur radius
-                                0f, 0f,
-                                themeColorOption.toArgb()
-                            )
-                        }
-                        canvas.nativeCanvas.drawPath(path, paint)
-                        canvas.nativeCanvas.restore()
-                    }
+    val containerModifier = if (showBorder) {
+        baseModifier.drawWithContent {
+            drawContent() // 1. Draw the black background and HomeScreen contents first
+            
+            // 2. Draw the solid outermost screen edge boundary outline on top of the black background/contents!
+            drawIntoCanvas { canvas ->
+                val path = android.graphics.Path().apply {
+                    val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
+                    val rx = effectiveRadius.toPx()
+                    addRoundRect(rect, rx, rx, android.graphics.Path.Direction.CW)
                 }
-        ) {
-            // Content container Box
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(deviceSmoothRadius)
-                    .background(Color.Black)
-            ) {
-                content()
-            }
 
-            // Overlay Border Box: drawn strictly on top so its lines are never clipped and have exact width of 2.dp allthrough the wrapper!
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .border(
-                        width = 2.dp,
-                        color = themeColorOption,
-                        shape = deviceSmoothRadius
-                    )
-            )
+                // Draw the solid outermost boundary stroke on the original path (clipped to path to prevent outer bleed)
+                canvas.nativeCanvas.save()
+                canvas.nativeCanvas.clipPath(path)
+
+                val borderPaint = android.graphics.Paint().apply {
+                    isAntiAlias = true
+                    color = accentEdgeColor.toArgb()
+                    style = android.graphics.Paint.Style.STROKE
+                    strokeWidth = 1.dp.toPx() // Visible border width is exactly 0.5.dp after clipping
+                }
+                canvas.nativeCanvas.drawPath(path, borderPaint)
+
+                canvas.nativeCanvas.restore()
+            }
         }
     } else {
-        // Plain fullscreen layout when no physical rounded corners are detected (square screen / API fallback)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        ) {
-            content()
-        }
+        baseModifier
+    }
+
+    Box(
+        modifier = containerModifier
+    ) {
+        content()
     }
 }
-

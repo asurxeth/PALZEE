@@ -168,7 +168,7 @@ fun OnboardingScreen(
         )
     }
 
-    val backgroundColor = if (isDark) Color(0xFF181513) else Color(0xFFFCF6ED)
+    val backgroundColor = if (isDark) Color(0xFF1C1C1C) else Color(0xFFFAF9F6)
 
     // Unpack success flow
     LaunchedEffect(uiState) {
@@ -303,11 +303,11 @@ fun OnboardingScreen(
 
             // 2. Title Section (using OwnglyphFontFamily for thin line weight)
             Text(
-                text = "Pal",
+                text = "PAL",
                 fontFamily = OwnglyphFontFamily,
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Normal,
-                color = if (isDark) Color(0xFFFCF6ED) else Color(0xFF1E1C1A),
+                color = if (isDark) Color.White else Color.Black,
                 modifier = Modifier.offset(y = 0.dp)
             )
 
@@ -350,15 +350,16 @@ fun OnboardingScreen(
                 )
             }
 
-            val passkeyBg = if (isDark) Color.White else Color(0xFF1E1C1A)
-            val passkeyText = if (isDark) Color(0xFF1E1C1A) else Color.White
+            val passkeyBg = if (isDark) Color(0xFF1C1C1C) else Color(0xFFCBDCA7)
+            val passkeyText = if (isDark) Color.White else Color(0xFF1E1C1A)
+            val passkeyBorder = if (isDark) Color(0xFF444444) else null
 
-            val googleBg = if (isDark) Color(0xFF2D2A28) else Color.White
-            val googleText = if (isDark) Color.White else Color(0xFF1E1C1A)
-            val googleBorder = if (isDark) Color(0xFF3E3B39) else Color(0xFFE2DDD5)
+            val googleBg = if (isDark) Color(0xFFCBDCA7) else Color.White
+            val googleText = Color(0xFF1E1C1A)
+            val googleBorder = if (isDark) Color.Transparent else Color(0xFFE2DDD5)
 
-            val emailBg = if (isDark) Color(0xFF5D4037) else Color(0xFFFFF2D6)
-            val emailText = if (isDark) Color(0xFFFFF2D6) else Color(0xFF5D4037)
+            val emailBg = if (isDark) Color(0xFFFCD9BE) else Color(0xFFE8B093)
+            val emailText = Color(0xFF1E1C1A)
 
             // 4. Buttons Section (stacked vertically)
             Column(
@@ -372,9 +373,10 @@ fun OnboardingScreen(
                 // Button 1: Continue with Passkey
                 OnboardingButton(
                     text = "Continue with passkey",
-                    iconResId = if (isDark) R.drawable.ic_passkey_custom_dark else R.drawable.ic_passkey_custom_light,
+                    iconResId = R.drawable.ic_passkey_custom_light,
                     backgroundColor = passkeyBg,
                     contentColor = passkeyText,
+                    borderColor = passkeyBorder,
                     onClick = {
                         firstNameInput = ""
                         emailInput = ""
@@ -386,7 +388,7 @@ fun OnboardingScreen(
                 // Button 2: Continue with Google
                 OnboardingButton(
                     text = "Continue with Google",
-                    iconResId = if (isDark) R.drawable.ic_google_solid else R.drawable.ic_google_custom_light,
+                    iconResId = R.drawable.ic_google_custom_light,
                     backgroundColor = googleBg,
                     contentColor = googleText,
                     borderColor = googleBorder,
@@ -459,7 +461,7 @@ fun OnboardingScreen(
                 // Button 3: Continue with Email
                 OnboardingButton(
                     text = "Continue with Email",
-                    iconResId = if (isDark) R.drawable.ic_email_custom_dark else R.drawable.ic_email_custom_light,
+                    iconResId = R.drawable.ic_email_custom_light,
                     backgroundColor = emailBg,
                     contentColor = emailText,
                     onClick = {
@@ -483,12 +485,12 @@ fun OnboardingScreen(
                 Text(
                     text = "having trouble signing in?",
                     fontFamily = FontFamily.SansSerif,
-                    fontSize = 14.sp,
+                    fontSize = 15.sp,
                     textDecoration = TextDecoration.Underline,
                     color = if (isDark) Color.White.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.6f),
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .offset(y = (-10).dp)
+                        .offset(y = (-14).dp)
                         .padding(top = 10.dp)
                         .clickable {
                             backupEmailInput = ""

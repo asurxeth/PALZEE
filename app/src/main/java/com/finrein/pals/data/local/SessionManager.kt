@@ -24,6 +24,13 @@ class SessionManager(context: Context) {
         return User(id, email, displayName, isPasskeyRegistered)
     }
 
+    fun updateDisplayName(name: String) {
+        val u = getUser()
+        if (u != null) {
+            saveUser(u.copy(displayName = name))
+        }
+    }
+
     fun clearUser() {
         val hasLoggedInBefore = prefs.getBoolean("has_logged_in_before", false)
         prefs.edit().clear().putBoolean("has_logged_in_before", hasLoggedInBefore).apply()

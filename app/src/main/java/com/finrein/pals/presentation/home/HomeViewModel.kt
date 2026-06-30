@@ -53,7 +53,6 @@ class HomeViewModel @Inject constructor(
     }
 
     suspend fun refreshMessages(palCode: String) {
-        if (palCode == "vlog") return
         val result = chatRepository.getMessages(palCode)
         result.getOrNull()?.let { dbMessages ->
             val oldMsgs = _palMessages.value[palCode] ?: emptyList()
@@ -64,32 +63,23 @@ class HomeViewModel @Inject constructor(
     }
 
     fun sendMessage(palCode: String, userId: String, messageText: String) {
-        if (palCode != "vlog") {
-            val newMessage = MessageDbItem(
-                palCode = palCode,
-                userId = userId,
-                messageText = messageText
-            )
-            viewModelScope.launch(Dispatchers.IO) {
-                val result = chatRepository.postMessage(newMessage)
-                if (result.isSuccess) {
-                    refreshMessages(palCode)
-                } else {
-                    val localMsg = MessageDbItem(
-                        palCode = palCode,
-                        userId = userId,
-                        messageText = messageText
-                    )
-                    _palMessages.value = _palMessages.value + (palCode to ((_palMessages.value[palCode] ?: emptyList()) + localMsg))
-                }
+        val newMessage = MessageDbItem(
+            palCode = palCode,
+            userId = userId,
+            messageText = messageText
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = chatRepository.postMessage(newMessage)
+            if (result.isSuccess) {
+                refreshMessages(palCode)
+            } else {
+                val localMsg = MessageDbItem(
+                    palCode = palCode,
+                    userId = userId,
+                    messageText = messageText
+                )
+                _palMessages.value = _palMessages.value + (palCode to ((_palMessages.value[palCode] ?: emptyList()) + localMsg))
             }
-        } else {
-            val localMsg = MessageDbItem(
-                palCode = palCode,
-                userId = userId,
-                messageText = messageText
-            )
-            _palMessages.value = _palMessages.value + (palCode to ((_palMessages.value[palCode] ?: emptyList()) + localMsg))
         }
     }
 
@@ -108,6 +98,8 @@ class HomeViewModel @Inject constructor(
                             val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
                             if (eventPalCode != null && eventPalCode == activePalCode) {
                                 refreshMessages(eventPalCode)
+                            } else if (action is PostgresAction.Delete && activePalCode != null) {
+                                refreshMessages(activePalCode)
                             }
                         }
                         else -> {

@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.finrein.pals.R
 import com.finrein.pals.presentation.theme.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
 
 @Composable
 fun PalGroupGridScreen(
@@ -67,6 +69,17 @@ fun PalGroupGridScreen(
     onCameraClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val localTransition = rememberInfiniteTransition(label = "capture_smiley_rotation")
+    val localRotationAngle by localTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = -360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
     val nonVlogGroups = remember(createdPals) {
         createdPals.filter { !it.isVlog }
     }
@@ -79,7 +92,7 @@ fun PalGroupGridScreen(
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 160.dp),
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 16.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp, top = 0.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -88,7 +101,8 @@ fun PalGroupGridScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 16.dp),
+                        .height(60.dp)
+                        .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -97,17 +111,19 @@ fun PalGroupGridScreen(
                         fontFamily = OwnglyphFontFamily,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
-                        color = palTextLogoColor
+                        color = palTextLogoColor,
+                        modifier = Modifier.offset(y = 2.dp)
                     )
 
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.offset(y = 2.dp)
                     ) {
                         // Button 1: Plus (+)
                         Box(
                             modifier = Modifier
-                                .size(30.dp)
+                                .size(32.5.dp)
                                 .clip(CircleShape)
                                 .background(if (isDark) Color(0xFF161616) else Color(0xFFEBEBEB))
                                 .border(1.dp, if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f), CircleShape)
@@ -125,7 +141,7 @@ fun PalGroupGridScreen(
                         // Button 2: User Profile Avatar
                         Box(
                             modifier = Modifier
-                                .size(30.dp)
+                                .size(32.5.dp)
                                 .clip(CircleShape)
                                 .border(1.dp, if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.15f), CircleShape)
                                 .clickable { onProfileClick() },
@@ -162,7 +178,7 @@ fun PalGroupGridScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
-                            .offset(y = (-25).dp)
+                            .offset(y = (-10).dp)
                             .padding(start = 8.dp, bottom = 4.dp)
                     ) {
                         Box(
@@ -177,7 +193,7 @@ fun PalGroupGridScreen(
                                 contentDescription = null,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .rotate(rotationAngle)
+                                    .rotate(180f + localRotationAngle)
                             )
                         }
                         Text(
@@ -202,7 +218,7 @@ fun PalGroupGridScreen(
 
                         Box(
                             modifier = Modifier
-                                .offset(y = (-25).dp)
+                                .offset(y = (-10).dp)
                                 .fillMaxWidth()
                         ) {
                             Box(
@@ -378,8 +394,9 @@ fun PalGroupGridScreen(
                                         if (isCompleted) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(4.dp)
-                                                    .clip(CircleShape)
+                                                    .width(16.dp)
+                                                    .height(2.dp)
+                                                    .clip(RoundedCornerShape(1.dp))
                                                     .background(Color.White)
                                             )
                                         } else if (isActive) {
@@ -414,7 +431,7 @@ fun PalGroupGridScreen(
                     } else {
                         GlassmorphicCard(
                             modifier = Modifier
-                                .offset(y = (-25).dp)
+                                .offset(y = (-10).dp)
                                 .fillMaxWidth(),
                             onClick = { onPalClick(vlogPal) },
                             borderRadius = 28.dp,
@@ -478,7 +495,7 @@ fun PalGroupGridScreen(
             items(nonVlogGroups, span = { GridItemSpan(maxLineSpan) }) { group ->
                 PalGroupCard(
                     pal = group,
-                    modifier = Modifier.offset(y = (-15).dp),
+                    modifier = Modifier.offset(y = 0.dp),
                     allPalsMembers = allPalsMembers,
                     groupMembersUserIds = groupMembersUserIds,
                     allPalsSubmissions = allPalsSubmissions,
@@ -514,7 +531,7 @@ fun PalGroupGridScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(start = if (isVlogSent) 0.dp else 12.dp)
-                                .offset(y = (-37.5).dp),
+                                .offset(y = (-22.5).dp),
                             textAlign = if (isVlogSent) TextAlign.Center else TextAlign.Start
                         )
 
@@ -523,7 +540,7 @@ fun PalGroupGridScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .offset(y = (-58).dp),
+                                .offset(y = (-43).dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Row(
@@ -697,7 +714,7 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(54.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-87.5).dp),
+                                .offset(y = (-72.5).dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
@@ -748,7 +765,7 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(64.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-101.5).dp),
+                                .offset(y = (-86.5).dp),
                             contentScale = ContentScale.Fit
                         )
                     }
