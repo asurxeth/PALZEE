@@ -6165,7 +6165,7 @@ fun CapturedPreviewScreen(
     }
 
     // 1. Initialize ExoPlayer safely
-    val exoPlayer = remember(capturedVideoPath) {
+    val exoPlayer = remember {
         androidx.media3.exoplayer.ExoPlayer.Builder(context)
             .setRenderersFactory(
                 androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
