@@ -73,6 +73,10 @@ class MainActivity : ComponentActivity() {
 
 
         val sessionManager = com.finrein.pals.data.local.SessionManager(applicationContext)
+        com.finrein.pals.notification.PalAlarmScheduler.updateScheduling(
+            applicationContext,
+            sessionManager.getNotificationInterval()
+        )
 
         setContent {
             var selectedThemeColor by remember { 

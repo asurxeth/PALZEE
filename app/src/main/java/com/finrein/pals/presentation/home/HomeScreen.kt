@@ -510,6 +510,13 @@ fun handleVlogSubmission(
     val time = java.time.LocalTime.now()
     val formattedTime = String.format("%02d:%02d", time.hour, time.minute)
 
+    // Mark that a pal was successfully sent for this specific hour
+    val sentHour = time.hour
+    val sentPrefs = context.getSharedPreferences("palzee_prefs", android.content.Context.MODE_PRIVATE)
+    val sentTodayStr = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date())
+    val sentLogKey = "pal_logged_${sentTodayStr}_$sentHour"
+    sentPrefs.edit().putBoolean(sentLogKey, true).apply()
+
     var currentPaths = capturedVlogsPaths
     var currentTimes = capturedVlogsTimes
     var currentCaptions = capturedVlogsCaptions
@@ -1226,6 +1233,73 @@ fun VlogStarIcon(
         }
     }
 }
+
+val CalendarMonthIcon = androidx.compose.ui.graphics.vector.ImageVector.Builder(
+    name = "CalendarMonth",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).apply {
+    path(
+        fill = androidx.compose.ui.graphics.SolidColor(Color.White)
+    ) {
+        moveTo(19f, 4f)
+        horizontalLineToRelative(-1f)
+        verticalLineTo(2f)
+        horizontalLineToRelative(-2f)
+        verticalLineToRelative(2f)
+        horizontalLineTo(8f)
+        verticalLineTo(2f)
+        horizontalLineTo(6f)
+        verticalLineToRelative(2f)
+        horizontalLineTo(5f)
+        curveTo(3.89f, 4f, 3.01f, 4.9f, 3.01f, 6f)
+        lineTo(3f, 20f)
+        curveTo(3f, 21.1f, 3.89f, 22f, 5f, 22f)
+        horizontalLineToRelative(14f)
+        curveTo(20.1f, 22f, 21f, 21.1f, 21f, 20f)
+        verticalLineTo(6f)
+        curveTo(21f, 4.9f, 20.1f, 4f, 19f, 4f)
+        close()
+        moveTo(19f, 20f)
+        horizontalLineTo(5f)
+        verticalLineTo(9f)
+        horizontalLineToRelative(14f)
+        verticalLineTo(20f)
+        close()
+        moveTo(7f, 11f)
+        horizontalLineToRelative(2f)
+        verticalLineToRelative(2f)
+        horizontalLineTo(7f)
+        close()
+        moveTo(11f, 11f)
+        horizontalLineToRelative(2f)
+        verticalLineToRelative(2f)
+        horizontalLineTo(11f)
+        close()
+        moveTo(15f, 11f)
+        horizontalLineToRelative(2f)
+        verticalLineToRelative(2f)
+        horizontalLineTo(15f)
+        close()
+        moveTo(7f, 15f)
+        horizontalLineToRelative(2f)
+        verticalLineToRelative(2f)
+        horizontalLineTo(7f)
+        close()
+        moveTo(11f, 15f)
+        horizontalLineToRelative(2f)
+        verticalLineToRelative(2f)
+        horizontalLineTo(11f)
+        close()
+        moveTo(15f, 15f)
+        horizontalLineToRelative(2f)
+        verticalLineToRelative(2f)
+        horizontalLineTo(15f)
+        close()
+    }
+}.build()
 
 data class PalThemeConfig(
     val name: String,
@@ -1972,7 +2046,7 @@ fun HomeScreen(
 
     var tripleDotScreen by remember { mutableStateOf(TripleDotScreen.MAIN) }
     var showEditNameDialog by remember { mutableStateOf(false) }
-    var notificationInterval by remember { mutableStateOf("off") }
+    var notificationInterval by remember { mutableStateOf(sessionManager.getNotificationInterval()) }
     var userPin by remember { mutableStateOf("4A2D8B") }
 
     // Vlog and Group screen states
@@ -3873,7 +3947,11 @@ fun HomeScreen(
                 customAvatarUriString = customAvatarUriString,
                 onCustomAvatarUriStringChange = { customAvatarUriString = it },
                 notificationInterval = notificationInterval,
-                onNotificationIntervalChange = { notificationInterval = it },
+                onNotificationIntervalChange = { interval ->
+                    notificationInterval = interval
+                    sessionManager.saveNotificationInterval(interval)
+                    com.finrein.pals.notification.PalAlarmScheduler.updateScheduling(context, interval)
+                },
                 selectedThemeColor = selectedThemeColor,
                 onSelectedThemeColorChange = { selectedThemeColor = it },
                 themeConfig = themeConfig,
@@ -5076,11 +5154,12 @@ fun CameraScreenContent(
                              val isSelected = activeSlot == slot
                              Box(
                                  modifier = Modifier
+                                     .size(36.dp * scale)
+                                     .clip(CircleShape)
                                      .clickable { 
                                          activeSlot = slot 
                                          linearZoom = (slot - 1) / 4f
-                                     }
-                                     .padding(vertical = 4.dp * scale),
+                                     },
                                  contentAlignment = Alignment.Center
                              ) {
                                  Text(
@@ -8433,7 +8512,10 @@ fun VlogScreenContent(
         ) {
             if (showArchiveView) {
                 VlogArchiveCard(
-                    capturedVlogsPaths = capturedVlogsPaths,
+                    activePalSubmissions = activePalSubmissions,
+                    currentUserId = currentUserId,
+                    selectedDayOffset = selectedDayOffset,
+                    onSelectedDayOffsetChange = onSelectedDayOffsetChange,
                     isDark = isDark,
                     accentColor = accentColor,
                     selectedProfileColor = selectedProfileColor,
@@ -8872,12 +8954,14 @@ fun VlogScreenContent(
 
                                 // Overlay 4: Triple dots at bottom right (white color)
                                 Box(
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(bottom = 16.dp, end = 16.dp)
-                                        .clickable { showTripleDotMenu = true },
-                                    contentAlignment = Alignment.Center
-                                ) {
+                                     modifier = Modifier
+                                         .align(Alignment.BottomEnd)
+                                         .padding(bottom = 12.dp, end = 12.dp)
+                                         .clip(CircleShape)
+                                         .clickable { showTripleDotMenu = true }
+                                         .padding(8.dp),
+                                     contentAlignment = Alignment.Center
+                                 ) {
                                     Text(
                                         text = "•••",
                                         fontSize = 10.sp,
@@ -9303,21 +9387,45 @@ fun VlogScreenContent(
                 .padding(horizontal = 24.dp)
                 .height(60.dp)
         ) {
-            // Left: back chevron with dark transparent bg
-            Box(
+            // Left: back chevron and calendar button with dark transparent bg
+            Row(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .offset(y = 2.dp)
-                    .size(32.5.dp)
-                    .clip(CircleShape)
-                    .background(headerButtonBg)
-                    .clickable { onBack() },
-                contentAlignment = Alignment.Center
+                    .offset(y = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                ChevronLeftIcon(
-                    tint = headerIconTint,
-                    modifier = Modifier.size(18.dp)
-                )
+                // Back Button
+                Box(
+                    modifier = Modifier
+                        .size(32.5.dp)
+                        .clip(CircleShape)
+                        .background(headerButtonBg)
+                        .clickable { onBack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    ChevronLeftIcon(
+                        tint = headerIconTint,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Calendar Button
+                Box(
+                    modifier = Modifier
+                        .size(32.5.dp)
+                        .clip(CircleShape)
+                        .background(headerButtonBg)
+                        .clickable { showArchiveView = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = CalendarMonthIcon,
+                        contentDescription = "calendar month",
+                        tint = headerIconTint,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
                    // Center: dropdown capsule & horizontal smileys row underneath (using Box to prevent shifting)
             Box(
@@ -9694,26 +9802,7 @@ fun VlogScreenContent(
                                 }
                             }
                         } else {
-                            // Main dropdown menu list (archive, members, settings)
-                            
-                            // 1. archive option
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onShowDropdownChange(false)
-                                        showArchiveView = true
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 7.dp), // reduced by 5dp
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "archive",
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontSize = 15.sp,
-                                    color = textColor
-                                )
-                            }
+                            // Main dropdown menu list (members, settings)
 
                             // 1.5. code option
                             if (!pal.isVlog) {
@@ -15615,6 +15704,11 @@ fun TripleDotMenuOverlay(
     onDeleteAccount: () -> Unit = {},
     onTripleDotMenuBoundsChange: (Rect) -> Unit
 ) {
+    val context = LocalContext.current
+    val postNotificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { }
+
     if (showTripleDotMenu) {
         Box(modifier = Modifier.fillMaxSize()) {
             androidx.activity.compose.BackHandler {
@@ -15736,22 +15830,13 @@ fun TripleDotMenuOverlay(
                                         .clickable { onClick() }
                                         .padding(horizontal = 20.dp, vertical = 10.dp)
                                 ) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(
-                                            text = title,
-                                            fontFamily = FontFamily.SansSerif,
-                                            fontSize = 17.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = textColor
-                                        )
-                                        Text(
-                                            text = description,
-                                            fontFamily = FontFamily.SansSerif,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Normal,
-                                            color = mutedTextColor
-                                        )
-                                    }
+                                    Text(
+                                        text = title,
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = textColor
+                                    )
                                 }
                             }
 
@@ -15768,10 +15853,13 @@ fun TripleDotMenuOverlay(
                                     fontSize = 17.sp,
                                     color = accentColor,
                                     fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.clickable {
-                                        onShowTripleDotMenuChange(false)
-                                        onTripleDotScreenChange(TripleDotScreen.MAIN)
-                                    }
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            onShowTripleDotMenuChange(false)
+                                            onTripleDotScreenChange(TripleDotScreen.MAIN)
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
                             }
                         }
@@ -16000,6 +16088,11 @@ fun TripleDotMenuOverlay(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
+                                            if (option != "off" && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                                    postNotificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                                }
+                                            }
                                             onNotificationIntervalChange(option)
                                         }
                                         .padding(horizontal = 20.dp, vertical = 8.dp),
@@ -16009,7 +16102,14 @@ fun TripleDotMenuOverlay(
                                     CustomRadioButton(
                                         selected = notificationInterval == option,
                                         color = textColor,
-                                        onClick = { onNotificationIntervalChange(option) }
+                                        onClick = {
+                                            if (option != "off" && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                                if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                                    postNotificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                                }
+                                            }
+                                            onNotificationIntervalChange(option)
+                                        }
                                     )
                                     Text(
                                         text = option,
@@ -16189,7 +16289,10 @@ fun PalsTabScreenContent(
 
 @Composable
 fun VlogArchiveCard(
-    capturedVlogsPaths: List<String>,
+    activePalSubmissions: List<SubmissionDbItem>,
+    currentUserId: String,
+    selectedDayOffset: Int,
+    onSelectedDayOffsetChange: (Int) -> Unit,
     isDark: Boolean,
     accentColor: Color,
     selectedProfileColor: Color,
@@ -16203,39 +16306,32 @@ fun VlogArchiveCard(
     val targetPaddingPx = with(density) { 8.dp.roundToPx() }
     var currentMonth by remember { mutableStateOf(java.time.YearMonth.now()) }
 
-    val capturedDates = remember(capturedVlogsPaths) {
-        capturedVlogsPaths.mapNotNull { path ->
-            val regex = Regex("\\d{13}")
-            val match = regex.find(path)
-            val dateFromTimestamp = if (match != null) {
-                try {
-                    val millis = match.value.toLong()
-                    val instant = java.time.Instant.ofEpochMilli(millis)
-                    instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                } catch (e: Exception) {
-                    null
-                }
-            } else {
-                null
-            }
+    val activeLocalDate = remember {
+        val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+        if (now.hour < 4) {
+            now.toLocalDate().minusDays(1)
+        } else {
+            now.toLocalDate()
+        }
+    }
 
-            if (dateFromTimestamp != null) {
-                dateFromTimestamp
-            } else {
-                val cleanPath = when {
-                    path.startsWith("file://") -> path.substring(7)
-                    else -> path
-                }
-                val file = java.io.File(cleanPath)
-                if (file.exists()) {
-                    val lastModified = file.lastModified()
-                    val instant = java.time.Instant.ofEpochMilli(lastModified)
-                    instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+    val datesWithSubmissions = remember(activePalSubmissions, currentUserId) {
+        activePalSubmissions
+            .filter { it.userId == currentUserId }
+            .mapNotNull { sub ->
+                val instant = safeParseInstant(sub.createdAt)
+                if (instant != null) {
+                    val zdt = instant.atZone(java.time.ZoneId.systemDefault())
+                    if (zdt.hour < 4) {
+                        zdt.toLocalDate().minusDays(1)
+                    } else {
+                        zdt.toLocalDate()
+                    }
                 } else {
                     null
                 }
             }
-        }.toSet()
+            .toSet()
     }
 
     GlassmorphicCard(
@@ -16255,7 +16351,7 @@ fun VlogArchiveCard(
             },
         borderRadius = 28.dp,
         isDark = isDark,
-        gradientColors = if (isDark) listOf(Color(0xFF161616), Color(0xFF161616)) else listOf(Color(0xFFFFF1EB), Color(0xFFFFF1EB)),
+        gradientColors = if (isDark) listOf(Color(0xFF161616), Color(0xFF161616)) else listOf(Color(0xFFF5F3EB), Color(0xFFF5F3EB)),
         borderColor = if (isDark) accentColor.copy(alpha = 0.3f) else Color.White
     ) {
         Column(
@@ -16263,19 +16359,13 @@ fun VlogArchiveCard(
                 .fillMaxWidth()
                 .padding(20.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "archive",
-                    fontFamily = BricolageVariableFontFamily,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor
-                )
-            }
+            Text(
+                text = "history",
+                fontFamily = BricolageVariableFontFamily,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = textColor
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -16290,6 +16380,7 @@ fun VlogArchiveCard(
                     tint = textColor,
                     modifier = Modifier
                         .size(24.dp)
+                        .clip(CircleShape)
                         .clickable { currentMonth = currentMonth.minusMonths(1) }
                 )
                 Text(
@@ -16305,6 +16396,7 @@ fun VlogArchiveCard(
                     tint = textColor,
                     modifier = Modifier
                         .size(24.dp)
+                        .clip(CircleShape)
                         .clickable { currentMonth = currentMonth.plusMonths(1) }
                 )
             }
@@ -16348,8 +16440,10 @@ fun VlogArchiveCard(
                             ) {
                                 if (dayNum in 1..daysInMonth) {
                                     val date = currentMonth.atDay(dayNum)
-                                    val isToday = date == java.time.LocalDate.now()
-                                    val hasCaptured = capturedDates.contains(date)
+                                    val diff = java.time.temporal.ChronoUnit.DAYS.between(date, activeLocalDate).toInt()
+                                    val isClickable = diff in 0..6
+                                    val isSelected = isClickable && diff == selectedDayOffset
+                                    val hasUserSub = datesWithSubmissions.contains(date)
 
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -16359,38 +16453,36 @@ fun VlogArchiveCard(
                                             modifier = Modifier
                                                 .size(28.dp)
                                                 .clip(CircleShape)
-                                                .background(if (isToday) accentColor else Color.Transparent),
+                                                .background(if (isSelected) accentColor else Color.Transparent)
+                                                .clickable(enabled = isClickable) {
+                                                    onSelectedDayOffsetChange(diff)
+                                                    onDismiss()
+                                                },
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = dayNum.toString(),
                                                 fontSize = 14.sp,
-                                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isToday) Color.White else textColor
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = when {
+                                                    isSelected -> if (isDark) Color.Black else Color.White
+                                                    isClickable -> textColor
+                                                    else -> textColor.copy(alpha = 0.3f)
+                                                }
                                             )
                                         }
                                         Spacer(modifier = Modifier.height(2.dp))
-                                        if (hasCaptured) {
-                                            Box(
+                                        if (hasUserSub) {
+                                            Image(
+                                                painter = painterResource(id = R.drawable.smile_small),
+                                                contentDescription = null,
                                                 modifier = Modifier
-                                                    .requiredSize(15.dp)
-                                                    .aspectRatio(1f)
-                                                    .clip(CircleShape)
-                                                    .background(selectedProfileColor),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Image(
-                                                    painter = painterResource(id = R.drawable.smile_small),
-                                                    contentDescription = null,
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .padding(1.5.dp)
-                                                        .rotate(180f),
-                                                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                                                )
-                                            }
+                                                    .size(10.dp)
+                                                    .rotate(180f),
+                                                colorFilter = ColorFilter.tint(accentColor)
+                                            )
                                         } else {
-                                            Spacer(modifier = Modifier.requiredSize(15.dp))
+                                            Spacer(modifier = Modifier.height(10.dp))
                                         }
                                     }
                                 }
@@ -16412,8 +16504,12 @@ fun VlogArchiveCard(
                     fontWeight = FontWeight.Bold,
                     color = accentColor,
                     modifier = Modifier
-                        .clickable { onDismiss() }
-                        .padding(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable {
+                            onSelectedDayOffsetChange(0)
+                            onDismiss()
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
         }
