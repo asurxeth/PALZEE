@@ -10,6 +10,7 @@ import com.finrein.pals.domain.model.ActivePalState
 import com.finrein.pals.domain.model.PalDbInsertionItem
 import com.finrein.pals.domain.model.PalDbItemResponse
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import android.os.Build
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
@@ -4687,7 +4688,7 @@ fun CameraPreview(
     modifier: Modifier = Modifier,
     isCameraFlipped: Boolean = false,
     isFlashOn: Boolean = false,
-    zoomLevel: Int = 1,
+    linearZoom: Float = 0f,
     scaleType: PreviewView.ScaleType = PreviewView.ScaleType.FILL_CENTER,
     isCameraActive: Boolean = true,
     cameraProviderFuture: com.google.common.util.concurrent.ListenableFuture<ProcessCameraProvider>,
@@ -4725,7 +4726,9 @@ fun CameraPreview(
         val recorder = Recorder.Builder()
             .setQualitySelector(QualitySelector.from(Quality.HD))
             .build()
-        val videoCapture = VideoCapture.withOutput(recorder)
+        val videoCapture = VideoCapture.Builder(recorder)
+            .setSurfaceProcessingForceEnabled()
+            .build()
         onVideoCaptureCreated(videoCapture)
         
         val cameraSelector = if (isCameraFlipped) {
@@ -4760,24 +4763,26 @@ fun CameraPreview(
         }
     }
 
-    LaunchedEffect(activeCamera, zoomLevel) {
+    val lastZoomTime = remember { longArrayOf(0L) }
+    LaunchedEffect(activeCamera, linearZoom) {
         val camera = activeCamera ?: return@LaunchedEffect
-        try {
-            val zoomState = camera.cameraInfo.zoomState.value
-            val minZoom = zoomState?.minZoomRatio ?: 1.0f
-            val maxZoom = zoomState?.maxZoomRatio ?: 2.0f
-            val targetRatio = when (zoomLevel) {
-                1 -> 1.0f
-                2 -> 1.25f
-                3 -> 1.50f
-                4 -> 1.75f
-                5 -> 2.0f
-                else -> 1.0f
+        val currentTime = System.currentTimeMillis()
+        val elapsed = currentTime - lastZoomTime[0]
+        if (elapsed >= 32) {
+            lastZoomTime[0] = currentTime
+            try {
+                camera.cameraControl.setLinearZoom(linearZoom)
+            } catch (exc: Exception) {
+                exc.printStackTrace()
             }
-            val ratio = targetRatio.coerceIn(minZoom, maxZoom)
-            camera.cameraControl.setZoomRatio(ratio)
-        } catch (exc: Exception) {
-            exc.printStackTrace()
+        } else {
+            delay(32 - elapsed)
+            lastZoomTime[0] = System.currentTimeMillis()
+            try {
+                camera.cameraControl.setLinearZoom(linearZoom)
+            } catch (exc: Exception) {
+                exc.printStackTrace()
+            }
         }
     }
     
@@ -4832,6 +4837,7 @@ fun CameraScreenContent(
         }
     }
     var activeSlot by remember { mutableStateOf(1) }
+    var linearZoom by remember { mutableStateOf(0f) }
     var activeTimerMode by remember { mutableStateOf(TimerMode.DEFAULT) }
     var flashMode by remember { mutableStateOf("off") } // "off", "on", "auto"
     var isCameraFlipped by remember { mutableStateOf(false) }
@@ -4839,6 +4845,13 @@ fun CameraScreenContent(
     var countdownSeconds by remember { mutableStateOf(0) }
     var videoCaptureRef by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
     var activeRecordingSession by remember { mutableStateOf<Recording?>(null) }
+
+    LaunchedEffect(isCameraActive) {
+        if (isCameraActive) {
+            linearZoom = 0f
+            activeSlot = 1
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -5037,46 +5050,49 @@ fun CameraScreenContent(
                             .fillMaxSize()
                             .clip(cameraViewShape)
                     ) {
-                    // Actual Camera Preview Feed!
-                    CameraPreview(
-                        modifier = Modifier.fillMaxSize(),
-                        isCameraFlipped = isCameraFlipped,
-                        isFlashOn = (flashMode == "on") || (flashMode == "auto" && isRecording),
-                        zoomLevel = activeSlot,
-                        isCameraActive = isCameraActive,
-                        cameraProviderFuture = cameraProviderFuture,
-                        previewView = previewView,
-                        onVideoCaptureCreated = { videoCaptureRef = it }
-                    )
-
-                    // Zoom Selector Options (1 to 5) inside the camera frame
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 59.dp * scale)
-                            .fillMaxWidth()
-                            .padding(horizontal = 48.dp * scale),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        (1..5).forEach { slot ->
-                            val isSelected = activeSlot == slot
-                            Box(
-                                modifier = Modifier
-                                    .clickable { activeSlot = slot }
-                                    .padding(vertical = 4.dp * scale),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = slot.toString(),
-                                    color = if (isSelected) selectedProfileColor else Color.White,
-                                    fontSize = (18 * scale).sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.rotate(-90f)
-                                )
-                            }
-                        }
-                    }
+                     // Actual Camera Preview Feed!
+                     CameraPreview(
+                         modifier = Modifier.fillMaxSize(),
+                         isCameraFlipped = isCameraFlipped,
+                         isFlashOn = (flashMode == "on") || (flashMode == "auto" && isRecording),
+                         linearZoom = linearZoom,
+                         isCameraActive = isCameraActive,
+                         cameraProviderFuture = cameraProviderFuture,
+                         previewView = previewView,
+                         onVideoCaptureCreated = { videoCaptureRef = it }
+                     )
+ 
+                     // Zoom Selector Options (1 to 5) inside the camera frame
+                     Row(
+                         modifier = Modifier
+                             .align(Alignment.BottomCenter)
+                             .padding(bottom = 59.dp * scale)
+                             .fillMaxWidth()
+                             .padding(horizontal = 48.dp * scale),
+                         horizontalArrangement = Arrangement.SpaceBetween,
+                         verticalAlignment = Alignment.CenterVertically
+                     ) {
+                         (1..5).forEach { slot ->
+                             val isSelected = activeSlot == slot
+                             Box(
+                                 modifier = Modifier
+                                     .clickable { 
+                                         activeSlot = slot 
+                                         linearZoom = (slot - 1) / 4f
+                                     }
+                                     .padding(vertical = 4.dp * scale),
+                                 contentAlignment = Alignment.Center
+                             ) {
+                                 Text(
+                                     text = slot.toString(),
+                                     color = if (isSelected) selectedProfileColor else Color.White,
+                                     fontSize = (18 * scale).sp,
+                                     fontWeight = FontWeight.Bold,
+                                     modifier = Modifier.rotate(-90f)
+                                 )
+                             }
+                         }
+                     }
 
                     // Timelapse Recording Overlay
                     if (isRecording && activeTimerMode == TimerMode.TIMELAPSE) {
@@ -5273,7 +5289,7 @@ fun CameraScreenContent(
                 .size(shutterSize)
                 .clip(CircleShape)
                 .background(currentInnerColor)
-                .pointerInput(Triple(activeSlot, isRecording, countdownSeconds)) {
+                .pointerInput(isRecording, countdownSeconds) {
                     awaitPointerEventScope {
                         while (true) {
                             var downEvent: PointerInputChange? = null
@@ -5287,7 +5303,6 @@ fun CameraScreenContent(
                             
                             val dragPointerId = downEvent.id
                             startCaptureAction()
-                            var dragAccumulator = 0f
                             
                             while (true) {
                                 val event = awaitPointerEvent()
@@ -5299,14 +5314,11 @@ fun CameraScreenContent(
                                 val diffY = dragEvent.position.y - dragEvent.previousPosition.y
                                 if (diffY != 0f) {
                                     dragEvent.consume()
-                                    dragAccumulator -= diffY
-                                    val slotDelta = (dragAccumulator / 30f).toInt()
-                                    if (slotDelta != 0) {
-                                        val newSlot = (activeSlot + slotDelta).coerceIn(1, 5)
-                                        if (newSlot != activeSlot) {
-                                            activeSlot = newSlot
-                                            dragAccumulator = 0f
-                                        }
+                                    val sensitivity = 300f * scale
+                                    val newZoom = (linearZoom - (diffY / sensitivity)).coerceIn(0.0f, 1.0f)
+                                    if (newZoom != linearZoom) {
+                                        linearZoom = newZoom
+                                        activeSlot = (1 + (newZoom * 4f + 0.5f).toInt()).coerceIn(1, 5)
                                     }
                                 }
                             }
@@ -6192,6 +6204,8 @@ fun CapturedPreviewScreen(
                 else -> capturedVideoPath
             }
             val fileTarget = java.io.File(cleanPath)
+            // Wait 250ms to allow encoder to flush and unlock the file handle
+            delay(250L)
             if (fileTarget.exists() && fileTarget.length() > 0) {
                 val targetUri = android.net.Uri.fromFile(fileTarget)
                 exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
