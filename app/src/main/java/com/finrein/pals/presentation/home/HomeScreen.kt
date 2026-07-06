@@ -6421,18 +6421,17 @@ fun CapturedPreviewScreen(
                                 val containerWidth = width.toFloat()
                                 val containerHeight = height.toFloat()
                                 if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                    val isPortrait = videoHeight > videoWidth
-                                    val needsRotation = videoRotation != 0 && videoRotation != 180
+                                    val needsRotation = videoRotation == 270 || videoRotation == 90
                                     
-                                    val rotatedWidth = if (needsRotation && isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
-                                    val rotatedHeight = if (needsRotation && isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                                    val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
+                                    val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
                                     
                                     val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
                                     
                                     val calculatedScaleX: Float
                                     val calculatedScaleY: Float
                                     val calculatedRotation: Float
-                                    if (needsRotation && isPortrait) {
+                                    if (needsRotation) {
                                         calculatedScaleX = (rotatedHeight * scale) / containerWidth
                                         calculatedScaleY = (rotatedWidth * scale) / containerHeight
                                         calculatedRotation = 270f
