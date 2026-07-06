@@ -897,12 +897,25 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
                 cacheFile.absolutePath
             } else {
                 try {
-                    val bucketName = if (videoPath.contains("pals_vlogs")) "pals_vlogs" else "pals"
-                    val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
                     val bytes = try {
-                        storage.downloadPublic(fileName)
-                    } catch (e1: Exception) {
-                        storage.downloadAuthenticated(fileName)
+                        val connection = java.net.URL(videoPath).openConnection() as java.net.HttpURLConnection
+                        connection.connectTimeout = 10000
+                        connection.readTimeout = 10000
+                        connection.requestMethod = "GET"
+                        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
+                        if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                            connection.inputStream.use { it.readBytes() }
+                        } else {
+                            throw java.io.IOException("HTTP error ${connection.responseCode}")
+                        }
+                    } catch (httpEx: Exception) {
+                        val bucketName = if (videoPath.contains("pals_vlogs")) "pals_vlogs" else "pals"
+                        val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+                        try {
+                            storage.downloadPublic(fileName)
+                        } catch (e1: Exception) {
+                            storage.downloadAuthenticated(fileName)
+                        }
                     }
                     cacheFile.writeBytes(bytes)
                     palPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
@@ -4806,7 +4819,6 @@ fun CameraPreview(
             .setQualitySelector(QualitySelector.from(Quality.HD))
             .build()
         val videoCapture = VideoCapture.Builder(recorder)
-            .setSurfaceProcessingForceEnabled()
             .build()
         onVideoCaptureCreated(videoCapture)
         
@@ -6283,16 +6295,41 @@ fun CapturedPreviewScreen(
                 capturedVideoPath.startsWith("file://") -> capturedVideoPath.substring(7)
                 else -> capturedVideoPath
             }
-            val fileTarget = java.io.File(cleanPath)
-            // Wait 250ms to allow encoder to flush and unlock the file handle
-            delay(250L)
-            if (fileTarget.exists() && fileTarget.length() > 0) {
-                val targetUri = android.net.Uri.fromFile(fileTarget)
+            
+            var fileTarget = java.io.File(cleanPath)
+            var lastLength = -1L
+            var stableCount = 0
+            var retries = 0
+            
+            // Poll for stable file size (not changing for 200ms) to ensure write completes
+            while (retries < 20) {
+                val currentLength = if (fileTarget.exists()) fileTarget.length() else 0L
+                if (currentLength > 0L && currentLength == lastLength) {
+                    stableCount++
+                    if (stableCount >= 2) {
+                        break
+                    }
+                } else {
+                    stableCount = 0
+                    lastLength = currentLength
+                }
+                delay(100L)
+                fileTarget = java.io.File(cleanPath)
+                retries++
+            }
+
+            val targetUri = if (cleanPath.startsWith("content://")) {
+                android.net.Uri.parse(cleanPath)
+            } else {
+                android.net.Uri.fromFile(fileTarget)
+            }
+
+            try {
                 exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
                 exoPlayer.prepare()
                 exoPlayer.playWhenReady = true
-            } else {
-                android.util.Log.e("PalPipeline", "File path string exists but target file not found on disk!")
+            } catch (e: Exception) {
+                android.util.Log.e("PalPipeline", "Error setting media or preparing player: ${e.message}", e)
             }
         } else {
             android.util.Log.d("PalPipeline", "Path is completely empty. Retaining silent black display slate.")
@@ -6360,15 +6397,33 @@ fun CapturedPreviewScreen(
                                 val containerHeight = height.toFloat()
                                 if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
                                     val isPortrait = videoHeight > videoWidth
-                                    val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
-                                    val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
+                                    
+                                    val videoRotation = try {
+                                        val path = capturedVideoPath ?: ""
+                                        if (path.isNotEmpty()) {
+                                            val cleanPath = if (path.startsWith("file://")) path.substring(7) else path
+                                            val retriever = android.media.MediaMetadataRetriever()
+                                            retriever.setDataSource(cleanPath)
+                                            val rot = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 270
+                                            retriever.release()
+                                            rot
+                                        } else 270
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("PalVideoScale", "Retriever error: ${e.message}")
+                                        270
+                                    }
+                                    
+                                    val needsRotation = videoRotation != 0 && videoRotation != 180
+                                    
+                                    val rotatedWidth = if (needsRotation && isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
+                                    val rotatedHeight = if (needsRotation && isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
                                     
                                     val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
                                     
                                     val calculatedScaleX: Float
                                     val calculatedScaleY: Float
                                     val calculatedRotation: Float
-                                    if (isPortrait) {
+                                    if (needsRotation && isPortrait) {
                                         calculatedScaleX = (rotatedHeight * scale) / containerWidth
                                         calculatedScaleY = (rotatedWidth * scale) / containerHeight
                                         calculatedRotation = 270f
@@ -6378,7 +6433,7 @@ fun CapturedPreviewScreen(
                                         calculatedRotation = 0f
                                     }
                                     
-                                    android.util.Log.d("PalVideoScale", "Reverted scale for exoPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
+                                    android.util.Log.d("PalVideoScale", "Reverted scale for exoPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}, videoRotation=${videoRotation}")
                                     
                                     textureView.pivotX = containerWidth / 2f
                                     textureView.pivotY = containerHeight / 2f
@@ -6407,8 +6462,14 @@ fun CapturedPreviewScreen(
                                         exoPlayer.play()
                                     }
                                 }
+                                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                                    android.util.Log.e("PalPreview", "ExoPlayer error in preview: ${error.message}", error)
+                                    exoPlayer.prepare()
+                                    exoPlayer.play()
+                                }
                             })
 
+                            tag = java.lang.Runnable { applyVideoScale() }
                             applyVideoScale()
                         }
                     },
@@ -6420,6 +6481,7 @@ fun CapturedPreviewScreen(
                         if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
                             exoPlayer.play()
                         }
+                        (view.tag as? java.lang.Runnable)?.run()
                     }
                 )
             }
@@ -7516,19 +7578,25 @@ fun GroupMemberCard(
             val heightPx = with(density) { maxHeight.toPx() }
             val smileySizePx = with(density) { (if (isGrid) 34.dp else 50.dp).toPx() }
 
+            val randomGenerator = remember { java.util.Random(index.toLong() + System.currentTimeMillis() % 10000) }
+
             var groupPosX by remember { mutableStateOf(0f) }
             var groupPosY by remember { mutableStateOf(0f) }
             var groupSmileRotation by remember { mutableStateOf(0f) }
-            var groupSmileColorIndex by remember { mutableStateOf(0) }
+            var groupSmileColorIndex by remember { mutableStateOf(randomGenerator.nextInt(shufflingColors.size)) }
 
             LaunchedEffect(widthPx, heightPx) {
                 if (widthPx <= 0f || heightPx <= 0f) return@LaunchedEffect
-                groupPosX = (widthPx - smileySizePx) / 2f
-                groupPosY = (heightPx - smileySizePx) / 2f
+                
+                val maxXStart = widthPx - smileySizePx
+                val maxYStart = heightPx - smileySizePx
+                
+                groupPosX = if (maxXStart > 0f) randomGenerator.nextFloat() * maxXStart else 0f
+                groupPosY = if (maxYStart > 0f) randomGenerator.nextFloat() * maxYStart else 0f
 
                 val speed = with(density) { 100.dp.toPx() }
-                var vx = speed * 0.76f
-                var vy = speed * 0.65f
+                var vx = speed * 0.76f * (if (randomGenerator.nextBoolean()) 1f else -1f)
+                var vy = speed * 0.65f * (if (randomGenerator.nextBoolean()) 1f else -1f)
 
                 var lastTime = androidx.compose.runtime.withFrameNanos { it }
 
@@ -7542,12 +7610,12 @@ fun GroupMemberCard(
                         var newX = groupPosX + vx * cappedDt
                         var newY = groupPosY + vy * cappedDt
 
-                        var collided = false
-
                         val minX = 0f
                         val maxX = widthPx - smileySizePx
                         val minY = 0f
                         val maxY = heightPx - smileySizePx
+
+                        var collided = false
 
                         if (maxX > 0f) {
                             if (newX <= minX) {
@@ -7573,14 +7641,14 @@ fun GroupMemberCard(
                             }
                         }
 
+                        if (collided) {
+                            groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
+                        }
+
                         groupPosX = newX
                         groupPosY = newY
 
                         groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
-
-                        if (collided) {
-                            groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
-                        }
                     }
                 }
             }
@@ -7725,19 +7793,25 @@ fun GroupMemberCard(
             val heightPx = with(density) { maxHeight.toPx() }
             val smileySizePx = with(density) { (if (isGrid) 34.dp else 50.dp).toPx() }
 
+            val randomGenerator = remember { java.util.Random(index.toLong() + System.currentTimeMillis() % 10000) }
+
             var groupPosX by remember { mutableStateOf(0f) }
             var groupPosY by remember { mutableStateOf(0f) }
             var groupSmileRotation by remember { mutableStateOf(0f) }
-            var groupSmileColorIndex by remember { mutableStateOf(0) }
+            var groupSmileColorIndex by remember { mutableStateOf(randomGenerator.nextInt(shufflingColors.size)) }
 
             LaunchedEffect(widthPx, heightPx) {
                 if (widthPx <= 0f || heightPx <= 0f) return@LaunchedEffect
-                groupPosX = (widthPx - smileySizePx) / 2f
-                groupPosY = (heightPx - smileySizePx) / 2f
+                
+                val maxXStart = widthPx - smileySizePx
+                val maxYStart = heightPx - smileySizePx
+                
+                groupPosX = if (maxXStart > 0f) randomGenerator.nextFloat() * maxXStart else 0f
+                groupPosY = if (maxYStart > 0f) randomGenerator.nextFloat() * maxYStart else 0f
 
                 val speed = with(density) { 100.dp.toPx() }
-                var vx = speed * 0.76f
-                var vy = speed * 0.65f
+                var vx = speed * 0.76f * (if (randomGenerator.nextBoolean()) 1f else -1f)
+                var vy = speed * 0.65f * (if (randomGenerator.nextBoolean()) 1f else -1f)
 
                 var lastTime = androidx.compose.runtime.withFrameNanos { it }
 
@@ -7751,12 +7825,12 @@ fun GroupMemberCard(
                         var newX = groupPosX + vx * cappedDt
                         var newY = groupPosY + vy * cappedDt
 
-                        var collided = false
-
                         val minX = 0f
                         val maxX = widthPx - smileySizePx
                         val minY = 0f
                         val maxY = heightPx - smileySizePx
+
+                        var collided = false
 
                         if (maxX > 0f) {
                             if (newX <= minX) {
@@ -7782,14 +7856,14 @@ fun GroupMemberCard(
                             }
                         }
 
+                        if (collided) {
+                            groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
+                        }
+
                         groupPosX = newX
                         groupPosY = newY
 
                         groupSmileRotation = (groupSmileRotation + 120f * cappedDt) % 360f
-
-                        if (collided) {
-                            groupSmileColorIndex = (groupSmileColorIndex + 1) % shufflingColors.size
-                        }
                     }
                 }
             }
@@ -9579,33 +9653,68 @@ fun VlogScreenContent(
                         }
                     }
 
-                    // Horizontal row of small smileys showing the pals sent to vlog menu count (spaced 12.5dp below capsule, filled with boundary/accentColor, with active ring)
-                    val memberCount = groupMembers.size
+                    // Display only 1 emoji for 1 hour in pals group menu emoji count below pals group text
+                    val distinctHours = remember(filteredSubmissions) {
+                        filteredSubmissions.map { it.getHourBucket() }.distinct().sorted()
+                    }
+                    val hourlyCount = distinctHours.size
                     val computedSmileySize = when {
-                        memberCount <= 4 -> 22.dp
-                        memberCount <= 6 -> 16.dp
-                        memberCount <= 8 -> 12.dp
+                        hourlyCount <= 4 -> 22.dp
+                        hourlyCount <= 6 -> 16.dp
+                        hourlyCount <= 8 -> 12.dp
                         else -> 9.dp
                     }
                     val computedInnerSize = when {
-                        memberCount <= 4 -> 15.dp
-                        memberCount <= 6 -> 11.dp
-                        memberCount <= 8 -> 8.5.dp
+                        hourlyCount <= 4 -> 15.dp
+                        hourlyCount <= 6 -> 11.dp
+                        hourlyCount <= 8 -> 8.5.dp
                         else -> 6.5.dp
                     }
-                    GroupMembersSmileysRow(
-                        members = groupMembers,
-                        submissions = filteredSubmissions,
-                        isDark = isDark,
-                        accentColor = accentColor,
-                        palTextLogoColor = palTextLogoColor,
-                        currentUserId = currentUserId,
-                        userFirstName = userFirstName,
-                        smileySize = computedSmileySize,
-                        innerSize = computedInnerSize,
-                        showOnlyLit = true,
-                        modifier = Modifier.offset(y = 27.5.dp)
+                    val shufflingColors = listOf(
+                        Color(0xFFFFE600), // Yellow
+                        Color(0xFFFF6700), // Orange
+                        Color(0xFFFF007F), // Pink
+                        Color(0xFF00F0FF), // Blue
+                        Color(0xFFB000FF), // Purple
+                        Color(0xFFFF073A)  // Red
                     )
+                    Row(
+                        modifier = Modifier.offset(y = 27.5.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        distinctHours.forEachIndexed { i, hour ->
+                            val outerColor = shufflingColors[i % 6]
+                            val innerColor = shufflingColors[(i + 3) % 6]
+                            Box(
+                                modifier = Modifier
+                                    .size(computedSmileySize)
+                                    .border(
+                                        width = 1.dp,
+                                        color = outerColor,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(computedInnerSize)
+                                        .clip(CircleShape)
+                                        .background(innerColor),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = R.drawable.smile_small),
+                                        contentDescription = "Smiley",
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .rotate(180f),
+                                        colorFilter = ColorFilter.tint(Color.Black)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -12071,17 +12180,25 @@ fun VideoPlayerItem(
         }
 
         if (!isVideoReady) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(
-                    color = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.size(24.dp),
-                    strokeWidth = 2.dp
+            val firstPath = videoPaths.firstOrNull() ?: ""
+            if (firstPath.isNotEmpty()) {
+                VideoThumbnail(
+                    videoPath = firstPath,
+                    modifier = Modifier.fillMaxSize()
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
             }
         }
     }

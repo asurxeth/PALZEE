@@ -26,9 +26,12 @@ object VideoCache {
     }
 
     fun getCacheDataSourceFactory(context: Context): CacheDataSource.Factory {
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent("Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/95.0.4638.50 Mobile Safari/537.36")
+            .setAllowCrossProtocolRedirects(true)
         val upstreamFactory = androidx.media3.datasource.DefaultDataSource.Factory(
             context,
-            DefaultHttpDataSource.Factory()
+            httpDataSourceFactory
         )
         return CacheDataSource.Factory()
             .setCache(getCache(context))
