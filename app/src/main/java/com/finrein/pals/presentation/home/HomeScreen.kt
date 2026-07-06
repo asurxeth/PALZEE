@@ -8511,20 +8511,7 @@ fun VlogScreenContent(
                 .fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            if (showArchiveView) {
-                VlogArchiveCard(
-                    activePalSubmissions = activePalSubmissions,
-                    currentUserId = currentUserId,
-                    selectedDayOffset = selectedDayOffset,
-                    onSelectedDayOffsetChange = onSelectedDayOffsetChange,
-                    isDark = isDark,
-                    accentColor = accentColor,
-                    selectedProfileColor = selectedProfileColor,
-                    textColor = textColor,
-                    mutedTextColor = mutedTextColor,
-                    onDismiss = { showArchiveView = false }
-                )
-            } else {
+            // Main group screen or vlog centered card rendered continuously so ExoPlayers aren't destroyed
                 if (!pal.isVlog) {
                     GroupScreenContent(
                         params = params,
@@ -9348,6 +9335,20 @@ fun VlogScreenContent(
                 }
                 }
                 }
+
+            if (showArchiveView) {
+                VlogArchiveCard(
+                    activePalSubmissions = activePalSubmissions,
+                    currentUserId = currentUserId,
+                    selectedDayOffset = selectedDayOffset,
+                    onSelectedDayOffsetChange = onSelectedDayOffsetChange,
+                    isDark = isDark,
+                    accentColor = accentColor,
+                    selectedProfileColor = selectedProfileColor,
+                    textColor = textColor,
+                    mutedTextColor = mutedTextColor,
+                    onDismiss = { showArchiveView = false }
+                )
             }
         }
 
