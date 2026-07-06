@@ -171,13 +171,11 @@ dependencies {
 
 
 tasks.withType<JavaCompile>().configureEach {
-    options.isWarnings = false
+    options.isWarnings = true
     options.compilerArgs.addAll(
         listOf(
-            "-Xlint:-deprecation",
-            "-Xlint:-unchecked",
-            "-nowarn",
-            "-Xlint:none"
+            "-Xlint:deprecation",
+            "-Xlint:unchecked"
         )
     )
 }

@@ -15,7 +15,7 @@
         android:name=".PalApplication"
         android:allowBackup="false"
         android:icon="@drawable/pal_logo"
-        android:label="Pal"
+        android:label="Palzee"
         android:roundIcon="@drawable/pal_circular_logo"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
