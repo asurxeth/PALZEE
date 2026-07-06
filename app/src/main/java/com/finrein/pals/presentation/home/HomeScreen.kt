@@ -3848,7 +3848,7 @@ fun HomeScreen(
                         isRecording = isRecordingCamera,
                         onRecordingChange = { isRecordingCamera = it },
                         onClose = { selectedTab = "pals" },
-                        isCameraActive = isCameraActiveState && (selectedTab == "camera" && activeVlogPal == null),
+                        isCameraActive = isCameraActiveState && isCameraTabActive,
                         onCameraActiveChange = { isCameraActiveState = it },
                         cameraProviderFuture = cameraProviderFuture,
                         previewView = previewView,
@@ -5099,10 +5099,10 @@ fun CameraScreenContent(
         } else {
             null
         }
-        val currentInnerColor = if (colorIndex != null) danceInnerColors[colorIndex] else lighterShadeColor
+        val currentInnerColor = if (videoCaptureRef == null) lighterShadeColor.copy(alpha = 0.5f) else if (colorIndex != null) danceInnerColors[colorIndex] else lighterShadeColor
 
         val startCaptureAction = {
-            if (!isRecording && countdownSeconds == 0) {
+            if (!isRecording && countdownSeconds == 0 && videoCaptureRef != null) {
                 if (activeTimerMode == TimerMode.DEFAULT) {
                     onRecordingChange(true)
                 } else {
