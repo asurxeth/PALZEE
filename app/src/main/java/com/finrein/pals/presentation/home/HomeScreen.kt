@@ -11837,13 +11837,17 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier) {
                         false
                     }
                     
-                    if (needsManualRotation) {
+                    val baseBmp = if (needsManualRotation) {
                         val matrix = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
-                        val rotatedBmp = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
-                        bitmap = rotatedBmp
+                        android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
                     } else {
-                        bitmap = bmp
+                        bmp
                     }
+
+                    // Rotate the bitmap by 90 degrees anticlockwise (-90f) so it fits the landscape aspect ratio box perfectly end-to-end
+                    val finalMatrix = android.graphics.Matrix().apply { postRotate(-90f) }
+                    val finalBmp = android.graphics.Bitmap.createBitmap(baseBmp, 0, 0, baseBmp.width, baseBmp.height, finalMatrix, true)
+                    bitmap = finalBmp
                 }
                 retriever.release()
             } catch (e: Exception) {
