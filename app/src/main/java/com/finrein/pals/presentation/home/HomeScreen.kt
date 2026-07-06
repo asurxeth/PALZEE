@@ -643,10 +643,10 @@ fun handleVlogSubmission(
                     createdAt = java.time.Instant.now().toString()
                 )
                 try {
-                    // Recreate group if deleted or missing using insert (no pre-check select)
+                    // Recreate group if deleted or missing using upsert (no pre-check select)
                     try {
                         supabaseClient.postgrest.from("pals")
-                            .insert(PalDbItem(code = cleanCode, name = "Pals Group"))
+                            .upsert(PalDbItem(code = cleanCode, name = "Pals Group"), onConflict = "pal_code")
                     } catch (e: Exception) {
                         // Ignore conflict to preserve original group name
                     }
@@ -3134,10 +3134,10 @@ fun HomeScreen(
                             createdAt = java.time.Instant.now().toString()
                         )
                         try {
-                            // Recreate group if deleted or missing using insert (no pre-check select)
+                            // Recreate group if deleted or missing using upsert (no pre-check select)
                             try {
                                 supabaseClient.postgrest.from("pals")
-                                    .insert(PalDbItem(code = cleanCode, name = "Pals Group"))
+                                    .upsert(PalDbItem(code = cleanCode, name = "Pals Group"), onConflict = "pal_code")
                             } catch (e: Exception) {
                                 // Ignore conflict to preserve original group name
                             }
@@ -9394,7 +9394,7 @@ fun VlogScreenContent(
                     .align(Alignment.CenterStart)
                     .offset(y = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.5.dp)
             ) {
                 // Back Button
                 Box(
@@ -9424,7 +9424,7 @@ fun VlogScreenContent(
                         imageVector = CalendarMonthIcon,
                         contentDescription = "calendar month",
                         tint = headerIconTint,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -11790,21 +11790,59 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier) {
                     resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
                     else -> resolvedPath
                 }
-                val file = java.io.File(cleanPath)
-                if (file.exists()) {
-                    retriever.setDataSource(cleanPath)
-                    val bmp = retriever.getFrameAtTime(0)
-                    if (bmp != null) {
-                        val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                        val rotation = rotationStr?.toIntOrNull() ?: 0
-                        val finalRotation = rotation
-                        if (finalRotation != 0) {
-                            val matrix = android.graphics.Matrix().apply { postRotate(finalRotation.toFloat()) }
-                            val rotatedBmp = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
-                            bitmap = rotatedBmp
+                
+                when {
+                    cleanPath.startsWith("content://") -> {
+                        val pfd = context.contentResolver.openFileDescriptor(android.net.Uri.parse(cleanPath), "r")
+                        if (pfd != null) {
+                            retriever.setDataSource(pfd.fileDescriptor)
+                            pfd.close()
                         } else {
-                            bitmap = bmp
+                            retriever.setDataSource(cleanPath, java.util.HashMap<String, String>())
                         }
+                    }
+                    cleanPath.startsWith("http://") || cleanPath.startsWith("https://") -> {
+                        retriever.setDataSource(cleanPath, java.util.HashMap<String, String>())
+                    }
+                    else -> {
+                        val file = java.io.File(cleanPath)
+                        if (file.exists()) {
+                            val fis = java.io.FileInputStream(file)
+                            retriever.setDataSource(fis.fd)
+                            fis.close()
+                        } else {
+                            if (videoPath.startsWith("content://")) {
+                                val pfd = context.contentResolver.openFileDescriptor(android.net.Uri.parse(videoPath), "r")
+                                if (pfd != null) {
+                                    retriever.setDataSource(pfd.fileDescriptor)
+                                    pfd.close()
+                                }
+                            } else if (videoPath.startsWith("http")) {
+                                retriever.setDataSource(videoPath, java.util.HashMap<String, String>())
+                            } else {
+                                retriever.setDataSource(cleanPath)
+                            }
+                        }
+                    }
+                }
+                
+                val bmp = retriever.getFrameAtTime(0)
+                if (bmp != null) {
+                    val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                    val rotation = rotationStr?.toIntOrNull() ?: 0
+                    
+                    val needsManualRotation = if (rotation == 90 || rotation == 270) {
+                        bmp.width > bmp.height
+                    } else {
+                        false
+                    }
+                    
+                    if (needsManualRotation) {
+                        val matrix = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
+                        val rotatedBmp = android.graphics.Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                        bitmap = rotatedBmp
+                    } else {
+                        bitmap = bmp
                     }
                 }
                 retriever.release()
@@ -11816,8 +11854,8 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier) {
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.DarkGray),
+            .clip(RoundedCornerShape(28.dp))
+            .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
         if (bitmap != null) {
@@ -11825,7 +11863,7 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier) {
                 bitmap = bitmap!!.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().rotate(180f)
+                modifier = Modifier.fillMaxSize()
             )
         } else {
             CircularProgressIndicator(
@@ -13534,8 +13572,8 @@ fun PalChatOverlay(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth(0.5f)
-                                                .aspectRatio(1.6f)
-                                                .clip(RoundedCornerShape(24.dp))
+                                                .aspectRatio(16f / 9f)
+                                                .clip(RoundedCornerShape(28.dp))
                                                 .background(Color.Black)
                                                 .clickable {
                                                     selectedVlogPreviewItem = feedItem
@@ -13793,8 +13831,8 @@ fun PalChatOverlay(
                                                         Box(
                                                             modifier = Modifier
                                                                 .fillMaxWidth(0.5f)
-                                                                .aspectRatio(1.6f)
-                                                                .clip(RoundedCornerShape(24.dp))
+                                                                .aspectRatio(16f / 9f)
+                                                                .clip(RoundedCornerShape(28.dp))
                                                                 .background(Color.Black)
                                                                 .clickable {
                                                                     selectedVlogPreviewItem = feedItem
@@ -13981,8 +14019,8 @@ fun PalChatOverlay(
                                                         Box(
                                                             modifier = Modifier
                                                                 .fillMaxWidth(0.5f)
-                                                                .aspectRatio(1.6f)
-                                                                .clip(RoundedCornerShape(24.dp))
+                                                                .aspectRatio(16f / 9f)
+                                                                .clip(RoundedCornerShape(28.dp))
                                                                 .background(Color.Black)
                                                                 .clickable {
                                                                     selectedVlogPreviewItem = feedItem
