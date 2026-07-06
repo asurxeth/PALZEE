@@ -3848,7 +3848,7 @@ fun HomeScreen(
                         isRecording = isRecordingCamera,
                         onRecordingChange = { isRecordingCamera = it },
                         onClose = { selectedTab = "pals" },
-                        isCameraActive = isCameraActiveState && isCameraTabActive,
+                        isCameraActive = isCameraActiveState && (selectedTab == "camera" && activeVlogPal == null),
                         onCameraActiveChange = { isCameraActiveState = it },
                         cameraProviderFuture = cameraProviderFuture,
                         previewView = previewView,
@@ -6283,6 +6283,8 @@ fun CapturedPreviewScreen(
             }
     }
 
+    var videoRotation by remember(capturedVideoPath) { mutableStateOf(270) }
+
     // 2. FORCE RE-EVALUATION FLOW:
     // We listen to the raw capturedVideoPath. Whenever this string changes, we forcefully flush the player stack.
     LaunchedEffect(capturedVideoPath) {
@@ -6295,6 +6297,28 @@ fun CapturedPreviewScreen(
                 capturedVideoPath.startsWith("file://") -> capturedVideoPath.substring(7)
                 else -> capturedVideoPath
             }
+            
+            // Asynchronously read the rotation tag using MediaMetadataRetriever on Dispatchers.IO
+            val rot = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val file = java.io.File(cleanPath)
+                    if (file.exists()) {
+                        val retriever = android.media.MediaMetadataRetriever()
+                        retriever.setDataSource(cleanPath)
+                        val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                        val parsedRot = rotationStr?.toIntOrNull() ?: 270
+                        retriever.release()
+                        parsedRot
+                    } else {
+                        270
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("PalVideoScale", "Error retrieving rotation asynchronously: ${e.message}")
+                    270
+                }
+            }
+            videoRotation = rot
+            android.util.Log.d("PalVideoScale", "Retrieved file rotation asynchronously: $videoRotation")
             
             var fileTarget = java.io.File(cleanPath)
             var lastLength = -1L
@@ -6333,6 +6357,7 @@ fun CapturedPreviewScreen(
             }
         } else {
             android.util.Log.d("PalPipeline", "Path is completely empty. Retaining silent black display slate.")
+            videoRotation = 270
         }
     }
 
@@ -6397,22 +6422,6 @@ fun CapturedPreviewScreen(
                                 val containerHeight = height.toFloat()
                                 if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
                                     val isPortrait = videoHeight > videoWidth
-                                    
-                                    val videoRotation = try {
-                                        val path = capturedVideoPath ?: ""
-                                        if (path.isNotEmpty()) {
-                                            val cleanPath = if (path.startsWith("file://")) path.substring(7) else path
-                                            val retriever = android.media.MediaMetadataRetriever()
-                                            retriever.setDataSource(cleanPath)
-                                            val rot = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 270
-                                            retriever.release()
-                                            rot
-                                        } else 270
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("PalVideoScale", "Retriever error: ${e.message}")
-                                        270
-                                    }
-                                    
                                     val needsRotation = videoRotation != 0 && videoRotation != 180
                                     
                                     val rotatedWidth = if (needsRotation && isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
@@ -6469,7 +6478,7 @@ fun CapturedPreviewScreen(
                                 }
                             })
 
-                            tag = java.lang.Runnable { applyVideoScale() }
+                            tag = { applyVideoScale() }
                             applyVideoScale()
                         }
                     },
@@ -6481,7 +6490,7 @@ fun CapturedPreviewScreen(
                         if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
                             exoPlayer.play()
                         }
-                        (view.tag as? java.lang.Runnable)?.run()
+                        (view.tag as? () -> Unit)?.invoke()
                     }
                 )
             }
