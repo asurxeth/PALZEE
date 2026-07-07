@@ -84,7 +84,6 @@ class HomeViewModel @Inject constructor(
     }
 
     fun handleMessageRealtimeAction(action: PostgresAction, activePalCode: String?) {
-        if (globalSyncMutex.isLocked) return
         viewModelScope.launch {
             try {
                 globalSyncMutex.withLock {
