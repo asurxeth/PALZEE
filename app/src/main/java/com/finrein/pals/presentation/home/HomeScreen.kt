@@ -6324,6 +6324,28 @@ fun CapturedPreviewScreen(
                 retries++
             }
 
+            // Asynchronously read the rotation tag using MediaMetadataRetriever on Dispatchers.IO
+            val rot = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val file = java.io.File(cleanPath)
+                    if (file.exists()) {
+                        val retriever = android.media.MediaMetadataRetriever()
+                        retriever.setDataSource(cleanPath)
+                        val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                        val parsedRot = rotationStr?.toIntOrNull() ?: (if (isZoomed) 0 else 270)
+                        retriever.release()
+                        parsedRot
+                    } else {
+                        if (isZoomed) 0 else 270
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("PalVideoScale", "Error retrieving rotation asynchronously: ${e.message}")
+                    if (isZoomed) 0 else 270
+                }
+            }
+            videoRotation = rot
+            android.util.Log.d("PalVideoScale", "Retrieved file rotation asynchronously: $videoRotation")
+
             val targetUri = if (cleanPath.startsWith("content://")) {
                 android.net.Uri.parse(cleanPath)
             } else {
@@ -6443,12 +6465,10 @@ fun CapturedPreviewScreen(
                             exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                 override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                     super.onVideoSizeChanged(videoSize)
-                                    videoRotation = videoSize.unappliedRotationDegrees
                                     applyVideoScale()
                                 }
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     super.onPlaybackStateChanged(playbackState)
-                                    videoRotation = exoPlayer.videoSize.unappliedRotationDegrees
                                     applyVideoScale()
                                     if (playbackState == androidx.media3.common.Player.STATE_READY) {
                                         exoPlayer.play()
