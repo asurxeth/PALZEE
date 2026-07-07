@@ -6151,7 +6151,7 @@ fun CapturedPreviewScreen(
     rotationAngle: Float,
     capturedVideoPath: String?,
     capturedVlogsPaths: List<String>,
-    linearZoom: Float = 0f,
+    isZoomed: Boolean = false,
     onClose: () -> Unit,
     onSend: (String, List<PalItem>) -> Unit,
     currentUserId: String,
@@ -6287,7 +6287,7 @@ fun CapturedPreviewScreen(
             }
     }
 
-    var videoRotation by remember(capturedVideoPath) { mutableStateOf(if (linearZoom > 0f) 0 else 270) }
+    var videoRotation by remember(capturedVideoPath) { mutableStateOf(if (isZoomed) 0 else 270) }
 
     // 2. FORCE RE-EVALUATION FLOW:
     // We listen to the raw capturedVideoPath. Whenever this string changes, we forcefully flush the player stack.
@@ -6339,7 +6339,7 @@ fun CapturedPreviewScreen(
             }
         } else {
             android.util.Log.d("PalPipeline", "Path is completely empty. Retaining silent black display slate.")
-            videoRotation = if (linearZoom > 0f) 0 else 270
+            videoRotation = if (isZoomed) 0 else 270
         }
     }
 
