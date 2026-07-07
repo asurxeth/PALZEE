@@ -2069,6 +2069,7 @@ fun HomeScreen(
     val saveGroupMutex = remember { Mutex() }
     var showingCapturedPreview by remember(currentUserId) { mutableStateOf(false) }
     var capturedVideoPath by remember(currentUserId) { mutableStateOf<String?>(null) }
+    var isCapturedVideoZoomed by remember(currentUserId) { mutableStateOf(false) }
     var capturedVideoDuration by remember(currentUserId) { mutableStateOf(2000L) }
     var capturedCaptionText by remember(currentUserId) { mutableStateOf("") }
     var capturedVideoTimeText by remember(currentUserId) { mutableStateOf("") }
@@ -3644,6 +3645,7 @@ fun HomeScreen(
                         rotationAngle = rotationAngle,
                         capturedVideoPath = capturedVideoPath,
                         capturedVlogsPaths = todayVlogPaths,
+                        isZoomed = isCapturedVideoZoomed,
                         onClose = { showingCapturedPreview = false },
                         onSend = { caption, targetPals ->
                             val time = java.time.LocalTime.now()
@@ -3852,9 +3854,10 @@ fun HomeScreen(
                         onCameraActiveChange = { isCameraActiveState = it },
                         cameraProviderFuture = cameraProviderFuture,
                         previewView = previewView,
-                        onCaptureSuccess = { path, duration ->
+                        onCaptureSuccess = { path, duration, isZoomed ->
                             capturedVideoPath = path
                             capturedVideoDuration = duration
+                            isCapturedVideoZoomed = isZoomed
                             showingCapturedPreview = true
                         }
                     )
@@ -6148,6 +6151,7 @@ fun CapturedPreviewScreen(
     rotationAngle: Float,
     capturedVideoPath: String?,
     capturedVlogsPaths: List<String>,
+    linearZoom: Float = 0f,
     onClose: () -> Unit,
     onSend: (String, List<PalItem>) -> Unit,
     currentUserId: String,
@@ -6283,7 +6287,7 @@ fun CapturedPreviewScreen(
             }
     }
 
-    var videoRotation by remember(capturedVideoPath) { mutableStateOf(270) }
+    var videoRotation by remember(capturedVideoPath) { mutableStateOf(if (linearZoom > 0f) 0 else 270) }
 
     // 2. FORCE RE-EVALUATION FLOW:
     // We listen to the raw capturedVideoPath. Whenever this string changes, we forcefully flush the player stack.
@@ -6297,28 +6301,6 @@ fun CapturedPreviewScreen(
                 capturedVideoPath.startsWith("file://") -> capturedVideoPath.substring(7)
                 else -> capturedVideoPath
             }
-            
-            // Asynchronously read the rotation tag using MediaMetadataRetriever on Dispatchers.IO
-            val rot = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                try {
-                    val file = java.io.File(cleanPath)
-                    if (file.exists()) {
-                        val retriever = android.media.MediaMetadataRetriever()
-                        retriever.setDataSource(cleanPath)
-                        val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                        val parsedRot = rotationStr?.toIntOrNull() ?: 270
-                        retriever.release()
-                        parsedRot
-                    } else {
-                        270
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("PalVideoScale", "Error retrieving rotation asynchronously: ${e.message}")
-                    270
-                }
-            }
-            videoRotation = rot
-            android.util.Log.d("PalVideoScale", "Retrieved file rotation asynchronously: $videoRotation")
             
             var fileTarget = java.io.File(cleanPath)
             var lastLength = -1L
@@ -6357,7 +6339,7 @@ fun CapturedPreviewScreen(
             }
         } else {
             android.util.Log.d("PalPipeline", "Path is completely empty. Retaining silent black display slate.")
-            videoRotation = 270
+            videoRotation = if (linearZoom > 0f) 0 else 270
         }
     }
 
@@ -6461,10 +6443,12 @@ fun CapturedPreviewScreen(
                             exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                 override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                     super.onVideoSizeChanged(videoSize)
+                                    videoRotation = videoSize.unappliedRotationDegrees
                                     applyVideoScale()
                                 }
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     super.onPlaybackStateChanged(playbackState)
+                                    videoRotation = exoPlayer.videoSize.unappliedRotationDegrees
                                     applyVideoScale()
                                     if (playbackState == androidx.media3.common.Player.STATE_READY) {
                                         exoPlayer.play()
