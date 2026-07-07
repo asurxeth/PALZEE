@@ -81,6 +81,6 @@ class SessionManager(context: Context) {
     }
 
     fun getNotificationInterval(): String {
-        return prefs.getString("notification_interval", "off") ?: "off"
+        return prefs.getString("notification_interval", "every 1hr") ?: "every 1hr"
     }
 }

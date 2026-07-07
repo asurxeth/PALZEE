@@ -28,28 +28,48 @@ class PalNotificationReceiver : BroadcastReceiver() {
 
         val calendar = Calendar.getInstance()
         val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
+        
+        val scheduledHour = intent.getIntExtra("EXTRA_SCHEDULED_HOUR", -1)
+        val hourToUse = if (scheduledHour in 0..23) scheduledHour else currentHour
 
         when (intent.action) {
             Intent.ACTION_USER_PRESENT -> {
-                // Scenario B: User just unlocked their phone!
-                if (!isPalSentOrNotifiedForHour(context, currentHour)) {
-                    showNativeNotification(context, currentHour)
-                    markAsNotifiedForHour(context, currentHour)
+                // User just unlocked their phone!
+                if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
+                    if (isAfterTargetTimeForHour(hourToUse)) {
+                        showNativeNotification(context, hourToUse)
+                        markAsNotifiedForHour(context, hourToUse)
+                    }
                 }
             }
 
             PalAlarmScheduler.ACTION_PAL_ALARM, Intent.ACTION_BOOT_COMPLETED -> {
-                // Scenario A: Top of the hour fallback check / System Reboot
+                // Top of the hour fallback check / System Reboot
                 if (intent.action == PalAlarmScheduler.ACTION_PAL_ALARM) {
-                    if (!isPalSentOrNotifiedForHour(context, currentHour)) {
-                        showNativeNotification(context, currentHour)
-                        markAsNotifiedForHour(context, currentHour)
+                    if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
+                        showNativeNotification(context, hourToUse)
+                        markAsNotifiedForHour(context, hourToUse)
                     }
                 }
                 // Schedule the next hourly fallback window
                 PalAlarmScheduler.updateScheduling(context, interval)
             }
         }
+    }
+
+    private fun isAfterTargetTimeForHour(hour: Int): Boolean {
+        val relativeHour = (hour - 4 + 24) % 24
+        val totalSeconds = relativeHour * 150
+        val targetMinute = totalSeconds / 60
+        val targetSecond = totalSeconds % 60
+        
+        val targetCal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, hour)
+            set(Calendar.MINUTE, targetMinute)
+            set(Calendar.SECOND, targetSecond)
+            set(Calendar.MILLISECOND, 0)
+        }
+        return System.currentTimeMillis() >= targetCal.timeInMillis
     }
 
     private fun isPalSentOrNotifiedForHour(context: Context, hour: Int): Boolean {

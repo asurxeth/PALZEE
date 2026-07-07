@@ -303,6 +303,23 @@ fun handleDeleteVlog(
         val deletedPath = filteredPaths[indexToDelete]
         val palCode = activeVlogPal?.code ?: "vlog"
         
+        if (indexToDelete in filteredTimes.indices) {
+            try {
+                val timeStr = filteredTimes[indexToDelete]
+                val deletedHour = timeStr.substringBefore(":").toInt()
+                val dateStamp = targetDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))
+                
+                val sentPrefs = context.getSharedPreferences("palzee_prefs", android.content.Context.MODE_PRIVATE)
+                sentPrefs.edit().apply {
+                    remove("pal_logged_${dateStamp}_$deletedHour")
+                    remove("pal_notified_${dateStamp}_$deletedHour")
+                    apply()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
         locallyDeletedSubmissions[deletedPath] = true
         if (palCode != "vlog") {
             // GROUP Pal DELETION
@@ -1543,6 +1560,13 @@ fun getSubmissionRelativeHour(sub: SubmissionDbItem): Int {
     return (rawHour - 4 + 24) % 24
 }
 
+fun isSubmissionInCurrentHourWindow(sub: SubmissionDbItem): Boolean {
+    val instant = safeParseInstant(sub.createdAt) ?: return false
+    val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+    val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+    return zonedDateTime.toLocalDate() == now.toLocalDate() && zonedDateTime.hour == now.hour
+}
+
 @Composable
 fun OnboardingFlowContainer(
     onboardingFlowStep: Int,
@@ -2068,6 +2092,7 @@ fun HomeScreen(
     val isStateRestoredRef = remember(currentUserId) { mutableStateOf(false) }
     val saveGroupMutex = remember { Mutex() }
     var showingCapturedPreview by remember(currentUserId) { mutableStateOf(false) }
+    var isTransitioningToPreview by remember(currentUserId) { mutableStateOf(false) }
     var capturedVideoPath by remember(currentUserId) { mutableStateOf<String?>(null) }
     var isCapturedVideoZoomed by remember(currentUserId) { mutableStateOf(false) }
     var capturedVideoDuration by remember(currentUserId) { mutableStateOf(2000L) }
@@ -3646,7 +3671,13 @@ fun HomeScreen(
                         capturedVideoPath = capturedVideoPath,
                         capturedVlogsPaths = todayVlogPaths,
                         isZoomed = isCapturedVideoZoomed,
-                        onClose = { showingCapturedPreview = false },
+                        onClose = { 
+                            showingCapturedPreview = false 
+                            isTransitioningToPreview = false
+                        },
+                        onPlayerReady = {
+                            isTransitioningToPreview = false
+                        },
                         onSend = { caption, targetPals ->
                             val time = java.time.LocalTime.now()
                             val formattedTime = String.format("%02d:%02d", time.hour, time.minute)
@@ -3823,7 +3854,7 @@ fun HomeScreen(
                 .fillMaxSize()
         ) {
             if (onboardingFlowStep == 6) {
-                val isCameraTabActive = selectedTab == "camera" && !showingCapturedPreview && activeVlogPal == null
+                val isCameraTabActive = selectedTab == "camera" && activeVlogPal == null && (!showingCapturedPreview || isTransitioningToPreview)
                 LaunchedEffect(isCameraTabActive) {
                     if (isCameraTabActive) {
                         isCameraActiveState = true
@@ -3850,7 +3881,7 @@ fun HomeScreen(
                         isRecording = isRecordingCamera,
                         onRecordingChange = { isRecordingCamera = it },
                         onClose = { selectedTab = "pals" },
-                        isCameraActive = isCameraActiveState && isCameraTabActive,
+                        isCameraActive = isCameraActiveState && activeVlogPal == null && (!showingCapturedPreview || isTransitioningToPreview),
                         onCameraActiveChange = { isCameraActiveState = it },
                         cameraProviderFuture = cameraProviderFuture,
                         previewView = previewView,
@@ -3858,6 +3889,7 @@ fun HomeScreen(
                             capturedVideoPath = path
                             capturedVideoDuration = duration
                             isCapturedVideoZoomed = isZoomed
+                            isTransitioningToPreview = true
                             showingCapturedPreview = true
                         }
                     )
@@ -4858,11 +4890,17 @@ fun CameraPreview(
     }
 
     val lastZoomTime = remember { longArrayOf(0L) }
+    val lastBoundCamera = remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+
     LaunchedEffect(activeCamera, linearZoom) {
         val camera = activeCamera ?: return@LaunchedEffect
         val currentTime = System.currentTimeMillis()
         val elapsed = currentTime - lastZoomTime[0]
-        if (elapsed >= 32) {
+        
+        val isNewCameraSession = lastBoundCamera.value != camera
+
+        if (isNewCameraSession || elapsed >= 16) {
+            lastBoundCamera.value = camera
             lastZoomTime[0] = currentTime
             try {
                 camera.cameraControl.setLinearZoom(linearZoom)
@@ -4870,12 +4908,14 @@ fun CameraPreview(
                 exc.printStackTrace()
             }
         } else {
-            delay(32 - elapsed)
-            lastZoomTime[0] = System.currentTimeMillis()
-            try {
-                camera.cameraControl.setLinearZoom(linearZoom)
-            } catch (exc: Exception) {
-                exc.printStackTrace()
+            delay(16 - elapsed)
+            if (activeCamera == camera) {
+                lastZoomTime[0] = System.currentTimeMillis()
+                try {
+                    camera.cameraControl.setLinearZoom(linearZoom)
+                } catch (exc: Exception) {
+                    exc.printStackTrace()
+                }
             }
         }
     }
@@ -5952,14 +5992,14 @@ fun GroupMembersSmileysRow(
             false
         } else {
             if (memberId != null && memberId != "legacy_id") {
-                submissions.any { it.userId == memberId }
+                submissions.any { it.userId == memberId && isSubmissionInCurrentHourWindow(it) }
             } else {
                 if (memberName == userFirstName || memberName.contains("(You)") || memberName == "only you") {
-                    submissions.any { it.userId == currentUserId }
+                    submissions.any { it.userId == currentUserId && isSubmissionInCurrentHourWindow(it) }
                 } else {
                     submissions.any { sub ->
                         val cleanSubName = parseUserDisplayName(sub.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                        cleanSubName.equals(memberName, ignoreCase = true)
+                        cleanSubName.equals(memberName, ignoreCase = true) && isSubmissionInCurrentHourWindow(sub)
                     }
                 }
             }
@@ -6157,7 +6197,8 @@ fun CapturedPreviewScreen(
     currentUserId: String,
     currentDisplayName: String,
     allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
-    customAvatarUriString: String?
+    customAvatarUriString: String?,
+    onPlayerReady: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var isMuted by remember { mutableStateOf(false) }
@@ -6281,8 +6322,21 @@ fun CapturedPreviewScreen(
                     setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 }
             )
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        100,  // minBufferMs: Only 100ms buffered is needed to play, allowing extremely short zoom clips to loop without stalling
+                        500,  // maxBufferMs: Maximum buffer 500ms
+                        50,   // bufferForPlaybackMs: Playback starts after 50ms is loaded
+                        50    // bufferForPlaybackAfterRebufferMs: Fast rebuffer
+                    )
+                    .setPrioritizeTimeOverSizeThresholds(true)
+                    .build()
+            )
             .build().apply {
-                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL // Seamless infinite loop matching the vlog vibe
+                playbackParameters = androidx.media3.common.PlaybackParameters(1.0f)
+                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL // Force looping natively at the hardware level
+                setHandleAudioBecomingNoisy(true) // Disable audio surface switching delays during loops
                 playWhenReady = true
             }
     }
@@ -6293,8 +6347,12 @@ fun CapturedPreviewScreen(
     // We listen to the raw capturedVideoPath. Whenever this string changes, we forcefully flush the player stack.
     LaunchedEffect(capturedVideoPath) {
         android.util.Log.d("PalPipeline", "Raw path string received: $capturedVideoPath")
-        exoPlayer.stop()
-        exoPlayer.clearMediaItems()
+        exoPlayer.apply {
+            playWhenReady = false
+            stop()
+            clearMediaItems()
+            seekTo(0, 0L)
+        }
 
         if (!capturedVideoPath.isNullOrBlank()) {
             val cleanPath = when {
@@ -6307,10 +6365,10 @@ fun CapturedPreviewScreen(
             var stableCount = 0
             var retries = 0
             
-            // Poll for stable file size (not changing for 200ms) to ensure write completes
-            while (retries < 20) {
+            // Poll for stable file size (not changing for 60ms) to ensure write completes
+            while (retries < 25) {
                 val currentLength = if (fileTarget.exists()) fileTarget.length() else 0L
-                if (currentLength > 0L && currentLength == lastLength) {
+                if (currentLength > 1024L && currentLength == lastLength) {
                     stableCount++
                     if (stableCount >= 2) {
                         break
@@ -6319,29 +6377,34 @@ fun CapturedPreviewScreen(
                     stableCount = 0
                     lastLength = currentLength
                 }
-                delay(100L)
+                delay(30L)
                 fileTarget = java.io.File(cleanPath)
                 retries++
             }
 
-            // Asynchronously read the rotation tag using MediaMetadataRetriever on Dispatchers.IO
+            // Asynchronously read the rotation tag using MediaMetadataRetriever on Dispatchers.IO with retries
             val rot = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                try {
-                    val file = java.io.File(cleanPath)
-                    if (file.exists()) {
-                        val retriever = android.media.MediaMetadataRetriever()
-                        retriever.setDataSource(cleanPath)
-                        val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                        val parsedRot = rotationStr?.toIntOrNull() ?: (if (isZoomed) 0 else 270)
-                        retriever.release()
-                        parsedRot
-                    } else {
-                        if (isZoomed) 0 else 270
+                var retrieverSuccess = false
+                var parsedRot = 270
+                var attempts = 0
+                while (attempts < 5 && !retrieverSuccess) {
+                    try {
+                        val file = java.io.File(cleanPath)
+                        if (file.exists() && file.length() > 0) {
+                            val retriever = android.media.MediaMetadataRetriever()
+                            retriever.setDataSource(cleanPath)
+                            val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                            parsedRot = rotationStr?.toIntOrNull() ?: (if (isZoomed) 0 else 270)
+                            retriever.release()
+                            retrieverSuccess = true
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("PalVideoScale", "Retriever attempt ${attempts + 1} failed: ${e.message}")
+                        attempts++
+                        kotlinx.coroutines.delay(50)
                     }
-                } catch (e: Exception) {
-                    android.util.Log.e("PalVideoScale", "Error retrieving rotation asynchronously: ${e.message}")
-                    if (isZoomed) 0 else 270
                 }
+                parsedRot
             }
             videoRotation = rot
             android.util.Log.d("PalVideoScale", "Retrieved file rotation asynchronously: $videoRotation")
@@ -6353,9 +6416,14 @@ fun CapturedPreviewScreen(
             }
 
             try {
-                exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
-                exoPlayer.prepare()
-                exoPlayer.playWhenReady = true
+                exoPlayer.apply {
+                    stop()
+                    clearMediaItems()
+                    setMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
+                    prepare()
+                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                    playWhenReady = true
+                }
             } catch (e: Exception) {
                 android.util.Log.e("PalPipeline", "Error setting media or preparing player: ${e.message}", e)
             }
@@ -6367,7 +6435,13 @@ fun CapturedPreviewScreen(
 
     DisposableEffect(exoPlayer) {
         onDispose {
-            exoPlayer.release()
+            exoPlayer.apply {
+                playWhenReady = false
+                stop()
+                clearMediaItems()
+                seekTo(0, 0L)
+                release()
+            }
         }
     }
 
@@ -6471,6 +6545,10 @@ fun CapturedPreviewScreen(
                                     super.onPlaybackStateChanged(playbackState)
                                     applyVideoScale()
                                     if (playbackState == androidx.media3.common.Player.STATE_READY) {
+                                        exoPlayer.play()
+                                        onPlayerReady()
+                                    } else if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
+                                        exoPlayer.seekTo(0, 0L)
                                         exoPlayer.play()
                                     }
                                 }
@@ -6933,7 +7011,7 @@ fun CapturedPreviewScreen(
                     ) {
                         if (pal.isVlog) {
                             val vlogSubmissions = if (capturedVlogsPaths.isNotEmpty() || isSelected) {
-                                listOf(SubmissionDbItem(palCode = "vlog", userId = currentUserId, userDisplayName = currentDisplayName, imageUrl = ""))
+                                listOf(SubmissionDbItem(palCode = "vlog", userId = currentUserId, userDisplayName = currentDisplayName, imageUrl = "", createdAt = java.time.Instant.now().toString()))
                             } else {
                                 emptyList()
                             }
@@ -6965,7 +7043,7 @@ fun CapturedPreviewScreen(
                             }
                             val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
                             val finalSubs = if (isSelected && !groupSubs.any { it.userId == currentUserId }) {
-                                groupSubs + SubmissionDbItem(palCode = pal.code, userId = currentUserId, userDisplayName = currentDisplayName, imageUrl = "")
+                                groupSubs + SubmissionDbItem(palCode = pal.code, userId = currentUserId, userDisplayName = currentDisplayName, imageUrl = "", createdAt = java.time.Instant.now().toString())
                             } else {
                                 groupSubs
                             }
@@ -7089,7 +7167,8 @@ fun GroupMemberCard(
     editCaptionText: androidx.compose.ui.text.input.TextFieldValue = androidx.compose.ui.text.input.TextFieldValue(""),
     onEditCaptionTextChange: (androidx.compose.ui.text.input.TextFieldValue) -> Unit = {},
     onUpdateVlogCaption: (String, String) -> Unit = { _, _ -> },
-    capturedVlogsPaths: List<String> = emptyList()
+    capturedVlogsPaths: List<String> = emptyList(),
+    selectedDayOffset: Int = 0
 ) {
     val isActualMember = index < groupMembers.size
     val cardShape = if (isGrid) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(28.dp)
@@ -7142,7 +7221,7 @@ fun GroupMemberCard(
 
     val memberSubs = if (isActualMember) {
         filteredSubmissions.filter { sub ->
-            if (memberId != null && memberId != "legacy_id") {
+            val matchesUser = if (memberId != null && memberId != "legacy_id") {
                 sub.userId == memberId
             } else {
                 if (isUser) {
@@ -7152,6 +7231,7 @@ fun GroupMemberCard(
                     cleanSubName.equals(memberName, ignoreCase = true)
                 }
             }
+            matchesUser && (selectedDayOffset > 0 || isSubmissionInCurrentHourWindow(sub))
         }
     } else {
         emptyList()
@@ -8122,7 +8202,8 @@ fun GroupScreenContent(
                         editCaptionText = editCaptionText,
                         onEditCaptionTextChange = onEditCaptionTextChange,
                         onUpdateVlogCaption = onUpdateVlogCaption,
-                        capturedVlogsPaths = capturedVlogsPaths
+                        capturedVlogsPaths = capturedVlogsPaths,
+                        selectedDayOffset = selectedDayOffset
                     )
                 }
             } else {
@@ -8192,7 +8273,8 @@ fun GroupScreenContent(
                                     editCaptionText = editCaptionText,
                                     onEditCaptionTextChange = onEditCaptionTextChange,
                                     onUpdateVlogCaption = onUpdateVlogCaption,
-                                    capturedVlogsPaths = capturedVlogsPaths
+                                    capturedVlogsPaths = capturedVlogsPaths,
+                                    selectedDayOffset = selectedDayOffset
                                 )
                             }
                             Box(modifier = Modifier.weight(1f)) {
@@ -8251,7 +8333,8 @@ fun GroupScreenContent(
                                     editCaptionText = editCaptionText,
                                     onEditCaptionTextChange = onEditCaptionTextChange,
                                     onUpdateVlogCaption = onUpdateVlogCaption,
-                                    capturedVlogsPaths = capturedVlogsPaths
+                                    capturedVlogsPaths = capturedVlogsPaths,
+                                    selectedDayOffset = selectedDayOffset
                                 )
                             }
                         }
@@ -8316,7 +8399,8 @@ fun GroupScreenContent(
                                     editCaptionText = editCaptionText,
                                     onEditCaptionTextChange = onEditCaptionTextChange,
                                     onUpdateVlogCaption = onUpdateVlogCaption,
-                                    capturedVlogsPaths = capturedVlogsPaths
+                                    capturedVlogsPaths = capturedVlogsPaths,
+                                    selectedDayOffset = selectedDayOffset
                                 )
                             }
                         }
@@ -8825,6 +8909,9 @@ fun VlogScreenContent(
                                                     override fun onPlaybackStateChanged(playbackState: Int) {
                                                         super.onPlaybackStateChanged(playbackState)
                                                         applyVideoScale()
+                                                        if (playbackState == androidx.media3.common.Player.STATE_READY) {
+                                                            localPlayer.play()
+                                                        }
                                                     }
                                                 })
 

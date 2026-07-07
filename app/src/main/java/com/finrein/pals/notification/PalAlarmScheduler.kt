@@ -21,8 +21,11 @@ object PalAlarmScheduler {
     private fun scheduleNextAlarm(context: Context, interval: String) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
+        val (nextAlarmTime, targetHour) = getNextAlarmTimeAndHour(interval)
+        
         val intent = Intent(context, PalNotificationReceiver::class.java).apply {
             action = ACTION_PAL_ALARM
+            putExtra("EXTRA_SCHEDULED_HOUR", targetHour)
         }
         
         val pendingIntent = PendingIntent.getBroadcast(
@@ -32,40 +35,84 @@ object PalAlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.MINUTE, 50)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-
-        if (calendar.timeInMillis <= System.currentTimeMillis()) {
-            val hoursToAdd = if (interval == "every 3hrs") 3 else 1
-            calendar.add(Calendar.HOUR_OF_DAY, hoursToAdd)
-        } else if (interval == "every 3hrs") {
-            calendar.add(Calendar.HOUR_OF_DAY, 2)
-        }
-
         try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                alarmManager.setAndAllowWhileIdle(
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        nextAlarmTime,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        nextAlarmTime,
+                        pendingIntent
+                    )
+                }
+            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
                     AlarmManager.RTC_WAKEUP,
-                    calendar.timeInMillis,
+                    nextAlarmTime,
                     pendingIntent
                 )
             } else {
-                alarmManager.set(
+                alarmManager.setExact(
                     AlarmManager.RTC_WAKEUP,
-                    calendar.timeInMillis,
+                    nextAlarmTime,
                     pendingIntent
                 )
             }
+            android.util.Log.d("PalAlarmScheduler", "Scheduled next alarm at: ${java.util.Date(nextAlarmTime)} (Hour: $targetHour)")
         } catch (e: Exception) {
-            alarmManager.set(
-                AlarmManager.RTC_WAKEUP,
-                calendar.timeInMillis,
-                pendingIntent
-            )
+            try {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    nextAlarmTime,
+                    pendingIntent
+                )
+            } catch (ex: Exception) {
+                alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    nextAlarmTime,
+                    pendingIntent
+                )
+            }
         }
+    }
+
+    fun getNextAlarmTimeAndHour(interval: String): Pair<Long, Int> {
+        val now = System.currentTimeMillis()
+        val isThreeHours = interval == "every 3hrs"
+        
+        for (i in 0..48) {
+            val testCal = Calendar.getInstance().apply {
+                add(Calendar.HOUR_OF_DAY, i)
+            }
+            val testHour = testCal.get(Calendar.HOUR_OF_DAY)
+            val relativeHour = (testHour - 4 + 24) % 24
+            
+            if (isThreeHours && (relativeHour % 3 != 0)) {
+                continue
+            }
+            
+            val totalSeconds = relativeHour * 150
+            val targetMinute = totalSeconds / 60
+            val targetSecond = totalSeconds % 60
+            
+            testCal.set(Calendar.MINUTE, targetMinute)
+            testCal.set(Calendar.SECOND, targetSecond)
+            testCal.set(Calendar.MILLISECOND, 0)
+            
+            if (testCal.timeInMillis > now) {
+                return Pair(testCal.timeInMillis, testHour)
+            }
+        }
+        
+        val fallbackCal = Calendar.getInstance().apply {
+            add(Calendar.HOUR_OF_DAY, 1)
+        }
+        return Pair(fallbackCal.timeInMillis, fallbackCal.get(Calendar.HOUR_OF_DAY))
     }
 
     fun cancelAlarm(context: Context) {
