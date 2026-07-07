@@ -4905,7 +4905,7 @@ fun CameraScreenContent(
     onCameraActiveChange: (Boolean) -> Unit = {},
     cameraProviderFuture: com.google.common.util.concurrent.ListenableFuture<ProcessCameraProvider>,
     previewView: PreviewView,
-    onCaptureSuccess: (String, Long) -> Unit
+    onCaptureSuccess: (String, Long, Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val darkShadeColor = remember(selectedThemeColor) {
@@ -4981,7 +4981,7 @@ fun CameraScreenContent(
             if (videoCapture == null) {
                 android.util.Log.e("ProductionCamera", "VideoCapture is null! Reverting to fallback.")
                 onRecordingChange(false)
-                onCaptureSuccess("", 0L)
+                onCaptureSuccess("", 0L, false)
                 return@LaunchedEffect
             }
 
@@ -5020,11 +5020,11 @@ fun CameraScreenContent(
                                 val fileExists = outputFile.exists() && outputFile.length() > 0
                                 if (fileExists && (!recordEvent.hasError() || recordEvent.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE)) {
                                     android.util.Log.d("ProductionCamera", "Video encoding success: ${outputFile.absolutePath}")
-                                    onCaptureSuccess(outputFile.absolutePath, durationMs)
+                                    onCaptureSuccess(outputFile.absolutePath, durationMs, linearZoom > 0f)
                                 } else {
                                     android.util.Log.e("ProductionCamera", "Encoder finalized with error: ${recordEvent.error}, fileExists: $fileExists")
                                     recordingStarted.completeExceptionally(java.lang.RuntimeException("Recording failed to start"))
-                                    onCaptureSuccess("", 0L)
+                                    onCaptureSuccess("", 0L, false)
                                 }
                             }
                         }
@@ -5032,7 +5032,7 @@ fun CameraScreenContent(
                 activeRecordingSession = session
             } catch (e: Exception) {
                 android.util.Log.e("ProductionCamera", "Error starting recording", e)
-                onCaptureSuccess("", 0L)
+                onCaptureSuccess("", 0L, false)
                 onRecordingChange(false)
                 return@LaunchedEffect
             }
