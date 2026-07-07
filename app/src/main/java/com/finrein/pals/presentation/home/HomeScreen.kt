@@ -8203,7 +8203,7 @@ fun GroupScreenContent(
                         onEditCaptionTextChange = onEditCaptionTextChange,
                         onUpdateVlogCaption = onUpdateVlogCaption,
                         capturedVlogsPaths = capturedVlogsPaths,
-                        selectedDayOffset = selectedDayOffset
+                        selectedDayOffset = params.selectedDayOffset
                     )
                 }
             } else {
@@ -8274,7 +8274,7 @@ fun GroupScreenContent(
                                     onEditCaptionTextChange = onEditCaptionTextChange,
                                     onUpdateVlogCaption = onUpdateVlogCaption,
                                     capturedVlogsPaths = capturedVlogsPaths,
-                                    selectedDayOffset = selectedDayOffset
+                                    selectedDayOffset = params.selectedDayOffset
                                 )
                             }
                             Box(modifier = Modifier.weight(1f)) {
@@ -8334,7 +8334,7 @@ fun GroupScreenContent(
                                     onEditCaptionTextChange = onEditCaptionTextChange,
                                     onUpdateVlogCaption = onUpdateVlogCaption,
                                     capturedVlogsPaths = capturedVlogsPaths,
-                                    selectedDayOffset = selectedDayOffset
+                                    selectedDayOffset = params.selectedDayOffset
                                 )
                             }
                         }
@@ -8400,7 +8400,7 @@ fun GroupScreenContent(
                                     onEditCaptionTextChange = onEditCaptionTextChange,
                                     onUpdateVlogCaption = onUpdateVlogCaption,
                                     capturedVlogsPaths = capturedVlogsPaths,
-                                    selectedDayOffset = selectedDayOffset
+                                    selectedDayOffset = params.selectedDayOffset
                                 )
                             }
                         }
