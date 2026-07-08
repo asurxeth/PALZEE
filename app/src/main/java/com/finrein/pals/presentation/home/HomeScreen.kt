@@ -358,7 +358,7 @@ fun handleDeleteVlog(
                     if (targetSub != null && targetSub.id != null) {
                         authRepository.deleteSpecificPalItem(targetSub.id)
                     }
-                    deleteVlogPostPermanently(currentUserId, deletedPath, palCode)
+                    deleteVlogPostPermanently(context, currentUserId, deletedPath, palCode)
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         refreshActivePalDetails(palCode)
                     }
@@ -409,7 +409,7 @@ fun handleDeleteVlog(
                                 }
                             }
                         }
-                        deleteVlogPostPermanently(currentUserId, deletedPath, palCode)
+                        deleteVlogPostPermanently(context, currentUserId, deletedPath, palCode)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -791,6 +791,7 @@ object VlogPlayerManager {
                     androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context.applicationContext)
                         .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context.applicationContext))
                 )
+                .setLoadControl(VideoCache.getLowLatencyLoadControl())
                 .build().apply {
                     setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUrl))
                     repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
@@ -995,17 +996,69 @@ suspend fun sendVideoPalToVlog(context: android.content.Context, localUri: andro
     }
 }
 
-suspend fun deleteVlogPostPermanently(userId: String, videoUrl: String, palCode: String) {
+fun deleteCachedVideo(context: android.content.Context, path: String) {
+    try {
+        val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+        val vlogPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+        
+        val cachedLocal = palPrefs.getString("local_path_$path", null)
+            ?: vlogPrefs.getString("local_path_$path", null)
+        
+        if (cachedLocal != null) {
+            val file = java.io.File(cachedLocal)
+            if (file.exists()) {
+                file.delete()
+            }
+        }
+        
+        val cleanPath = when {
+            path.startsWith("file://") -> path.substring(7)
+            else -> path
+        }
+        val rawFile = java.io.File(cleanPath)
+        if (rawFile.exists()) {
+            rawFile.delete()
+        }
+        
+        palPrefs.edit().remove("local_path_$path").apply()
+        vlogPrefs.edit().remove("local_path_$path").apply()
+        
+        palPrefs.all.forEach { (key, value) ->
+            if (value == cachedLocal || value == path || value == cleanPath) {
+                palPrefs.edit().remove(key).apply()
+            }
+        }
+        vlogPrefs.all.forEach { (key, value) ->
+            if (value == cachedLocal || value == path || value == cleanPath) {
+                vlogPrefs.edit().remove(key).apply()
+            }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
+suspend fun deleteVlogPostPermanently(context: android.content.Context, userId: String, videoUrl: String, palCode: String) {
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
-            // 1. Evict player from memory pool to kill the background stream instantly
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 VlogPlayerManager.releasePlayer(videoUrl)
             }
 
-            // 2. Clear out physical storage assets from Supabase Bucket
+            deleteCachedVideo(context, videoUrl)
+
             val fileName = videoUrl.substringAfterLast("/")
-            com.finrein.pals.PalApplication.supabase.storage.from("pals_vlogs").delete(fileName)
+            val bucketName = if (palCode == "vlog") "PALS_VLOGS" else "PALS"
+            try {
+                com.finrein.pals.PalApplication.supabase.storage.from(bucketName).delete(fileName)
+            } catch (e: Exception) {
+                val altBucket = if (bucketName == "PALS_VLOGS") "pals_vlogs" else "pals"
+                try {
+                    com.finrein.pals.PalApplication.supabase.storage.from(altBucket).delete(fileName)
+                } catch (e2: Exception) {
+                    e2.printStackTrace()
+                }
+            }
         } catch (e: Exception) {
             android.util.Log.e("PURGE_ERROR", "Failed to clear asset: ${e.localizedMessage}")
         }
@@ -2550,6 +2603,7 @@ fun HomeScreen(
                 androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
                     .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
             )
+            .setLoadControl(VideoCache.getLowLatencyLoadControl())
             .build().apply {
                 repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                 volume = 0f
@@ -2951,6 +3005,15 @@ fun HomeScreen(
                                             val currentActiveCode = activePalCodeState.value
                                             if (currentActiveCode != null) {
                                                 refreshActivePalDetails(currentActiveCode)
+                                            }
+                                            try {
+                                                val imageUrl = record?.get("image_url")?.jsonPrimitive?.content
+                                                val deletedPath = imageUrl?.split("|||")?.firstOrNull()
+                                                if (!deletedPath.isNullOrEmpty()) {
+                                                    deleteCachedVideo(context, deletedPath)
+                                                }
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
                                             }
                                         } else {
                                             if (eventPalCode != null && eventPalCode == activePalCodeState.value) {
@@ -8946,6 +9009,7 @@ fun VlogScreenContent(
                                             androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
                                                 .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
                                         )
+                                        .setLoadControl(VideoCache.getLowLatencyLoadControl())
                                         .build().apply {
                                             repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                                             volume = 0f
@@ -10823,6 +10887,7 @@ fun VlogScreenContent(
                                                     setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                                                 }
                                             )
+                                            .setLoadControl(VideoCache.getLowLatencyLoadControl())
                                             .build().apply {
                                                 repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                                                 volume = 0f
@@ -12323,6 +12388,7 @@ fun VideoPlayerItem(
                     androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
                         .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
                 )
+                .setLoadControl(VideoCache.getLowLatencyLoadControl())
                 .build().apply {
                     repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                     volume = 0f
@@ -17542,6 +17608,7 @@ private fun GroupExportMemberSlot(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
                             .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
                     )
+                    .setLoadControl(VideoCache.getLowLatencyLoadControl())
                     .build().apply {
                         repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
                         volume = 0f
