@@ -1018,6 +1018,7 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
             private var eglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
             private var eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
             private var eglConfig: android.opengl.EGLConfig? = null
+            private var eglDummySurface = android.opengl.EGL14.EGL_NO_SURFACE
             private var program = 0
             private var texMatrixLoc = 0
             private var textureId = 0
@@ -1040,11 +1041,12 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
 
                         val st = android.graphics.SurfaceTexture(textureId)
                         st.setDefaultBufferSize(surfaceRequest.resolution.width, surfaceRequest.resolution.height)
-                        st.setOnFrameAvailableListener {
+                        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+                        st.setOnFrameAvailableListener({
                             glExecutor.execute {
                                 drawFrame()
                             }
-                        }
+                        }, handler)
 
                         surfaceTexture = st
                         val surface = android.view.Surface(st)
@@ -1082,8 +1084,8 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                         val output = EglOutput(
                             surfaceOutput = surfaceOutput,
                             eglSurface = eglSurface,
-                            width = surfaceOutput.getResolution().width,
-                            height = surfaceOutput.getResolution().height
+                            width = surfaceOutput.size.width,
+                            height = surfaceOutput.size.height
                         )
                         outputs[surfaceOutput] = output
                     } catch (e: Exception) {
@@ -1095,24 +1097,29 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
             private fun drawFrame() {
                 val st = surfaceTexture ?: return
                 try {
+                    android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglDummySurface, eglDummySurface, eglContext)
                     st.updateTexImage()
                     val originalTexMatrix = FloatArray(16)
                     st.getTransformMatrix(originalTexMatrix)
 
-                    val scaleFactor = 1.0f + (linearZoom * 1.5f)
-                    val scaleMatrix = FloatArray(16).apply {
-                        android.opengl.Matrix.setIdentityM(this, 0)
-                        android.opengl.Matrix.translateM(this, 0, 0.5f, 0.5f, 0.0f)
-                        android.opengl.Matrix.scaleM(this, 0, 1f / scaleFactor, 1f / scaleFactor, 1.0f)
-                        android.opengl.Matrix.translateM(this, 0, -0.5f, -0.5f, 0.0f)
-                    }
-
-                    val finalMatrix = FloatArray(16)
-                    android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, originalTexMatrix, 0)
-
                     outputs.values.forEach { output ->
                         android.opengl.EGL14.eglMakeCurrent(eglDisplay, output.eglSurface, output.eglSurface, eglContext)
                         android.opengl.GLES20.glViewport(0, 0, output.width, output.height)
+
+                        val correctedMatrix = FloatArray(16)
+                        output.surfaceOutput.updateTransformMatrix(correctedMatrix, originalTexMatrix)
+
+                        val scaleFactor = 1.0f + (linearZoom * 1.5f)
+                        val scaleMatrix = FloatArray(16).apply {
+                            android.opengl.Matrix.setIdentityM(this, 0)
+                            android.opengl.Matrix.translateM(this, 0, 0.5f, 0.5f, 0.0f)
+                            android.opengl.Matrix.scaleM(this, 0, 1f / scaleFactor, 1f / scaleFactor, 1.0f)
+                            android.opengl.Matrix.translateM(this, 0, -0.5f, -0.5f, 0.0f)
+                        }
+
+                        val finalMatrix = FloatArray(16)
+                        android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, correctedMatrix, 0)
+
                         drawTexture(textureId, finalMatrix)
                         android.opengl.EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
                     }
@@ -1134,6 +1141,7 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                     android.opengl.EGL14.EGL_BLUE_SIZE, 8,
                     android.opengl.EGL14.EGL_ALPHA_SIZE, 8,
                     android.opengl.EGL14.EGL_RENDERABLE_TYPE, android.opengl.EGL14.EGL_OPENGL_ES2_BIT,
+                    android.opengl.EGL14.EGL_SURFACE_TYPE, android.opengl.EGL14.EGL_WINDOW_BIT or android.opengl.EGL14.EGL_PBUFFER_BIT,
                     android.opengl.EGL14.EGL_NONE
                 )
                 val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
@@ -1146,6 +1154,15 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                     android.opengl.EGL14.EGL_NONE
                 )
                 eglContext = android.opengl.EGL14.eglCreateContext(eglDisplay, eglConfig, android.opengl.EGL14.EGL_NO_CONTEXT, ctxAttribList, 0)
+
+                // Create a 1x1 pbuffer surface to make the EGL context current immediately
+                val pbufferAttribs = intArrayOf(
+                    android.opengl.EGL14.EGL_WIDTH, 1,
+                    android.opengl.EGL14.EGL_HEIGHT, 1,
+                    android.opengl.EGL14.EGL_NONE
+                )
+                eglDummySurface = android.opengl.EGL14.eglCreatePbufferSurface(eglDisplay, eglConfig, pbufferAttribs, 0)
+                android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglDummySurface, eglDummySurface, eglContext)
 
                 val vertexShader = compileShader(android.opengl.GLES20.GL_VERTEX_SHADER, vertexShaderSource)
                 val fragmentShader = compileShader(android.opengl.GLES20.GL_FRAGMENT_SHADER, fragmentShaderSource)
