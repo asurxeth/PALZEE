@@ -8093,14 +8093,17 @@ fun GroupMemberCard(
                 )
 
                 Row(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(if (isGrid) 8.dp else 18.dp),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.5.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     currentEmojis.forEach { emoji ->
                         Text(
                             text = emoji,
-                            fontSize = if (isGrid) 16.sp else 28.sp,
+                            fontSize = if (isGrid) 12.sp else 24.sp,
                             modifier = Modifier
                                 .clickable {
                                     onEmojiReacted(videoPath, emoji)
@@ -8112,7 +8115,7 @@ fun GroupMemberCard(
                     // Refresh/Smiley indicator as outline icon at the end matching image 2
                     Box(
                         modifier = Modifier
-                            .size(if (isGrid) 20.dp else 32.dp)
+                            .size(if (isGrid) 16.dp else 28.dp)
                             .clip(CircleShape)
                             .clickable {
                                 currentEmojis = defaultEmojis.shuffled().take(5)
@@ -8123,7 +8126,7 @@ fun GroupMemberCard(
                             imageVector = Icons.Filled.AccountCircle,
                             contentDescription = "More",
                             tint = Color.White.copy(alpha = 0.8f),
-                            modifier = Modifier.size(if (isGrid) 16.dp else 28.dp)
+                            modifier = Modifier.size(if (isGrid) 12.dp else 24.dp)
                         )
                     }
                 }
@@ -9167,27 +9170,29 @@ fun VlogScreenContent(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(selectedDayOffset) {
-                var totalDrag = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = { totalDrag = 0f },
-                    onDragEnd = {
-                        val threshold = 100f
-                        if (totalDrag > threshold) {
-                            if (selectedDayOffset < 6) {
-                                onSelectedDayOffsetChange(selectedDayOffset + 1)
+            .pointerInput(selectedDayOffset, showChat, showExportDialog) {
+                if (!showChat && !showExportDialog) {
+                    var totalDrag = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { totalDrag = 0f },
+                        onDragEnd = {
+                            val threshold = 100f
+                            if (totalDrag > threshold) {
+                                if (selectedDayOffset < 6) {
+                                    onSelectedDayOffsetChange(selectedDayOffset + 1)
+                                }
+                            } else if (totalDrag < -threshold) {
+                                if (selectedDayOffset > 0) {
+                                    onSelectedDayOffsetChange(selectedDayOffset - 1)
+                                }
                             }
-                        } else if (totalDrag < -threshold) {
-                            if (selectedDayOffset > 0) {
-                                onSelectedDayOffsetChange(selectedDayOffset - 1)
-                            }
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            totalDrag += dragAmount
                         }
-                    },
-                    onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
-                        totalDrag += dragAmount
-                    }
-                )
+                    )
+                }
             }
             .pointerInput(pal.isVlog, currentHourIndex, dayHoursList) {
                 if (!pal.isVlog) {
@@ -11135,30 +11140,7 @@ fun VlogScreenContent(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { onShowExportDialogChange(false) }
-                    .pointerInput(selectedDayOffset) {
-                        var totalDrag = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { totalDrag = 0f },
-                            onDragEnd = {
-                                val threshold = 100f
-                                if (totalDrag > threshold) {
-                                    // Swipe Right -> Older day (increment offset)
-                                    if (selectedDayOffset < 6) {
-                                        onSelectedDayOffsetChange(selectedDayOffset + 1)
-                                    }
-                                } else if (totalDrag < -threshold) {
-                                    // Swipe Left -> Newer day (decrement offset)
-                                    if (selectedDayOffset > 0) {
-                                        onSelectedDayOffsetChange(selectedDayOffset - 1)
-                                    }
-                                }
-                            },
-                            onHorizontalDrag = { change, dragAmount ->
-                                change.consume()
-                                totalDrag += dragAmount
-                            }
-                        )
-                    },
+                    ,
                 contentAlignment = Alignment.Center
             ) {
                 val screenWidth = maxWidth
@@ -14256,7 +14238,11 @@ fun PalChatOverlay(
                             dayDateStr = dayDateStr,
                             timeStr = timeStr,
                             rawInstant = instant,
-                            localDate = zonedDateTime.toLocalDate(),
+                            localDate = if (zonedDateTime.hour < 4) {
+                                zonedDateTime.toLocalDate().minusDays(1)
+                            } else {
+                                zonedDateTime.toLocalDate()
+                            },
                             isUser = (msg.userId == currentUserId),
                             isSound = true,
                             soundName = name,
@@ -14275,7 +14261,11 @@ fun PalChatOverlay(
                         dayDateStr = dayDateStr,
                         timeStr = timeStr,
                         rawInstant = instant,
-                        localDate = zonedDateTime.toLocalDate(),
+                        localDate = if (zonedDateTime.hour < 4) {
+                                zonedDateTime.toLocalDate().minusDays(1)
+                            } else {
+                                zonedDateTime.toLocalDate()
+                            },
                         isUser = (msg.userId == currentUserId),
                         isTextMessage = true,
                         textMessageContent = msg.content,
@@ -14335,7 +14325,11 @@ fun PalChatOverlay(
                             dayDateStr = dayDateStr,
                             timeStr = timeStr,
                             rawInstant = instant,
-                            localDate = zonedDateTime.toLocalDate(),
+                            localDate = if (zonedDateTime.hour < 4) {
+                                zonedDateTime.toLocalDate().minusDays(1)
+                            } else {
+                                zonedDateTime.toLocalDate()
+                            },
                             isUser = true
                         )
                     } else {
@@ -14371,7 +14365,11 @@ fun PalChatOverlay(
                             dayDateStr = dayDateStr,
                             timeStr = timeStr,
                             rawInstant = instant,
-                            localDate = zonedDateTime.toLocalDate(),
+                            localDate = if (zonedDateTime.hour < 4) {
+                                zonedDateTime.toLocalDate().minusDays(1)
+                            } else {
+                                zonedDateTime.toLocalDate()
+                            },
                             isUser = (sub.userId == currentUserId)
                         )
                     } else {
@@ -14689,16 +14687,18 @@ fun PalChatOverlay(
                                                             modifier = Modifier
                                                                 .fillMaxWidth(0.5f)
                                                                 .aspectRatio(16f / 9f)
-                                                                .clip(RoundedCornerShape(28.dp))
-                                                                .background(Color.Black)
-                                                                .clickable {
-                                                                    selectedVlogPreviewItem = feedItem
-                                                                }
                                                         ) {
-                                                            VideoThumbnail(
-                                                                videoPath = feedItem.path,
-                                                                modifier = Modifier.fillMaxSize()
-                                                            )
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .fillMaxSize()
+                                                                    .clip(RoundedCornerShape(28.dp))
+                                                                    .background(Color.Black)
+                                                                    .clickable {
+                                                                        selectedVlogPreviewItem = feedItem
+                                                                    }
+                                                            ) {
+                                                                VideoThumbnail(videoPath = feedItem.path, modifier = Modifier.fillMaxSize())
+                                                            }
 
                                                             if (feedReactions.isNotEmpty()) {
                                                                 Text(
@@ -14706,7 +14706,7 @@ fun PalChatOverlay(
                                                                     fontSize = 24.sp,
                                                                     modifier = Modifier
                                                                         .align(Alignment.TopStart)
-                                                                        .offset(x = (-10).dp, y = (-10).dp)
+                                                                        .offset(x = (-12).dp, y = (-12).dp)
                                                                 )
                                                             }
                                                         }
@@ -14921,16 +14921,18 @@ fun PalChatOverlay(
                                                             modifier = Modifier
                                                                 .fillMaxWidth(0.5f)
                                                                 .aspectRatio(16f / 9f)
-                                                                .clip(RoundedCornerShape(28.dp))
-                                                                .background(Color.Black)
-                                                                .clickable {
-                                                                    selectedVlogPreviewItem = feedItem
-                                                                }
                                                         ) {
-                                                            VideoThumbnail(
-                                                                videoPath = feedItem.path,
-                                                                modifier = Modifier.fillMaxSize()
-                                                            )
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .fillMaxSize()
+                                                                    .clip(RoundedCornerShape(28.dp))
+                                                                    .background(Color.Black)
+                                                                    .clickable {
+                                                                        selectedVlogPreviewItem = feedItem
+                                                                    }
+                                                            ) {
+                                                                VideoThumbnail(videoPath = feedItem.path, modifier = Modifier.fillMaxSize())
+                                                            }
 
                                                             if (feedReactions.isNotEmpty()) {
                                                                 Text(
@@ -14938,7 +14940,7 @@ fun PalChatOverlay(
                                                                     fontSize = 24.sp,
                                                                     modifier = Modifier
                                                                         .align(Alignment.TopEnd)
-                                                                        .offset(x = 10.dp, y = (-10).dp)
+                                                                        .offset(x = 12.dp, y = (-12).dp)
                                                                 )
                                                             }
                                                         }
@@ -15126,18 +15128,16 @@ fun PalChatOverlay(
                     )
                 }
 
-                val dayText = if (selectedDayOffset > 0) {
+                val headerTitleText = if (selectedDayOffset > 0) {
                     val targetLocalDate = java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
-                    val dayName = if (selectedDayOffset == 1) {
+                    if (selectedDayOffset == 1) {
                         "Yesterday"
                     } else {
                         targetLocalDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US)
                     }
-                    " ($dayName)"
                 } else {
-                    ""
+                    if (pal.isVlog) "vlog" else pal.name
                 }
-                val headerTitleText = (if (pal.isVlog) "vlog" else pal.name) + dayText
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)

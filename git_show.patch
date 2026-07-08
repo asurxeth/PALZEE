@@ -1,0 +1,624 @@
+commit 0ed39226ec376bc34e0af9c5aba5667893be0273
+Author: PRATHAM <prathamup123@gmail.com>
+Date:   Wed Jul 8 00:52:03 2026 +0530
+
+    refactor: optimize submission filtering, update UI state logic, and improve empty state handling in Home screen
+
+diff --git a/app/src/main/java/com/finrein/pals/presentation/home/HomeScreen.kt b/app/src/main/java/com/finrein/pals/presentation/home/HomeScreen.kt
+index 7202dee..f2cfe01 100644
+--- a/app/src/main/java/com/finrein/pals/presentation/home/HomeScreen.kt
++++ b/app/src/main/java/com/finrein/pals/presentation/home/HomeScreen.kt
+@@ -2873,9 +2873,6 @@ fun HomeScreen(
+                 // USER_PALS STREAM WATCHDOG
+                 launch {
+                     userPalsFlow.collect { action ->
+-                        // Drop internal structural echo events if a refresh is already processing
+-                        if (viewModel.globalSyncMutex.isLocked) return@collect
+-                        
+                         try {
+                             viewModel.globalSyncMutex.withLock {
+                                 when (action) {
+@@ -2909,8 +2906,6 @@ fun HomeScreen(
+                 // SUBMISSIONS STREAM WATCHDOG
+                 launch {
+                     submissionsFlow.collect { action ->
+-                        if (viewModel.globalSyncMutex.isLocked) return@collect
+-                        
+                         try {
+                             viewModel.globalSyncMutex.withLock {
+                                 when (action) {
+@@ -3854,7 +3849,7 @@ fun HomeScreen(
+                 .fillMaxSize()
+         ) {
+             if (onboardingFlowStep == 6) {
+-                val isCameraTabActive = selectedTab == "camera" && activeVlogPal == null && (!showingCapturedPreview || isTransitioningToPreview)
++                val isCameraTabActive = selectedTab == "camera" && activeVlogPal == null && !showingCapturedPreview
+                 LaunchedEffect(isCameraTabActive) {
+                     if (isCameraTabActive) {
+                         isCameraActiveState = true
+@@ -3881,7 +3876,7 @@ fun HomeScreen(
+                         isRecording = isRecordingCamera,
+                         onRecordingChange = { isRecordingCamera = it },
+                         onClose = { selectedTab = "pals" },
+-                        isCameraActive = isCameraActiveState && activeVlogPal == null && (!showingCapturedPreview || isTransitioningToPreview),
++                        isCameraActive = isCameraActiveState && activeVlogPal == null && !showingCapturedPreview,
+                         onCameraActiveChange = { isCameraActiveState = it },
+                         cameraProviderFuture = cameraProviderFuture,
+                         previewView = previewView,
+@@ -5457,6 +5452,7 @@ fun CameraScreenContent(
+                                     }
+                                 }
+                             }
++                            onRecordingChange(false)
+                         }
+                     }
+                 },
+@@ -5992,14 +5988,14 @@ fun GroupMembersSmileysRow(
+             false
+         } else {
+             if (memberId != null && memberId != "legacy_id") {
+-                submissions.any { it.userId == memberId && isSubmissionInCurrentHourWindow(it) }
++                submissions.any { it.userId == memberId && (it.palCode == "vlog" || isSubmissionInCurrentHourWindow(it)) }
+             } else {
+                 if (memberName == userFirstName || memberName.contains("(You)") || memberName == "only you") {
+-                    submissions.any { it.userId == currentUserId && isSubmissionInCurrentHourWindow(it) }
++                    submissions.any { it.userId == currentUserId && (it.palCode == "vlog" || isSubmissionInCurrentHourWindow(it)) }
+                 } else {
+                     submissions.any { sub ->
+                         val cleanSubName = parseUserDisplayName(sub.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+-                        cleanSubName.equals(memberName, ignoreCase = true) && isSubmissionInCurrentHourWindow(sub)
++                        cleanSubName.equals(memberName, ignoreCase = true) && (sub.palCode == "vlog" || isSubmissionInCurrentHourWindow(sub))
+                     }
+                 }
+             }
+@@ -6021,8 +6017,8 @@ fun GroupMembersSmileysRow(
+         verticalAlignment = Alignment.CenterVertically
+     ) {
+         itemsToRender.forEach { (i, isLit) ->
+-            val outerColor = shufflingColors[i % 6]
+-            val innerColor = shufflingColors[(i + 3) % 6]
++            val outerColor = palTextLogoColor
++            val innerColor = accentColor
+             
+             Box(
+                 modifier = Modifier
+@@ -6040,7 +6036,7 @@ fun GroupMembersSmileysRow(
+                     ),
+                 contentAlignment = Alignment.Center
+             ) {
+-                val currentInnerSize = if (isLit) innerSize else smileySize
++                val currentInnerSize = if (isLit) (smileySize - 5.dp) else smileySize
+                 Box(
+                     modifier = Modifier
+                         .size(currentInnerSize)
+@@ -7168,8 +7164,10 @@ fun GroupMemberCard(
+     onEditCaptionTextChange: (androidx.compose.ui.text.input.TextFieldValue) -> Unit = {},
+     onUpdateVlogCaption: (String, String) -> Unit = { _, _ -> },
+     capturedVlogsPaths: List<String> = emptyList(),
+-    selectedDayOffset: Int = 0
++    selectedDayOffset: Int = 0,
++    activeViewingHour: Int = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour
+ ) {
++    val isCurrentHourOnToday = selectedDayOffset == 0 && activeViewingHour == java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour
+     val isActualMember = index < groupMembers.size
+     val cardShape = if (isGrid) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(28.dp)
+     val memberInfo = if (isActualMember) groupMembers[index] else null
+@@ -7231,7 +7229,7 @@ fun GroupMemberCard(
+                     cleanSubName.equals(memberName, ignoreCase = true)
+                 }
+             }
+-            matchesUser && (selectedDayOffset > 0 || isSubmissionInCurrentHourWindow(sub))
++            matchesUser && (!isCurrentHourOnToday || isSubmissionInCurrentHourWindow(sub))
+         }
+     } else {
+         emptyList()
+@@ -7241,7 +7239,7 @@ fun GroupMemberCard(
+         memberSubs.mapNotNull { sub ->
+             val parts = sub.imageUrl.split("|||")
+             val path = parts.getOrNull(0) ?: ""
+-            if (path.isEmpty()) null else {
++            if (path.isEmpty() || path == "PROFILE_AVATAR" || path.startsWith("PROFILE_AVATAR")) null else {
+                 var hour = 12
+                 if (!sub.createdAt.isNullOrEmpty()) {
+                     try {
+@@ -7745,23 +7743,26 @@ fun GroupMemberCard(
+                 }
+             }
+ 
+-            Box(
+-                modifier = Modifier
+-                    .size(if (isGrid) 34.dp else 50.dp)
+-                    .offset(
+-                        x = with(density) { groupPosX.toDp() },
+-                        y = with(density) { groupPosY.toDp() }
++            val showBouncingSmiley = sortedMemberSubs.isEmpty() && isCurrentHourOnToday
++            if (showBouncingSmiley) {
++                Box(
++                    modifier = Modifier
++                        .size(if (isGrid) 34.dp else 50.dp)
++                        .offset(
++                            x = with(density) { groupPosX.toDp() },
++                            y = with(density) { groupPosY.toDp() }
++                        )
++                        .rotate(groupSmileRotation)
++                        .clip(CircleShape)
++                        .background(shufflingColors[groupSmileColorIndex]),
++                    contentAlignment = Alignment.Center
++                ) {
++                    Image(
++                        painter = painterResource(id = if (isGrid) R.drawable.smile_small else R.drawable.smile_medium),
++                        contentDescription = null,
++                        modifier = Modifier.fillMaxSize()
+                     )
+-                    .rotate(groupSmileRotation)
+-                    .clip(CircleShape)
+-                    .background(shufflingColors[groupSmileColorIndex]),
+-                contentAlignment = Alignment.Center
+-            ) {
+-                Image(
+-                    painter = painterResource(id = if (isGrid) R.drawable.smile_small else R.drawable.smile_medium),
+-                    contentDescription = null,
+-                    modifier = Modifier.fillMaxSize()
+-                )
++                }
+             }
+ 
+             Row(
+@@ -7809,8 +7810,7 @@ fun GroupMemberCard(
+                 )
+             }
+ 
+-            val now = java.time.LocalTime.now()
+-            val roundedHourStr = String.format("%02d:00", now.hour)
++            val viewingHourStr = String.format("%02d:00", activeViewingHour)
+ 
+             Column(
+                 modifier = Modifier.align(Alignment.Center),
+@@ -7820,7 +7820,7 @@ fun GroupMemberCard(
+                 val userEmptyTextColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
+                 val userEmptyCaptureColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
+                 Text(
+-                    text = roundedHourStr,
++                    text = viewingHourStr,
+                     fontFamily = DelaGothicOneFontFamily,
+                     fontSize = if (isGrid) 12.5.sp else 18.5.sp,
+                     fontWeight = FontWeight.Bold,
+@@ -7828,24 +7828,26 @@ fun GroupMemberCard(
+                     modifier = Modifier.offset(y = 2.5.dp)
+                 )
+ 
+-                Box(
+-                    modifier = Modifier
+-                        .offset(y = (-2.5).dp)
+-                        .clip(RoundedCornerShape(22.dp))
+-                        .background(
+-                            if (isDark) Color.Black.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.35f)
++                if (isCurrentHourOnToday) {
++                    Box(
++                        modifier = Modifier
++                            .offset(y = (-2.5).dp)
++                            .clip(RoundedCornerShape(22.dp))
++                            .background(
++                                if (isDark) Color.Black.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.35f)
++                            )
++                            .clickable { onNavigateToCamera() }
++                            .padding(horizontal = if (isGrid) 8.dp else 12.dp, vertical = if (isGrid) 2.dp else 4.dp),
++                        contentAlignment = Alignment.Center
++                    ) {
++                        Text(
++                            text = "tap to capture",
++                            fontFamily = GoogleSansFontFamily,
++                            fontSize = if (isGrid) 10.sp else 12.sp,
++                            fontWeight = FontWeight.Bold,
++                            color = userEmptyCaptureColor
+                         )
+-                        .clickable { onNavigateToCamera() }
+-                        .padding(horizontal = if (isGrid) 8.dp else 12.dp, vertical = if (isGrid) 2.dp else 4.dp),
+-                    contentAlignment = Alignment.Center
+-                ) {
+-                    Text(
+-                        text = "tap to capture",
+-                        fontFamily = GoogleSansFontFamily,
+-                        fontSize = if (isGrid) 10.sp else 12.sp,
+-                        fontWeight = FontWeight.Bold,
+-                        color = userEmptyCaptureColor
+-                    )
++                    }
+                 }
+             }
+ 
+@@ -7961,23 +7963,26 @@ fun GroupMemberCard(
+             }
+ 
+             // Draw the bouncing smiley
+-            Box(
+-                modifier = Modifier
+-                    .size(if (isGrid) 34.dp else 50.dp)
+-                    .offset(
+-                        x = with(density) { groupPosX.toDp() },
+-                        y = with(density) { groupPosY.toDp() }
++            val showBouncingSmiley = sortedMemberSubs.isEmpty() && isCurrentHourOnToday
++            if (showBouncingSmiley) {
++                Box(
++                    modifier = Modifier
++                        .size(if (isGrid) 34.dp else 50.dp)
++                        .offset(
++                            x = with(density) { groupPosX.toDp() },
++                            y = with(density) { groupPosY.toDp() }
++                        )
++                        .rotate(groupSmileRotation)
++                        .clip(CircleShape)
++                        .background(shufflingColors[groupSmileColorIndex]),
++                    contentAlignment = Alignment.Center
++                ) {
++                    Image(
++                        painter = painterResource(id = if (isGrid) R.drawable.smile_small else R.drawable.smile_medium),
++                        contentDescription = null,
++                        modifier = Modifier.fillMaxSize()
+                     )
+-                    .rotate(groupSmileRotation)
+-                    .clip(CircleShape)
+-                    .background(shufflingColors[groupSmileColorIndex]),
+-                contentAlignment = Alignment.Center
+-            ) {
+-                Image(
+-                    painter = painterResource(id = if (isGrid) R.drawable.smile_small else R.drawable.smile_medium),
+-                    contentDescription = null,
+-                    modifier = Modifier.fillMaxSize()
+-                )
++                }
+             }
+ 
+             // Draw Avatar and Name in Top Left
+@@ -8026,12 +8031,11 @@ fun GroupMemberCard(
+             }
+ 
+             // Synced current time text in the middle
+-            val now = java.time.LocalTime.now()
+-            val roundedHourStr = String.format("%02d:00", now.hour)
++            val viewingHourStr = String.format("%02d:00", activeViewingHour)
+             val memberTimeColor = if (isDark) Color(0xFF8E8E93) else Color(0xFF8E8E93)
+ 
+             Text(
+-                text = roundedHourStr,
++                text = viewingHourStr,
+                 fontFamily = DelaGothicOneFontFamily,
+                 fontSize = if (isGrid) 12.5.sp else 18.5.sp,
+                 fontWeight = FontWeight.Bold,
+@@ -8109,7 +8113,8 @@ fun GroupScreenContent(
+     palReactions: Map<String, String> = emptyMap(),
+     onEmojiReacted: (String, String) -> Unit = { _, _ -> },
+     onReplyClick: (String) -> Unit = {},
+-    messages: List<MessageDbItem> = emptyList()
++    messages: List<MessageDbItem> = emptyList(),
++    activeViewingHour: Int = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour
+ ) {
+     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+         val screenHeightDp = maxHeight
+@@ -8203,7 +8208,8 @@ fun GroupScreenContent(
+                         onEditCaptionTextChange = onEditCaptionTextChange,
+                         onUpdateVlogCaption = onUpdateVlogCaption,
+                         capturedVlogsPaths = capturedVlogsPaths,
+-                        selectedDayOffset = params.selectedDayOffset
++                        selectedDayOffset = params.selectedDayOffset,
++                        activeViewingHour = activeViewingHour
+                     )
+                 }
+             } else {
+@@ -8274,7 +8280,8 @@ fun GroupScreenContent(
+                                     onEditCaptionTextChange = onEditCaptionTextChange,
+                                     onUpdateVlogCaption = onUpdateVlogCaption,
+                                     capturedVlogsPaths = capturedVlogsPaths,
+-                                    selectedDayOffset = params.selectedDayOffset
++                                    selectedDayOffset = params.selectedDayOffset,
++                                    activeViewingHour = activeViewingHour
+                                 )
+                             }
+                             Box(modifier = Modifier.weight(1f)) {
+@@ -8334,7 +8341,8 @@ fun GroupScreenContent(
+                                     onEditCaptionTextChange = onEditCaptionTextChange,
+                                     onUpdateVlogCaption = onUpdateVlogCaption,
+                                     capturedVlogsPaths = capturedVlogsPaths,
+-                                    selectedDayOffset = params.selectedDayOffset
++                                    selectedDayOffset = params.selectedDayOffset,
++                                    activeViewingHour = activeViewingHour
+                                 )
+                             }
+                         }
+@@ -8400,7 +8408,8 @@ fun GroupScreenContent(
+                                     onEditCaptionTextChange = onEditCaptionTextChange,
+                                     onUpdateVlogCaption = onUpdateVlogCaption,
+                                     capturedVlogsPaths = capturedVlogsPaths,
+-                                    selectedDayOffset = params.selectedDayOffset
++                                    selectedDayOffset = params.selectedDayOffset,
++                                    activeViewingHour = activeViewingHour
+                                 )
+                             }
+                         }
+@@ -8570,11 +8579,52 @@ fun VlogScreenContent(
+         }
+         activeLocalDate.minusDays(selectedDayOffset.toLong())
+     }
+-    val filteredSubmissions = remember(activePalSubmissions, targetDate) {
++    val daySubmissions = remember(activePalSubmissions, targetDate) {
+         activePalSubmissions.filter { sub ->
+             getSubmissionLocalDate(sub) == targetDate
+         }
+     }
++
++    val dayHoursList = remember(targetDate, selectedDayOffset) {
++        val list = mutableListOf<Int>()
++        val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
++        val currentHour = now.hour
++        
++        var h = 4
++        if (selectedDayOffset == 0) {
++            // Today: up to current hour
++            while (true) {
++                list.add(h)
++                if (h == currentHour) {
++                    break
++                }
++                h = (h + 1) % 24
++                if (h == 4) break
++            }
++        } else {
++            // Past day: all 24 hours of the cycle starting at 4 AM
++            for (i in 0 until 24) {
++                list.add((4 + i) % 24)
++            }
++        }
++        list
++    }
++
++    var currentHourIndex by remember(dayHoursList) {
++        mutableStateOf(dayHoursList.lastIndex)
++    }
++
++    val activeViewingHour = remember(dayHoursList, currentHourIndex) {
++        dayHoursList.getOrNull(currentHourIndex) ?: java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour
++    }
++
++    val filteredSubmissions = remember(pal.isVlog, daySubmissions, activeViewingHour) {
++        if (pal.isVlog) {
++            daySubmissions
++        } else {
++            daySubmissions.filter { it.getHourBucket() == activeViewingHour }
++        }
++    }
+     val filteredPaths = remember(filteredSubmissions) {
+         filteredSubmissions.map { sub ->
+             sub.imageUrl.split("|||").getOrNull(0) ?: ""
+@@ -8638,21 +8688,35 @@ fun VlogScreenContent(
+     Box(
+         modifier = Modifier
+             .fillMaxSize()
+-            .pointerInput(selectedDayOffset, onSelectedDayOffsetChange) {
++            .pointerInput(pal.isVlog, selectedDayOffset, currentHourIndex, dayHoursList) {
+                 var totalDrag = 0f
+                 detectHorizontalDragGestures(
+                     onDragStart = { totalDrag = 0f },
+                     onDragEnd = {
+                         val threshold = 100f
+                         if (totalDrag > threshold) {
+-                            // Swipe Right -> Older day (increment offset)
+-                            if (selectedDayOffset < 6) {
+-                                onSelectedDayOffsetChange(selectedDayOffset + 1)
++                            if (pal.isVlog) {
++                                // Swipe Right -> Older day (increment offset)
++                                if (selectedDayOffset < 6) {
++                                    onSelectedDayOffsetChange(selectedDayOffset + 1)
++                                }
++                            } else {
++                                // Swipe Right -> Preceding hour
++                                if (currentHourIndex > 0) {
++                                    currentHourIndex--
++                                }
+                             }
+                         } else if (totalDrag < -threshold) {
+-                            // Swipe Left -> Newer day (decrement offset)
+-                            if (selectedDayOffset > 0) {
+-                                onSelectedDayOffsetChange(selectedDayOffset - 1)
++                            if (pal.isVlog) {
++                                // Swipe Left -> Newer day (decrement offset)
++                                if (selectedDayOffset > 0) {
++                                    onSelectedDayOffsetChange(selectedDayOffset - 1)
++                                }
++                            } else {
++                                // Swipe Left -> Succeeding hour
++                                if (currentHourIndex < dayHoursList.lastIndex) {
++                                    currentHourIndex++
++                                }
+                             }
+                         }
+                     },
+@@ -8716,7 +8780,8 @@ fun VlogScreenContent(
+                         onReplyClick = { path ->
+                             onActiveReplyPreviewPathChange(path)
+                         },
+-                        messages = messages
++                        messages = messages,
++                        activeViewingHour = activeViewingHour
+                     )
+                 } else {
+                     // main centered vlog video card
+@@ -9753,8 +9818,8 @@ fun VlogScreenContent(
+                     }
+ 
+                     // Display only 1 emoji for 1 hour in pals group menu emoji count below pals group text
+-                    val distinctHours = remember(filteredSubmissions) {
+-                        filteredSubmissions.map { it.getHourBucket() }.distinct().sorted()
++                    val distinctHours = remember(daySubmissions) {
++                        daySubmissions.map { it.getHourBucket() }.distinct().sorted()
+                     }
+                     val hourlyCount = distinctHours.size
+                     val computedSmileySize = when {
+@@ -9785,14 +9850,26 @@ fun VlogScreenContent(
+                         distinctHours.forEachIndexed { i, hour ->
+                             val outerColor = shufflingColors[i % 6]
+                             val innerColor = shufflingColors[(i + 3) % 6]
++                            val isCurrentViewingHour = hour == activeViewingHour
+                             Box(
+                                 modifier = Modifier
+-                                    .size(computedSmileySize)
+-                                    .border(
+-                                        width = 1.dp,
+-                                        color = outerColor,
+-                                        shape = CircleShape
+-                                    ),
++                                    .size(if (isCurrentViewingHour) computedSmileySize + 6.dp else computedSmileySize)
++                                    .then(
++                                        if (isCurrentViewingHour) {
++                                            Modifier.border(
++                                                width = 2.dp,
++                                                color = palTextLogoColor,
++                                                shape = CircleShape
++                                            )
++                                        } else {
++                                            Modifier.border(
++                                                width = 1.dp,
++                                                color = outerColor,
++                                                shape = CircleShape
++                                            )
++                                        }
++                                    )
++                                    .padding(if (isCurrentViewingHour) 3.dp else 0.dp),
+                                 contentAlignment = Alignment.Center
+                             ) {
+                                 Box(
+@@ -10557,6 +10634,31 @@ fun VlogScreenContent(
+             var showEditExportSheet by remember { mutableStateOf(false) }
+             var exportBackground by remember { mutableStateOf("black") }
+             var exportMissedText by remember { mutableStateOf("💤") }
++            var exportHourIndex by remember { mutableStateOf(0) }
++            val advanceExportHour = {
++                if (dayHoursList.isNotEmpty()) {
++                    exportHourIndex = (exportHourIndex + 1) % dayHoursList.size
++                }
++            }
++            val activeExportHour = remember(dayHoursList, exportHourIndex) {
++                dayHoursList.getOrNull(exportHourIndex) ?: 4
++            }
++            val hourHasPals = remember(daySubmissions, activeExportHour) {
++                daySubmissions.any { it.getHourBucket() == activeExportHour }
++            }
++            LaunchedEffect(showExportDialog, activeExportHour, hourHasPals, dayHoursList) {
++                if (showExportDialog && !hourHasPals) {
++                    kotlinx.coroutines.delay(2000L)
++                    advanceExportHour()
++                }
++            }
++            var hasAdvancedThisHour by remember(exportHourIndex) { mutableStateOf(false) }
++            val onPlaybackEnded = {
++                if (!hasAdvancedThisHour) {
++                    hasAdvancedThisHour = true
++                    advanceExportHour()
++                }
++            }
+             var showMissedTextDialog by remember { mutableStateOf(false) }
+             var tempMissedText by remember { mutableStateOf("💤") }
+             val missedTextFocusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+@@ -10904,7 +11006,7 @@ fun VlogScreenContent(
+                                                             index = index,
+                                                             groupMembers = groupMembers,
+                                                             userFirstName = userFirstName,
+-                                                            filteredSubmissions = filteredSubmissions,
++                                                            daySubmissions = daySubmissions,
+                                                             currentUserId = currentUserId,
+                                                             exportBackground = exportBackground,
+                                                             exportMissedText = exportMissedText,
+@@ -10912,7 +11014,9 @@ fun VlogScreenContent(
+                                                             textColor = if (exportBackground == "white") Color.Black else Color.White,
+                                                             pal = pal,
+                                                             cardHeightDp = cardHeightDp,
+-                                                            isGrid = isGrid
++                                                            isGrid = isGrid,
++                                                            activeHour = activeExportHour,
++                                                            onPlaybackEnded = onPlaybackEnded
+                                                         )
+                                                     }
+                                                 }
+@@ -17084,7 +17188,7 @@ private fun GroupExportMemberSlot(
+     index: Int,
+     groupMembers: List<String>,
+     userFirstName: String,
+-    filteredSubmissions: List<SubmissionDbItem>,
++    daySubmissions: List<SubmissionDbItem>,
+     currentUserId: String,
+     exportBackground: String,
+     exportMissedText: String,
+@@ -17092,7 +17196,9 @@ private fun GroupExportMemberSlot(
+     textColor: Color,
+     pal: PalItem,
+     cardHeightDp: Dp,
+-    isGrid: Boolean
++    isGrid: Boolean,
++    activeHour: Int,
++    onPlaybackEnded: () -> Unit
+ ) {
+     val memberInfo = groupMembers.getOrNull(index)
+     val memberParts = memberInfo?.split("|||")
+@@ -17109,15 +17215,15 @@ private fun GroupExportMemberSlot(
+     val isUser = memberId != null && memberId == currentUserId || 
+                  (memberNameClean != null && (memberNameClean.contains("(You)") || memberNameClean == userFirstName))
+     
+-    // Find all submissions for this member on the active day
++    // Find all submissions for this member captured during the active hour
+     val memberSubs = if (isUser) {
+-        filteredSubmissions.filter { it.userId == currentUserId }
++        daySubmissions.filter { it.userId == currentUserId && it.getHourBucket() == activeHour }
+     } else if (memberId != null && memberId != "legacy_id") {
+-        filteredSubmissions.filter { it.userId == memberId }
++        daySubmissions.filter { it.userId == memberId && it.getHourBucket() == activeHour }
+     } else if (memberName != null) {
+-        filteredSubmissions.filter { 
++        daySubmissions.filter { 
+             val cleanSubName = parseUserDisplayName(it.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+-            cleanSubName == memberName
++            cleanSubName == memberName && it.getHourBucket() == activeHour
+         }
+     } else {
+         emptyList()
+@@ -17163,9 +17269,8 @@ private fun GroupExportMemberSlot(
+     } else {
+         ""
+     }
+-    val displayTimeText = remember {
+-        val now = java.time.LocalTime.now()
+-        String.format(java.util.Locale.US, "%02d:00", now.hour)
++    val displayTimeText = remember(activeHour) {
++        String.format(java.util.Locale.US, "%02d:00", activeHour)
+     }
+     
+     val cardShape = androidx.compose.ui.graphics.RectangleShape
+@@ -17192,7 +17297,7 @@ private fun GroupExportMemberSlot(
+                             .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
+                     )
+                     .build().apply {
+-                        repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
++                        repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
+                         volume = 0f
+                     }
+             }
+@@ -17293,6 +17398,9 @@ private fun GroupExportMemberSlot(
+                             override fun onPlaybackStateChanged(playbackState: Int) {
+                                 super.onPlaybackStateChanged(playbackState)
+                                 applyVideoScale()
++                                if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
++                                    onPlaybackEnded()
++                                }
+                             }
+                         })
+ 
+diff --git a/app/src/main/java/com/finrein/pals/presentation/home/HomeViewModel.kt b/app/src/main/java/com/finrein/pals/presentation/home/HomeViewModel.kt
+index af59cce..1fd3a23 100644
+--- a/app/src/main/java/com/finrein/pals/presentation/home/HomeViewModel.kt
++++ b/app/src/main/java/com/finrein/pals/presentation/home/HomeViewModel.kt
+@@ -84,7 +84,6 @@ class HomeViewModel @Inject constructor(
+     }
+ 
+     fun handleMessageRealtimeAction(action: PostgresAction, activePalCode: String?) {
+-        if (globalSyncMutex.isLocked) return
+         viewModelScope.launch {
+             try {
+                 globalSyncMutex.withLock {
