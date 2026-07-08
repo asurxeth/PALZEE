@@ -1005,7 +1005,11 @@ class EglOutput(
     val height: Int
 )
 
-fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect {
+class ZoomStateHolder(initialZoom: Float) {
+    @Volatile var linearZoom: Float = initialZoom
+}
+
+fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.core.CameraEffect {
     val effectExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     val errorListener = androidx.core.util.Consumer<Throwable> { throwable ->
         throwable.printStackTrace()
@@ -1102,20 +1106,21 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                     val originalTexMatrix = FloatArray(16)
                     st.getTransformMatrix(originalTexMatrix)
 
+                    val currentZoom = zoomStateHolder.linearZoom
+                    val scaleFactor = 1.0f + (currentZoom * 1.5f)
+                    val scaleMatrix = FloatArray(16).apply {
+                        android.opengl.Matrix.setIdentityM(this, 0)
+                        android.opengl.Matrix.translateM(this, 0, 0.5f, 0.5f, 0.0f)
+                        android.opengl.Matrix.scaleM(this, 0, 1f / scaleFactor, 1f / scaleFactor, 1.0f)
+                        android.opengl.Matrix.translateM(this, 0, -0.5f, -0.5f, 0.0f)
+                    }
+
                     outputs.values.forEach { output ->
                         android.opengl.EGL14.eglMakeCurrent(eglDisplay, output.eglSurface, output.eglSurface, eglContext)
                         android.opengl.GLES20.glViewport(0, 0, output.width, output.height)
 
                         val correctedMatrix = FloatArray(16)
                         output.surfaceOutput.updateTransformMatrix(correctedMatrix, originalTexMatrix)
-
-                        val scaleFactor = 1.0f + (linearZoom * 1.5f)
-                        val scaleMatrix = FloatArray(16).apply {
-                            android.opengl.Matrix.setIdentityM(this, 0)
-                            android.opengl.Matrix.translateM(this, 0, 0.5f, 0.5f, 0.0f)
-                            android.opengl.Matrix.scaleM(this, 0, 1f / scaleFactor, 1f / scaleFactor, 1.0f)
-                            android.opengl.Matrix.translateM(this, 0, -0.5f, -0.5f, 0.0f)
-                        }
 
                         val finalMatrix = FloatArray(16)
                         android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, correctedMatrix, 0)
@@ -1155,7 +1160,6 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                 )
                 eglContext = android.opengl.EGL14.eglCreateContext(eglDisplay, eglConfig, android.opengl.EGL14.EGL_NO_CONTEXT, ctxAttribList, 0)
 
-                // Create a 1x1 pbuffer surface to make the EGL context current immediately
                 val pbufferAttribs = intArrayOf(
                     android.opengl.EGL14.EGL_WIDTH, 1,
                     android.opengl.EGL14.EGL_HEIGHT, 1,
@@ -1260,7 +1264,7 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                 if (compiled[0] == 0) {
                     val log = android.opengl.GLES20.glGetShaderInfoLog(shader)
                     android.opengl.GLES20.glDeleteShader(shader)
-                    throw RuntimeException("Shader compile error: $log")
+                    throw RuntimeException("Shader compile error: " + log)
                 }
                 return shader
             }
@@ -1268,6 +1272,7 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
         errorListener
     )
 }
+
 
 suspend fun sendVideoPalToVlog(context: android.content.Context, localUri: android.net.Uri, userId: String, palCode: String) {
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -5318,7 +5323,12 @@ fun CameraPreview(
     
     var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
     
-    LaunchedEffect(isCameraFlipped, isCameraActive, linearZoom) {
+    val zoomStateHolder = remember { ZoomStateHolder(linearZoom) }
+    LaunchedEffect(linearZoom) {
+        zoomStateHolder.linearZoom = linearZoom
+    }
+    
+    LaunchedEffect(isCameraFlipped, isCameraActive) {
         val cameraProvider = withContext(kotlinx.coroutines.Dispatchers.IO) {
             cameraProviderFuture.get()
         }
@@ -5353,8 +5363,8 @@ fun CameraPreview(
         try {
             cameraProvider.unbindAll()
             
-            // 1. Create our GPU texture zoom effect using the current composable state value
-            val zoomEffect = createZoomCameraEffect(linearZoom)
+            // 1. Create our GPU texture zoom effect using the zoomStateHolder reference
+            val zoomEffect = createZoomCameraEffect(zoomStateHolder)
 
             // 2. Group UseCases together with the processor effect
             val useCaseGroup = androidx.camera.core.UseCaseGroup.Builder()
@@ -6818,12 +6828,7 @@ fun CapturedPreviewScreen(
         brand.contains("iqoo") || brand.contains("vivo")
     }
 
-    val isLandscapeCapture = remember(rotationAngle) {
-        rotationAngle == 0f || rotationAngle == 180f
-    }
-    val defaultRotation = remember(isZoomed, isLandscapeCapture, isPocoOrIqoo) {
-        if (isLandscapeCapture || (isZoomed && !isPocoOrIqoo)) 0 else 270
-    }
+    val defaultRotation = 270
 
     var videoRotation by remember(capturedVideoPath) { mutableStateOf(defaultRotation) }
 
@@ -6878,7 +6883,15 @@ fun CapturedPreviewScreen(
                             val retriever = android.media.MediaMetadataRetriever()
                             retriever.setDataSource(cleanPath)
                             val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                            parsedRot = if (isLandscapeCapture || (isZoomed && !isPocoOrIqoo)) 0 else (rotationStr?.toIntOrNull() ?: 270)
+                            val rawRot = rotationStr?.toIntOrNull() ?: 0
+                            
+                            val widthStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                            val heightStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                            val videoWidth = widthStr?.toIntOrNull() ?: 0
+                            val videoHeight = heightStr?.toIntOrNull() ?: 0
+                            
+                            val isPortrait = (rawRot == 90 || rawRot == 270) || (videoWidth < videoHeight)
+                            parsedRot = if (isPortrait) 270 else 0
                             retriever.release()
                             retrieverSuccess = true
                         }
@@ -14008,30 +14021,6 @@ fun PalChatOverlay(
                 indication = null,
                 onClick = {}
             )
-            .pointerInput(selectedDayOffset) {
-                var totalDrag = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = { totalDrag = 0f },
-                    onDragEnd = {
-                        val threshold = 100f
-                        if (totalDrag > threshold) {
-                            // Swipe Right -> Older day (increment offset)
-                            if (selectedDayOffset < 6) {
-                                onSelectedDayOffsetChange(selectedDayOffset + 1)
-                            }
-                        } else if (totalDrag < -threshold) {
-                            // Swipe Left -> Newer day (decrement offset)
-                            if (selectedDayOffset > 0) {
-                                onSelectedDayOffsetChange(selectedDayOffset - 1)
-                            }
-                        }
-                    },
-                    onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
-                        totalDrag += dragAmount
-                    }
-                )
-            }
     ) {
         var messageInput by remember { mutableStateOf("") }
         var selectedVlogPreviewItem by remember { mutableStateOf<FeedItem?>(null) }
@@ -14701,13 +14690,19 @@ fun PalChatOverlay(
                                                             }
 
                                                             if (feedReactions.isNotEmpty()) {
-                                                                Text(
-                                                                    text = feedReactions.last(),
-                                                                    fontSize = 24.sp,
+                                                                Box(
                                                                     modifier = Modifier
                                                                         .align(Alignment.TopStart)
-                                                                        .offset(x = (-12).dp, y = (-12).dp)
-                                                                )
+                                                                        .offset(x = (-8.5).dp, y = (-13.5).dp)
+                                                                        .size(32.dp)
+                                                                        .zIndex(2f),
+                                                                    contentAlignment = Alignment.Center
+                                                                ) {
+                                                                    Text(
+                                                                        text = feedReactions.last(),
+                                                                        fontSize = 24.sp
+                                                                    )
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -14935,13 +14930,19 @@ fun PalChatOverlay(
                                                             }
 
                                                             if (feedReactions.isNotEmpty()) {
-                                                                Text(
-                                                                    text = feedReactions.last(),
-                                                                    fontSize = 24.sp,
+                                                                Box(
                                                                     modifier = Modifier
                                                                         .align(Alignment.TopEnd)
-                                                                        .offset(x = 12.dp, y = (-12).dp)
-                                                                )
+                                                                        .offset(x = 8.5.dp, y = (-13.5).dp)
+                                                                        .size(32.dp)
+                                                                        .zIndex(2f),
+                                                                    contentAlignment = Alignment.Center
+                                                                ) {
+                                                                    Text(
+                                                                        text = feedReactions.last(),
+                                                                        fontSize = 24.sp
+                                                                    )
+                                                                }
                                                             }
                                                         }
                                                     }
