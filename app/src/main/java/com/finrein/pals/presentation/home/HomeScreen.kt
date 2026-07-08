@@ -13087,7 +13087,7 @@ fun SwipeableSoundMessageContainer(
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
-    val maxOffsetPx = remember { with(density) { 100.dp.toPx() } }
+    val maxOffsetPx = remember(isUser) { with(density) { (if (isUser) 100.dp else 50.dp).toPx() } }
     var offsetX by remember { mutableStateOf(0f) }
     
     val buttonBg = if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
@@ -13122,7 +13122,7 @@ fun SwipeableSoundMessageContainer(
         Row(
             modifier = Modifier
                 .align(if (isUser) Alignment.CenterEnd else Alignment.CenterStart)
-                .width(100.dp)
+                .width(if (isUser) 100.dp else 50.dp)
                 .padding(horizontal = 8.dp)
                 .graphicsLayer {
                     alpha = if (offsetX != 0f) 1f else 0f
@@ -13172,7 +13172,7 @@ fun SwipeableSoundMessageContainer(
                     )
                 }
             } else {
-                // For member: Reply button and Delete button on the left
+                // For member: Reply button only on the left (NO Delete button!)
                 // Reply Button
                 Box(
                     modifier = Modifier
@@ -13188,26 +13188,6 @@ fun SwipeableSoundMessageContainer(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = "Reply",
-                        tint = buttonIconTint,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                // Delete Button
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(buttonBg)
-                        .clickable(enabled = isSwiped) {
-                            onDelete()
-                            offsetX = 0f
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
                         tint = buttonIconTint,
                         modifier = Modifier.size(18.dp)
                     )
