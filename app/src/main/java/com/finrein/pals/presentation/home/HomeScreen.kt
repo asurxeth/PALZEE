@@ -173,7 +173,13 @@ import java.time.LocalTime
 
 
 fun getVlogPrefs(context: android.content.Context): android.content.SharedPreferences {
-    return context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+    val userId = try {
+        com.finrein.pals.PalApplication.supabase.auth.currentUserOrNull()?.id ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+    val name = if (userId.isEmpty()) "vlog_prefs" else "vlog_prefs_$userId"
+    return context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE)
 }
 
 fun handleDeletePal(
@@ -2248,20 +2254,20 @@ fun HomeScreen(
     var capturedVideoTimeText by remember(currentUserId) { mutableStateOf("") }
     var capturedVideoInstant by remember(currentUserId) { mutableStateOf<java.time.Instant?>(null) }
     var isMuted by remember { mutableStateOf(false) }
-    var initialSyncCompleted by remember { mutableStateOf(false) }
-
+    var initialSyncCompleted by remember(currentUserId) { mutableStateOf(false) }
+ 
     val initialDeleted = remember(deletedVlogsKey) {
         emptySet<String>()
     }
-
-    var capturedVlogsPaths by remember(deletedVlogsKey) {
+ 
+    var capturedVlogsPaths by remember(deletedVlogsKey, currentUserId) {
         val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
         val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
         val validIndices = paths.indices.filter { idx -> paths[idx] !in initialDeleted }
         val filteredPathsList = validIndices.map { paths[it] }
         mutableStateOf(ArrayList(filteredPathsList))
     }
-    var capturedVlogsTimes by remember(deletedVlogsKey) {
+    var capturedVlogsTimes by remember(deletedVlogsKey, currentUserId) {
         val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
         val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
         val savedTimes = getVlogPrefs(context).getString("vlog_times", "") ?: ""
@@ -2270,7 +2276,7 @@ fun HomeScreen(
         val filteredTimesList = validIndices.map { times.getOrNull(it) ?: "12:00" }
         mutableStateOf(ArrayList(filteredTimesList))
     }
-    var capturedVlogsCaptions by remember(deletedVlogsKey) {
+    var capturedVlogsCaptions by remember(deletedVlogsKey, currentUserId) {
         val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
         val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
         val savedCaptions = getVlogPrefs(context).getString("vlog_captions", "") ?: ""
@@ -2279,7 +2285,7 @@ fun HomeScreen(
         val filteredCaptionsList = validIndices.map { captions.getOrNull(it) ?: "" }
         mutableStateOf(ArrayList(filteredCaptionsList))
     }
-    var capturedVlogsDurations by remember(deletedVlogsKey) {
+    var capturedVlogsDurations by remember(deletedVlogsKey, currentUserId) {
         val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
         val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
         val savedDurations = getVlogPrefs(context).getString("vlog_durations", "") ?: ""
@@ -2325,6 +2331,25 @@ fun HomeScreen(
         }
         mutableStateMapOf<String, List<SubmissionDbItem>>().apply {
             putAll(initialMap)
+        }
+    }
+
+    val allPalsSubmissionsList = remember(allPalsSubmissions.toMap()) {
+        allPalsSubmissions.values.flatten()
+    }
+    LaunchedEffect(allPalsSubmissionsList) {
+        withContext(kotlinx.coroutines.Dispatchers.IO) {
+            allPalsSubmissionsList.forEach { sub ->
+                val parts = sub.imageUrl.split("|||")
+                val path = parts.getOrNull(0) ?: ""
+                if (path.isNotEmpty() && path.startsWith("http")) {
+                    try {
+                        ensureVideoCached(context, path)
+                    } catch (e: Exception) {
+                        // Ignore pre-fetch failures
+                    }
+                }
+            }
         }
     }
     val allPalsMessages = remember { mutableStateMapOf<String, List<MessageDbItem>>() }
@@ -12395,10 +12420,7 @@ fun VideoThumbnail(
                 modifier = Modifier.fillMaxSize()
             )
         } else {
-            CircularProgressIndicator(
-                color = Color.White.copy(alpha = 0.5f),
-                modifier = Modifier.size(24.dp)
-            )
+            Box(modifier = Modifier.fillMaxSize())
         }
     }
 }
@@ -12657,11 +12679,7 @@ fun VideoPlayerItem(
                         .background(Color.Black),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(
-                        color = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp
-                    )
+                    Box(modifier = Modifier.fillMaxSize())
                 }
             }
         }
