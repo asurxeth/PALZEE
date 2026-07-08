@@ -1657,6 +1657,64 @@ fun isSubmissionInCurrentHourWindow(sub: SubmissionDbItem): Boolean {
     return zonedDateTime.toLocalDate() == now.toLocalDate() && zonedDateTime.hour == now.hour
 }
 
+fun getCachedVideoPathSync(context: android.content.Context, videoPath: String): String? {
+    if (videoPath.isBlank()) return null
+    if (!videoPath.startsWith("http")) {
+        val cleanInputPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
+        val file = java.io.File(cleanInputPath)
+        return if (file.exists()) cleanInputPath else null
+    }
+    val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+    val vlogPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+    val cachedLocal = palPrefs.getString("local_path_$videoPath", null)
+        ?: vlogPrefs.getString("local_path_$videoPath", null)
+    if (cachedLocal != null) {
+        val cleanLocalPath = if (cachedLocal.startsWith("file://")) cachedLocal.substring(7) else cachedLocal
+        if (java.io.File(cleanLocalPath).exists()) {
+            return cleanLocalPath
+        }
+    }
+    
+    var resolvedPath = videoPath
+    if (resolvedPath.contains("/pals/", ignoreCase = true)) {
+        resolvedPath = resolvedPath.replace("/pals/", "/PALS/")
+    }
+    if (resolvedPath.contains("/pals_vlogs/", ignoreCase = true)) {
+        resolvedPath = resolvedPath.replace("/pals_vlogs/", "/PALS_VLOGS/")
+    }
+    if (resolvedPath.contains("/avatars/", ignoreCase = true)) {
+        resolvedPath = resolvedPath.replace("/avatars/", "/AVATARS/")
+    }
+    val fileName = resolvedPath.substringAfterLast("/")
+    val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
+    if (cacheFile.exists() && cacheFile.length() > 0) {
+        return cacheFile.absolutePath
+    }
+    return null
+}
+
+fun mergeSubmissions(localList: List<SubmissionDbItem>?, remoteList: List<SubmissionDbItem>): List<SubmissionDbItem> {
+    if (localList.isNullOrEmpty()) return remoteList
+    
+    val localUploads = localList.filter { sub ->
+        val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
+        !path.startsWith("http") && (path.startsWith("file://") || path.startsWith("/") || java.io.File(path.replace("file://", "")).exists())
+    }
+    if (localUploads.isEmpty()) return remoteList
+
+    val merged = remoteList.toMutableList()
+    localUploads.forEach { localSub ->
+        val localHour = getSubmissionRelativeHour(localSub)
+        val hasRemoteForSameHour = remoteList.any { remoteSub ->
+            remoteSub.userId == localSub.userId && getSubmissionRelativeHour(remoteSub) == localHour
+        }
+        if (!hasRemoteForSameHour) {
+            merged.add(localSub)
+        }
+    }
+    return merged
+}
+
 @Composable
 fun OnboardingFlowContainer(
     onboardingFlowStep: Int,
@@ -2376,7 +2434,7 @@ fun HomeScreen(
                         }
 
                         withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            allPalsSubmissions[pal.code] = todaySubs
+                            allPalsSubmissions[pal.code] = mergeSubmissions(allPalsSubmissions[pal.code], todaySubs)
                             allPalsMembers[pal.code] = memberList
                         }
                     }
@@ -2418,7 +2476,7 @@ fun HomeScreen(
 
     LaunchedEffect(activePalState) {
         activePalState?.let { state ->
-            allPalsSubmissions[state.palCode] = state.submissions
+            allPalsSubmissions[state.palCode] = mergeSubmissions(allPalsSubmissions[state.palCode], state.submissions)
             allPalsMembers[state.palCode] = state.members
             palPalsCount[state.palCode] = state.memberCount
             allPalsMessages[state.palCode] = state.messages
@@ -12362,7 +12420,11 @@ fun VideoPlayerItem(
     val palPrefs = remember(context) { context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE) }
     val vlogPrefs = remember(context) { context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE) }
 
-    var resolvedPaths by remember { mutableStateOf<List<String>>(emptyList()) }
+    var resolvedPaths by remember(videoPaths) {
+        mutableStateOf(
+            videoPaths.map { getCachedVideoPathSync(context, it) ?: it }
+        )
+    }
     var isVideoReady by remember { mutableStateOf(false) }
 
     LaunchedEffect(videoPaths) {
