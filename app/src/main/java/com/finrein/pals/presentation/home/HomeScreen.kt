@@ -5085,7 +5085,7 @@ fun CameraPreview(
         
         val isNewCameraSession = lastBoundCamera.value != camera
 
-        val targetZoomRatio = 1.0f + linearZoom * 2.0f
+        val targetZoomRatio = 1.0f + linearZoom * 1.5f
         val zoomState = camera.cameraInfo.zoomState.value
         val minZ = zoomState?.minZoomRatio ?: 1.0f
         val maxZ = zoomState?.maxZoomRatio ?: 3.0f
@@ -6534,11 +6534,20 @@ fun CapturedPreviewScreen(
             }
     }
 
+    val isPocoOrIqoo = remember {
+        val manufacturer = android.os.Build.MANUFACTURER.lowercase(java.util.Locale.US)
+        val brand = android.os.Build.BRAND.lowercase(java.util.Locale.US)
+        manufacturer.contains("poco") || manufacturer.contains("xiaomi") ||
+        brand.contains("poco") || brand.contains("xiaomi") ||
+        manufacturer.contains("iqoo") || manufacturer.contains("vivo") ||
+        brand.contains("iqoo") || brand.contains("vivo")
+    }
+
     val isLandscapeCapture = remember(rotationAngle) {
         rotationAngle == 0f || rotationAngle == 180f
     }
-    val defaultRotation = remember(isZoomed, isLandscapeCapture) {
-        if (isLandscapeCapture || isZoomed) 0 else 270
+    val defaultRotation = remember(isZoomed, isLandscapeCapture, isPocoOrIqoo) {
+        if (isLandscapeCapture || (isZoomed && !isPocoOrIqoo)) 0 else 270
     }
 
     var videoRotation by remember(capturedVideoPath) { mutableStateOf(defaultRotation) }
@@ -6594,7 +6603,7 @@ fun CapturedPreviewScreen(
                             val retriever = android.media.MediaMetadataRetriever()
                             retriever.setDataSource(cleanPath)
                             val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                            parsedRot = if (isLandscapeCapture || isZoomed) 0 else (rotationStr?.toIntOrNull() ?: 270)
+                            parsedRot = if (isLandscapeCapture || (isZoomed && !isPocoOrIqoo)) 0 else (rotationStr?.toIntOrNull() ?: 270)
                             retriever.release()
                             retrieverSuccess = true
                         }
@@ -8805,8 +8814,8 @@ fun VlogScreenContent(
         list
     }
 
-    var currentHourIndex by remember(dayHoursList) {
-        mutableStateOf(dayHoursList.lastIndex)
+    var currentHourIndex by remember(dayHoursList, selectedDayOffset) {
+        mutableStateOf(if (selectedDayOffset > 0) 0 else dayHoursList.lastIndex)
     }
 
     val activeViewingHour = remember(dayHoursList, currentHourIndex) {
