@@ -917,13 +917,18 @@ suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: 
 }
 
 suspend fun ensureVideoCached(context: android.content.Context, videoPath: String): String {
+    if (videoPath.isBlank()) return videoPath
+
     val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
     val vlogPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
     
     val cachedLocal = palPrefs.getString("local_path_$videoPath", null)
         ?: vlogPrefs.getString("local_path_$videoPath", null)
-    if (cachedLocal != null && java.io.File(cachedLocal).exists()) {
-        return cachedLocal
+    if (cachedLocal != null) {
+        val cleanLocalPath = if (cachedLocal.startsWith("file://")) cachedLocal.substring(7) else cachedLocal
+        if (java.io.File(cleanLocalPath).exists()) {
+            return cleanLocalPath
+        }
     }
 
     if (videoPath.startsWith("http")) {
@@ -976,7 +981,8 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
         }
     }
     
-    return videoPath
+    val cleanInputPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
+    return cleanInputPath
 }
 
 
@@ -7374,32 +7380,19 @@ fun GroupMemberCard(
         emptyList()
     }
 
-    val sortedMemberSubs = remember(memberSubs, isCurrentHourOnToday, activeViewingHour) {
+    val sortedMemberSubs = remember(memberSubs, activeViewingHour) {
         memberSubs.mapNotNull { sub ->
             val parts = sub.imageUrl.split("|||")
             val path = parts.getOrNull(0) ?: ""
             if (path.isEmpty() || path == "PROFILE_AVATAR" || path.startsWith("PROFILE_AVATAR")) null else {
-                var hour = 12
-                if (!sub.createdAt.isNullOrEmpty()) {
-                    try {
-                        val instant = java.time.Instant.parse(sub.createdAt)
-                        val localDateTime = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
-                        val rawHour = localDateTime.hour
-                        hour = (rawHour - 4 + 24) % 24
-                    } catch (e: Exception) {}
-                }
                 val timestamp = if (!sub.createdAt.isNullOrEmpty()) {
                     try { java.time.Instant.parse(sub.createdAt).toEpochMilli() } catch (e: Exception) { 0L }
                 } else 0L
-                Triple(sub, hour, timestamp)
+                Triple(sub, sub.getHourBucket(), timestamp)
             }
         }
         .filter {
-            if (isCurrentHourOnToday) {
-                true
-            } else {
-                it.second == (activeViewingHour - 4 + 24) % 24
-            }
+            it.second == activeViewingHour
         }
         .sortedByDescending { it.third }
         .map { it.first }
@@ -8832,35 +8825,19 @@ fun VlogScreenContent(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(pal.isVlog, selectedDayOffset, currentHourIndex, dayHoursList) {
+            .pointerInput(selectedDayOffset) {
                 var totalDrag = 0f
                 detectHorizontalDragGestures(
                     onDragStart = { totalDrag = 0f },
                     onDragEnd = {
                         val threshold = 100f
                         if (totalDrag > threshold) {
-                            if (pal.isVlog) {
-                                // Swipe Right -> Older day (increment offset)
-                                if (selectedDayOffset < 6) {
-                                    onSelectedDayOffsetChange(selectedDayOffset + 1)
-                                }
-                            } else {
-                                // Swipe Right -> Preceding hour
-                                if (currentHourIndex > 0) {
-                                    currentHourIndex--
-                                }
+                            if (selectedDayOffset < 6) {
+                                onSelectedDayOffsetChange(selectedDayOffset + 1)
                             }
                         } else if (totalDrag < -threshold) {
-                            if (pal.isVlog) {
-                                // Swipe Left -> Newer day (decrement offset)
-                                if (selectedDayOffset > 0) {
-                                    onSelectedDayOffsetChange(selectedDayOffset - 1)
-                                }
-                            } else {
-                                // Swipe Left -> Succeeding hour
-                                if (currentHourIndex < dayHoursList.lastIndex) {
-                                    currentHourIndex++
-                                }
+                            if (selectedDayOffset > 0) {
+                                onSelectedDayOffsetChange(selectedDayOffset - 1)
                             }
                         }
                     },
@@ -8869,6 +8846,22 @@ fun VlogScreenContent(
                         totalDrag += dragAmount
                     }
                 )
+            }
+            .pointerInput(pal.isVlog, currentHourIndex, dayHoursList) {
+                if (!pal.isVlog) {
+                    detectTapGestures { offset ->
+                        val screenWidth = size.width
+                        if (offset.x < screenWidth / 2f) {
+                            if (currentHourIndex > 0) {
+                                currentHourIndex--
+                            }
+                        } else {
+                            if (currentHourIndex < dayHoursList.lastIndex) {
+                                currentHourIndex++
+                            }
+                        }
+                    }
+                }
             }
     ) {
         if (showTripleDotMenu) {
@@ -12238,7 +12231,11 @@ fun PermissionsScreen(
 
 
 @Composable
-fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier) {
+fun VideoThumbnail(
+    videoPath: String,
+    modifier: Modifier = Modifier,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(28.dp)
+) {
     val context = LocalContext.current
     var bitmap by remember(videoPath) { mutableStateOf<android.graphics.Bitmap?>(null) }
 
@@ -12319,7 +12316,7 @@ fun VideoThumbnail(videoPath: String, modifier: Modifier = Modifier) {
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(28.dp))
+            .clip(shape)
             .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
@@ -12363,90 +12360,128 @@ fun VideoPlayerItem(
     val palPrefs = remember(context) { context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE) }
     val vlogPrefs = remember(context) { context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE) }
 
-    var resolvedPaths by remember(videoPaths) { mutableStateOf<List<String>>(emptyList()) }
-    var isVideoReady by remember(resolvedPaths) { mutableStateOf(false) }
+    var resolvedPaths by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isVideoReady by remember { mutableStateOf(false) }
 
     LaunchedEffect(videoPaths) {
         val list = mutableListOf<String>()
         videoPaths.forEach { videoPath ->
             list.add(ensureVideoCached(context, videoPath))
         }
-        resolvedPaths = list
+        if (resolvedPaths != list) {
+            resolvedPaths = list
+        }
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    val localPlayer = remember(resolvedPaths) {
-        if (resolvedPaths.isEmpty()) null else {
-            androidx.media3.exoplayer.ExoPlayer.Builder(context)
-                .setRenderersFactory(
-                    androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
-                        setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
-                        setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                    }
-                )
-                .setMediaSourceFactory(
-                    androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
-                        .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
-                )
-                .setLoadControl(VideoCache.getLowLatencyLoadControl())
-                .build().apply {
-                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                    volume = 0f
-                
-                addListener(object : androidx.media3.common.Player.Listener {
-                    override fun onPlaybackStateChanged(state: Int) {
-                        if (state == androidx.media3.common.Player.STATE_READY) {
-                            isVideoReady = true
-                        }
-                    }
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        if (isPlaying) {
-                            isVideoReady = true
-                        }
-                    }
-                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        android.util.Log.e("VideoPlayerItem", "ExoPlayer Error playing: ${error.message}", error)
-                        isVideoReady = true
-                    }
-                })
-
-                resolvedPaths.forEach { resolvedPath ->
-                    val uri = android.net.Uri.parse(resolvedPath)
-                    if (resolvedPath.startsWith("http") || resolvedPath.startsWith("content://")) {
-                        addMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
-                    } else {
-                        val cleanPath = when {
-                            resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
-                            else -> resolvedPath
-                        }
-                        val file = java.io.File(cleanPath)
-                        if (file.exists()) {
-                            addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
-                        } else {
-                            try {
-                                addMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                        }
-                    }
+    val localPlayer = remember(context) {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context)
+            .setRenderersFactory(
+                androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                    setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
+                    setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 }
-                prepare()
-                if (playbackState == androidx.media3.common.Player.STATE_READY || isPlaying) {
-                    isVideoReady = true
-                }
+            )
+            .setMediaSourceFactory(
+                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
+                    .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
+            )
+            .setLoadControl(VideoCache.getLowLatencyLoadControl())
+            .build().apply {
+                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                volume = 0f
             }
-        }
     }
 
     DisposableEffect(localPlayer) {
         onDispose {
-            localPlayer?.release()
+            localPlayer.release()
         }
     }
 
-    LaunchedEffect(localPlayer) {
-        localPlayer?.playWhenReady = true
+    DisposableEffect(localPlayer) {
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_READY) {
+                    isVideoReady = true
+                }
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) {
+                    isVideoReady = true
+                }
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                android.util.Log.e("VideoPlayerItem", "ExoPlayer Error playing: ${error.message}", error)
+                isVideoReady = true
+            }
+        }
+        localPlayer.addListener(listener)
+        onDispose {
+            localPlayer.removeListener(listener)
+        }
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    LaunchedEffect(localPlayer, resolvedPaths) {
+        if (resolvedPaths.isEmpty()) {
+            localPlayer.stop()
+            localPlayer.clearMediaItems()
+            isVideoReady = false
+            return@LaunchedEffect
+        }
+
+        // Compare current player media items with resolvedPaths
+        val currentMediaUris = mutableListOf<String>()
+        for (i in 0 until localPlayer.mediaItemCount) {
+            localPlayer.getMediaItemAt(i).localConfiguration?.uri?.toString()?.let {
+                currentMediaUris.add(it)
+            }
+        }
+
+        val targetUris = resolvedPaths.map { path ->
+            if (path.startsWith("http") || path.startsWith("content://") || path.startsWith("file://")) {
+                path
+            } else {
+                android.net.Uri.fromFile(java.io.File(path)).toString()
+            }
+        }
+
+        if (currentMediaUris != targetUris) {
+            isVideoReady = false
+            localPlayer.stop()
+            localPlayer.clearMediaItems()
+            
+            resolvedPaths.forEach { resolvedPath ->
+                val uri = android.net.Uri.parse(resolvedPath)
+                if (resolvedPath.startsWith("http") || resolvedPath.startsWith("content://")) {
+                    localPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
+                } else {
+                    val cleanPath = when {
+                        resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
+                        else -> resolvedPath
+                    }
+                    val file = java.io.File(cleanPath)
+                    if (file.exists()) {
+                        localPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(file)))
+                    } else {
+                        try {
+                            localPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(uri))
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            }
+            localPlayer.prepare()
+            localPlayer.playWhenReady = true
+        } else {
+            // Already matching, make sure it is playing
+            if (!localPlayer.isPlaying && localPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+                localPlayer.play()
+            }
+            isVideoReady = true
+        }
     }
 
     Box(
@@ -12455,7 +12490,7 @@ fun VideoPlayerItem(
             .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
-        if (localPlayer != null) {
+        if (resolvedPaths.isNotEmpty()) {
             androidx.compose.ui.viewinterop.AndroidView(
                 factory = { ctx ->
                     val view = android.view.LayoutInflater.from(ctx)
@@ -12527,6 +12562,11 @@ fun VideoPlayerItem(
                         applyVideoScale()
                     }
                 },
+                update = { view ->
+                    if (view.player != localPlayer) {
+                        view.player = localPlayer
+                    }
+                },
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -12536,7 +12576,8 @@ fun VideoPlayerItem(
             if (firstPath.isNotEmpty()) {
                 VideoThumbnail(
                     videoPath = firstPath,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    shape = shape
                 )
             } else {
                 Box(
