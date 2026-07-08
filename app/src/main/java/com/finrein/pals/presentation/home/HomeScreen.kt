@@ -991,81 +991,258 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
     return cleanInputPath
 }
 
-fun transcodeAndCropVideo(
-    context: android.content.Context,
-    inputPath: String,
-    zoomFactor: Float,
-    isLandscape: Boolean,
-    onComplete: (String) -> Unit
-) {
-    if (zoomFactor <= 1.05f) {
-        onComplete(inputPath)
-        return
+class EglOutput(
+    val surfaceOutput: androidx.camera.core.SurfaceOutput,
+    val eglSurface: android.opengl.EGLSurface,
+    val width: Int,
+    val height: Int
+)
+
+fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect {
+    val effectExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    val errorListener = androidx.core.util.Consumer<Throwable> { throwable ->
+        throwable.printStackTrace()
     }
+    return androidx.camera.core.CameraEffect(
+        androidx.camera.core.CameraEffect.PREVIEW or androidx.camera.core.CameraEffect.VIDEO_CAPTURE,
+        effectExecutor,
+        object : androidx.camera.core.SurfaceProcessor {
+            private val glExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+            private var eglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
+            private var eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
+            private var eglConfig: android.opengl.EGLConfig? = null
+            private var program = 0
+            private var texMatrixLoc = 0
+            private var textureId = 0
+            private var surfaceTexture: android.graphics.SurfaceTexture? = null
+            private var inputSurface: android.view.Surface? = null
+            private val outputs = java.util.concurrent.ConcurrentHashMap<androidx.camera.core.SurfaceOutput, EglOutput>()
 
-    val inputFile = java.io.File(inputPath)
-    if (!inputFile.exists() || inputFile.length() == 0L) {
-        onComplete(inputPath)
-        return
-    }
+            override fun onInputSurface(surfaceRequest: androidx.camera.core.SurfaceRequest) {
+                glExecutor.execute {
+                    try {
+                        initEglIfNeeded()
+                        val textures = IntArray(1)
+                        android.opengl.GLES20.glGenTextures(1, textures, 0)
+                        textureId = textures[0]
+                        android.opengl.GLES20.glBindTexture(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
+                        android.opengl.GLES20.glTexParameteri(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, android.opengl.GLES20.GL_TEXTURE_MIN_FILTER, android.opengl.GLES20.GL_LINEAR)
+                        android.opengl.GLES20.glTexParameteri(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, android.opengl.GLES20.GL_TEXTURE_MAG_FILTER, android.opengl.GLES20.GL_LINEAR)
+                        android.opengl.GLES20.glTexParameteri(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, android.opengl.GLES20.GL_TEXTURE_WRAP_S, android.opengl.GLES20.GL_CLAMP_TO_EDGE)
+                        android.opengl.GLES20.glTexParameteri(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, android.opengl.GLES20.GL_TEXTURE_WRAP_T, android.opengl.GLES20.GL_CLAMP_TO_EDGE)
 
-    val outputFilePath = java.io.File(context.cacheDir, "Cropped_Pal_${System.currentTimeMillis()}.mp4")
+                        val st = android.graphics.SurfaceTexture(textureId)
+                        st.setDefaultBufferSize(surfaceRequest.resolution.width, surfaceRequest.resolution.height)
+                        st.setOnFrameAvailableListener {
+                            glExecutor.execute {
+                                drawFrame()
+                            }
+                        }
 
-    try {
-        val scaleEffect = androidx.media3.effect.ScaleAndRotateTransformation.Builder()
-            .setScale(zoomFactor, zoomFactor)
-            .build()
+                        surfaceTexture = st
+                        val surface = android.view.Surface(st)
+                        inputSurface = surface
 
-        val targetWidth = if (isLandscape) 1280 else 720
-        val targetHeight = if (isLandscape) 720 else 1280
-
-        val presentationEffect = androidx.media3.effect.Presentation.createForWidthAndHeight(
-            targetWidth, targetHeight,
-            androidx.media3.effect.Presentation.LAYOUT_SCALE_TO_FIT
-        )
-
-        val editedMediaItem = androidx.media3.transformer.EditedMediaItem.Builder(
-            androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(inputFile))
-        )
-            .setEffects(
-                androidx.media3.transformer.Effects(
-                    /* audioProcessors = */ listOf(),
-                    /* videoEffects = */ listOf(scaleEffect, presentationEffect)
-                )
-            )
-            .build()
-
-        val transformer = androidx.media3.transformer.Transformer.Builder(context)
-            .setVideoMimeType(androidx.media3.common.MimeTypes.VIDEO_H264)
-            .build()
-
-        transformer.addListener(object : androidx.media3.transformer.Transformer.Listener {
-            override fun onCompleted(
-                composition: androidx.media3.transformer.Composition,
-                exportResult: androidx.media3.transformer.ExportResult
-            ) {
-                if (outputFilePath.exists() && outputFilePath.length() > 0) {
-                    onComplete(outputFilePath.absolutePath)
-                } else {
-                    onComplete(inputPath)
+                        surfaceRequest.provideSurface(surface, glExecutor) { result ->
+                            glExecutor.execute {
+                                st.release()
+                                surface.release()
+                                android.opengl.GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
 
-            override fun onError(
-                composition: androidx.media3.transformer.Composition,
-                exportResult: androidx.media3.transformer.ExportResult,
-                exportException: androidx.media3.transformer.ExportException
-            ) {
-                android.util.Log.e("CropVideo", "Transformer error: ${exportException.localizedMessage}", exportException)
-                onComplete(inputPath)
-            }
-        })
+            override fun onOutputSurface(surfaceOutput: androidx.camera.core.SurfaceOutput) {
+                glExecutor.execute {
+                    try {
+                        initEglIfNeeded()
+                        val targetSurface = surfaceOutput.getSurface(glExecutor) { result ->
+                            glExecutor.execute {
+                                val output = outputs.remove(surfaceOutput)
+                                if (output != null) {
+                                    android.opengl.EGL14.eglDestroySurface(eglDisplay, output.eglSurface)
+                                }
+                            }
+                        }
 
-        transformer.start(editedMediaItem, outputFilePath.absolutePath)
-    } catch (e: Exception) {
-        android.util.Log.e("CropVideo", "Error starting transcode: ${e.localizedMessage}", e)
-        onComplete(inputPath)
-    }
+                        val surfaceAttribs = intArrayOf(android.opengl.EGL14.EGL_NONE)
+                        val eglSurface = android.opengl.EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, targetSurface, surfaceAttribs, 0)
+
+                        val output = EglOutput(
+                            surfaceOutput = surfaceOutput,
+                            eglSurface = eglSurface,
+                            width = surfaceOutput.resolution.width,
+                            height = surfaceOutput.resolution.height
+                        )
+                        outputs[surfaceOutput] = output
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+
+            private fun drawFrame() {
+                val st = surfaceTexture ?: return
+                try {
+                    st.updateTexImage()
+                    val originalTexMatrix = FloatArray(16)
+                    st.getTransformMatrix(originalTexMatrix)
+
+                    val scaleFactor = 1.0f + (linearZoom * 1.5f)
+                    val scaleMatrix = FloatArray(16).apply {
+                        android.opengl.Matrix.setIdentityM(this, 0)
+                        android.opengl.Matrix.translateM(this, 0, 0.5f, 0.5f, 0.0f)
+                        android.opengl.Matrix.scaleM(this, 0, 1f / scaleFactor, 1f / scaleFactor, 1.0f)
+                        android.opengl.Matrix.translateM(this, 0, -0.5f, -0.5f, 0.0f)
+                    }
+
+                    val finalMatrix = FloatArray(16)
+                    android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, originalTexMatrix, 0)
+
+                    outputs.values.forEach { output ->
+                        android.opengl.EGL14.eglMakeCurrent(eglDisplay, output.eglSurface, output.eglSurface, eglContext)
+                        android.opengl.GLES20.glViewport(0, 0, output.width, output.height)
+                        drawTexture(textureId, finalMatrix)
+                        android.opengl.EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            private fun initEglIfNeeded() {
+                if (eglDisplay != android.opengl.EGL14.EGL_NO_DISPLAY) return
+
+                eglDisplay = android.opengl.EGL14.eglGetDisplay(android.opengl.EGL14.EGL_DEFAULT_DISPLAY)
+                val version = IntArray(2)
+                android.opengl.EGL14.eglInitialize(eglDisplay, version, 0, version, 1)
+
+                val attribList = intArrayOf(
+                    android.opengl.EGL14.EGL_RED_SIZE, 8,
+                    android.opengl.EGL14.EGL_GREEN_SIZE, 8,
+                    android.opengl.EGL14.EGL_BLUE_SIZE, 8,
+                    android.opengl.EGL14.EGL_ALPHA_SIZE, 8,
+                    android.opengl.EGL14.EGL_RENDERABLE_TYPE, android.opengl.EGL14.EGL_OPENGL_ES2_BIT,
+                    android.opengl.EGL14.EGL_NONE
+                )
+                val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
+                val numConfigs = IntArray(1)
+                android.opengl.EGL14.eglChooseConfig(eglDisplay, attribList, 0, configs, 0, configs.size, numConfigs, 0)
+                eglConfig = configs[0]
+
+                val ctxAttribList = intArrayOf(
+                    android.opengl.EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
+                    android.opengl.EGL14.EGL_NONE
+                )
+                eglContext = android.opengl.EGL14.eglCreateContext(eglDisplay, eglConfig, android.opengl.EGL14.EGL_NO_CONTEXT, ctxAttribList, 0)
+
+                val vertexShader = compileShader(android.opengl.GLES20.GL_VERTEX_SHADER, vertexShaderSource)
+                val fragmentShader = compileShader(android.opengl.GLES20.GL_FRAGMENT_SHADER, fragmentShaderSource)
+                program = android.opengl.GLES20.glCreateProgram().apply {
+                    android.opengl.GLES20.glAttachShader(this, vertexShader)
+                    android.opengl.GLES20.glAttachShader(this, fragmentShader)
+                    android.opengl.GLES20.glLinkProgram(this)
+                }
+                texMatrixLoc = android.opengl.GLES20.glGetUniformLocation(program, "uTexMatrix")
+                initBuffers()
+            }
+
+            private val vertexShaderSource = """
+                attribute vec4 aPosition;
+                attribute vec4 aTextureCoord;
+                varying vec2 vTextureCoord;
+                uniform mat4 uTexMatrix;
+                void main() {
+                    gl_Position = aPosition;
+                    vTextureCoord = (uTexMatrix * aTextureCoord).xy;
+                }
+            """.trimIndent()
+
+            private val fragmentShaderSource = """
+                #extension GL_OES_EGL_image_external : require
+                precision mediump float;
+                varying vec2 vTextureCoord;
+                uniform samplerExternalOES sTexture;
+                void main() {
+                    gl_FragColor = texture2D(sTexture, vTextureCoord);
+                }
+            """.trimIndent()
+
+            private var vertexBuffer: java.nio.FloatBuffer? = null
+            private var texCoordBuffer: java.nio.FloatBuffer? = null
+
+            private fun initBuffers() {
+                val vertices = floatArrayOf(
+                    -1.0f, -1.0f,
+                     1.0f, -1.0f,
+                    -1.0f,  1.0f,
+                     1.0f,  1.0f
+                )
+                vertexBuffer = java.nio.ByteBuffer.allocateDirect(vertices.size * 4)
+                    .order(java.nio.ByteOrder.nativeOrder())
+                    .asFloatBuffer()
+                    .apply {
+                        put(vertices)
+                        position(0)
+                    }
+
+                val texCoords = floatArrayOf(
+                    0.0f, 0.0f,
+                    1.0f, 0.0f,
+                    0.0f, 1.0f,
+                    1.0f, 1.0f
+                )
+                texCoordBuffer = java.nio.ByteBuffer.allocateDirect(texCoords.size * 4)
+                    .order(java.nio.ByteOrder.nativeOrder())
+                    .asFloatBuffer()
+                    .apply {
+                        put(texCoords)
+                        position(0)
+                    }
+            }
+
+            private fun drawTexture(textureId: Int, matrix: FloatArray) {
+                android.opengl.GLES20.glUseProgram(program)
+
+                val posLoc = android.opengl.GLES20.glGetAttribLocation(program, "aPosition")
+                android.opengl.GLES20.glEnableVertexAttribArray(posLoc)
+                android.opengl.GLES20.glVertexAttribPointer(posLoc, 2, android.opengl.GLES20.GL_FLOAT, false, 0, vertexBuffer)
+
+                val texLoc = android.opengl.GLES20.glGetAttribLocation(program, "aTextureCoord")
+                android.opengl.GLES20.glEnableVertexAttribArray(texLoc)
+                android.opengl.GLES20.glVertexAttribPointer(texLoc, 2, android.opengl.GLES20.GL_FLOAT, false, 0, texCoordBuffer)
+
+                android.opengl.GLES20.glUniformMatrix4fv(texMatrixLoc, 1, false, matrix, 0)
+
+                android.opengl.GLES20.glActiveTexture(android.opengl.GLES20.GL_TEXTURE0)
+                android.opengl.GLES20.glBindTexture(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
+
+                android.opengl.GLES20.glDrawArrays(android.opengl.GLES20.GL_TRIANGLE_STRIP, 0, 4)
+
+                android.opengl.GLES20.glDisableVertexAttribArray(posLoc)
+                android.opengl.GLES20.glDisableVertexAttribArray(texLoc)
+            }
+
+            private fun compileShader(type: Int, source: String): Int {
+                val shader = android.opengl.GLES20.glCreateShader(type)
+                android.opengl.GLES20.glShaderSource(shader, source)
+                android.opengl.GLES20.glCompileShader(shader)
+                val compiled = IntArray(1)
+                android.opengl.GLES20.glGetShaderiv(shader, android.opengl.GLES20.GL_COMPILE_STATUS, compiled, 0)
+                if (compiled[0] == 0) {
+                    val log = android.opengl.GLES20.glGetShaderInfoLog(shader)
+                    android.opengl.GLES20.glDeleteShader(shader)
+                    throw RuntimeException("Shader compile error: $log")
+                }
+                return shader
+            }
+        },
+        errorListener
+    )
 }
 
 suspend fun sendVideoPalToVlog(context: android.content.Context, localUri: android.net.Uri, userId: String, palCode: String) {
@@ -5117,7 +5294,7 @@ fun CameraPreview(
     
     var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
     
-    LaunchedEffect(isCameraFlipped, isCameraActive) {
+    LaunchedEffect(isCameraFlipped, isCameraActive, linearZoom) {
         val cameraProvider = withContext(kotlinx.coroutines.Dispatchers.IO) {
             cameraProviderFuture.get()
         }
@@ -5151,11 +5328,22 @@ fun CameraPreview(
         
         try {
             cameraProvider.unbindAll()
+            
+            // 1. Create our GPU texture zoom effect using the current composable state value
+            val zoomEffect = createZoomCameraEffect(linearZoom)
+
+            // 2. Group UseCases together with the processor effect
+            val useCaseGroup = androidx.camera.core.UseCaseGroup.Builder()
+                .addUseCase(preview)
+                .addUseCase(videoCapture)
+                .addEffect(zoomEffect)
+                .build()
+
+            // 3. Bind the combined group directly
             val camera = cameraProvider.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
-                preview,
-                videoCapture
+                useCaseGroup
             )
             activeCamera = camera
         } catch (exc: Exception) {
@@ -5174,55 +5362,11 @@ fun CameraPreview(
             exc.printStackTrace()
         }
     }
-
-    val lastZoomTime = remember { longArrayOf(0L) }
-    val lastBoundCamera = remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
-
-    LaunchedEffect(activeCamera, linearZoom) {
-        val camera = activeCamera ?: return@LaunchedEffect
-        val currentTime = System.currentTimeMillis()
-        val elapsed = currentTime - lastZoomTime[0]
-        
-        val isNewCameraSession = lastBoundCamera.value != camera
-
-        if (isNewCameraSession || elapsed >= 16) {
-            lastBoundCamera.value = camera
-            lastZoomTime[0] = currentTime
-            try {
-                camera.cameraControl.setZoomRatio(1.0f)
-            } catch (exc: Exception) {
-                exc.printStackTrace()
-            }
-        } else {
-            delay(16 - elapsed)
-            if (activeCamera == camera) {
-                lastZoomTime[0] = System.currentTimeMillis()
-                try {
-                    camera.cameraControl.setZoomRatio(1.0f)
-                } catch (exc: Exception) {
-                    exc.printStackTrace()
-                }
-            }
-        }
-    }
     
-    val currentZoomFactor = 1.0f + linearZoom * 1.5f
-    androidx.compose.foundation.layout.Box(
+    AndroidView(
+        factory = { previewView },
         modifier = modifier
-            .fillMaxSize()
-            .clip(androidx.compose.ui.graphics.RectangleShape)
-    ) {
-        AndroidView(
-            factory = { previewView },
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(
-                    scaleX = currentZoomFactor,
-                    scaleY = currentZoomFactor,
-                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
-                )
-        )
-    }
+    )
 }
 
 @SuppressLint("MissingPermission")
@@ -5359,15 +5503,7 @@ fun CameraScreenContent(
                                 val fileExists = outputFile.exists() && outputFile.length() > 0
                                 if (fileExists && (!recordEvent.hasError() || recordEvent.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE)) {
                                     android.util.Log.d("ProductionCamera", "Video encoding success: ${outputFile.absolutePath}")
-                                    val zoomFactor = 1.0f + linearZoom * 1.5f
-                                    if (linearZoom > 0f) {
-                                        val isLandscape = rotationAngle == 0f || rotationAngle == 180f
-                                        transcodeAndCropVideo(context, outputFile.absolutePath, zoomFactor, isLandscape) { finalPath ->
-                                            onCaptureSuccess(finalPath, durationMs, true)
-                                        }
-                                    } else {
-                                        onCaptureSuccess(outputFile.absolutePath, durationMs, false)
-                                    }
+                                    onCaptureSuccess(outputFile.absolutePath, durationMs, linearZoom > 0f)
                                 } else {
                                     android.util.Log.e("ProductionCamera", "Encoder finalized with error: ${recordEvent.error}, fileExists: $fileExists")
                                     recordingStarted.completeExceptionally(java.lang.RuntimeException("Recording failed to start"))
