@@ -267,6 +267,13 @@ fun handleLeavePal(
                             eq("user_id", currentUserId)
                         }
                     }
+                supabaseClient.postgrest.from("submissions")
+                    .delete {
+                        filter {
+                            eq("pal_code", p.code)
+                            eq("user_id", currentUserId)
+                        }
+                    }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -607,10 +614,20 @@ fun handleVlogSubmission(
                         val uri = android.net.Uri.fromFile(java.io.File(cleanPath))
                         uploadPalVideoAndGetUrl(context, uri, currentUserId) ?: ""
                     } else {
-                        uploadFileToSupabase(context, localVideoPath, "pals")
+                        uploadFileToSupabase(context, localVideoPath, "PALS")
                     }
                 } else {
                     ""
+                }
+                
+                if (uploadedVideoUrl.isBlank() || !uploadedVideoUrl.startsWith("http")) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, "Upload failed. Please try again.", android.widget.Toast.LENGTH_LONG).show()
+                        val currentList = allPalsSubmissions[targetPalCode] ?: emptyList()
+                        val currentHour = (java.time.LocalTime.now().hour - 4 + 24) % 24
+                        allPalsSubmissions[targetPalCode] = currentList.filterNot { it.userId == currentUserId && getSubmissionRelativeHour(it) == currentHour }
+                    }
+                    return@launch
                 }
                 
                 if (uploadedVideoUrl.startsWith("http") && !localVideoPath.isNullOrBlank()) {
@@ -632,7 +649,7 @@ fun handleVlogSubmission(
                     if (checkAvatar.startsWith("http")) {
                         avatarUrl = checkAvatar
                     } else {
-                        val uploaded = uploadFileToSupabase(context, checkAvatar, "avatars")
+                        val uploaded = uploadFileToSupabase(context, checkAvatar, "AVATARS")
                         if (uploaded.startsWith("http")) {
                             avatarUrl = uploaded
                             sessionManager.saveAvatarUri(uploaded)
@@ -663,7 +680,7 @@ fun handleVlogSubmission(
                     // Recreate group if deleted or missing using upsert (no pre-check select)
                     try {
                         supabaseClient.postgrest.from("pals")
-                            .upsert(PalDbItem(code = cleanCode, name = "Pals Group"), onConflict = "pal_code")
+                            .upsert(PalDbItem(code = cleanCode, name = targetPal.name), onConflict = "pal_code")
                     } catch (e: Exception) {
                         // Ignore conflict to preserve original group name
                     }
@@ -855,7 +872,7 @@ suspend fun uploadFileToSupabase(context: android.content.Context, uriString: St
             return uriString
         }
         var bytes = inputStream.use { it.readBytes() }
-        val extension = if (bucketName == "pals" || bucketName == "pals_vlogs") "mp4" else "jpg"
+        val extension = if (bucketName.equals("pals", ignoreCase = true) || bucketName.equals("pals_vlogs", ignoreCase = true)) "mp4" else "jpg"
         
         // Compress images to keep payload under 200 KB
         if (extension == "jpg") {
@@ -885,7 +902,7 @@ suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: 
             // Generate a unique filename with a timestamp and proper extension
             val fileName = "${userId}_${System.currentTimeMillis()}.mp4"
             
-            val bucket = com.finrein.pals.PalApplication.supabase.storage.from("pals_vlogs")
+            val bucket = com.finrein.pals.PalApplication.supabase.storage.from("PALS_VLOGS")
             bucket.upload(fileName, bytes, upsert = true)
             
             return@withContext bucket.publicUrl(fileName)
@@ -897,8 +914,18 @@ suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: 
 }
 
 suspend fun ensureVideoCached(context: android.content.Context, videoPath: String): String {
-    if (!videoPath.startsWith("http")) {
-        return videoPath
+    if (videoPath.startsWith("http")) {
+        var resolvedPath = videoPath
+        if (resolvedPath.contains("/pals/", ignoreCase = true)) {
+            resolvedPath = resolvedPath.replace("/pals/", "/PALS/")
+        }
+        if (resolvedPath.contains("/pals_vlogs/", ignoreCase = true)) {
+            resolvedPath = resolvedPath.replace("/pals_vlogs/", "/PALS_VLOGS/")
+        }
+        if (resolvedPath.contains("/avatars/", ignoreCase = true)) {
+            resolvedPath = resolvedPath.replace("/avatars/", "/AVATARS/")
+        }
+        return resolvedPath
     }
     return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
@@ -926,7 +953,7 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
                             throw java.io.IOException("HTTP error ${connection.responseCode}")
                         }
                     } catch (httpEx: Exception) {
-                        val bucketName = if (videoPath.contains("pals_vlogs")) "pals_vlogs" else "pals"
+                        val bucketName = if (videoPath.contains("pals_vlogs", ignoreCase = true)) "PALS_VLOGS" else "PALS"
                         val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
                         try {
                             storage.downloadPublic(fileName)
@@ -1782,7 +1809,7 @@ fun HomeScreen(
             customAvatarUriString = uri.toString()
             @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
             kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                val uploadedUrl = uploadFileToSupabase(context, uri.toString(), "avatars")
+                val uploadedUrl = uploadFileToSupabase(context, uri.toString(), "AVATARS")
                 if (uploadedUrl.startsWith("http")) {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
                         sessionManager.saveAvatarUri(uploadedUrl)
@@ -2839,7 +2866,7 @@ fun HomeScreen(
                     if (uriStr.startsWith("http")) {
                         avatarUrl = uriStr
                     } else if (uriStr.isNotEmpty()) {
-                        val uploaded = uploadFileToSupabase(context, uriStr, "avatars")
+                        val uploaded = uploadFileToSupabase(context, uriStr, "AVATARS")
                         if (uploaded.startsWith("http")) {
                             avatarUrl = uploaded
                             sessionManager.saveAvatarUri(uploaded)
@@ -2855,6 +2882,8 @@ fun HomeScreen(
     }
 
 
+
+    val activePalCodeState = androidx.compose.runtime.rememberUpdatedState(activeVlogPal?.code)
 
     LaunchedEffect(currentUserId, lifecycleOwner) {
         if (currentUserId.isEmpty()) return@LaunchedEffect
@@ -2890,8 +2919,15 @@ fun HomeScreen(
                                             refreshPals()
                                             refreshVlogs()
                                         }
-                                        if (eventPalCode != null && eventPalCode == activeVlogPal?.code) {
-                                            refreshActivePalDetails(eventPalCode)
+                                        if (action is PostgresAction.Delete) {
+                                            val currentActiveCode = activePalCodeState.value
+                                            if (currentActiveCode != null) {
+                                                refreshActivePalDetails(currentActiveCode)
+                                            }
+                                        } else {
+                                            if (eventPalCode != null && eventPalCode == activePalCodeState.value) {
+                                                refreshActivePalDetails(eventPalCode)
+                                            }
                                         }
                                     }
                                     else -> android.util.Log.d("WarpGuard", "Suppressed user_pals update echo.")
@@ -2917,8 +2953,15 @@ fun HomeScreen(
                                         }
                                         val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
                                         
-                                        if (eventPalCode != null && eventPalCode == activeVlogPal?.code) {
-                                            refreshActivePalDetails(eventPalCode)
+                                        if (action is PostgresAction.Delete) {
+                                            val currentActiveCode = activePalCodeState.value
+                                            if (currentActiveCode != null) {
+                                                refreshActivePalDetails(currentActiveCode)
+                                            }
+                                        } else {
+                                            if (eventPalCode != null && eventPalCode == activePalCodeState.value) {
+                                                refreshActivePalDetails(eventPalCode)
+                                            }
                                         }
                                         refreshVlogs()
                                     }
@@ -2933,7 +2976,7 @@ fun HomeScreen(
                 // MESSAGES STREAM WATCHDOG
                 launch {
                     messagesFlow.collect { action ->
-                        viewModel.handleMessageRealtimeAction(action, activeVlogPal?.code)
+                        viewModel.handleMessageRealtimeAction(action, activePalCodeState.value)
                     }
                 }
             } catch (e: Exception) {
@@ -3120,10 +3163,20 @@ fun HomeScreen(
                                 val uri = android.net.Uri.fromFile(java.io.File(cleanPath))
                                 uploadPalVideoAndGetUrl(context, uri, currentUserId) ?: "dummy_image"
                             } else {
-                                uploadFileToSupabase(context, capturedVideoPath!!, "pals")
+                                uploadFileToSupabase(context, capturedVideoPath!!, "PALS")
                             }
                         } else {
                             "dummy_image"
+                        }
+                        
+                        if (uploadedVideoUrl.isBlank() || !uploadedVideoUrl.startsWith("http")) {
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                android.widget.Toast.makeText(context, "Upload failed. Please try again.", android.widget.Toast.LENGTH_LONG).show()
+                                val currentList = allPalsSubmissions[pal.code] ?: emptyList()
+                                val currentHour = (java.time.LocalTime.now().hour - 4 + 24) % 24
+                                allPalsSubmissions[pal.code] = currentList.filterNot { it.userId == currentUserId && getSubmissionRelativeHour(it) == currentHour }
+                            }
+                            return@launch
                         }
                         
                         if (uploadedVideoUrl.startsWith("http") && capturedVideoPath != null) {
@@ -3137,7 +3190,7 @@ fun HomeScreen(
                             if (uriStr.startsWith("http")) {
                                 avatarUrl = uriStr
                             } else if (uriStr.isNotEmpty()) {
-                                val uploaded = uploadFileToSupabase(context, uriStr, "avatars")
+                                val uploaded = uploadFileToSupabase(context, uriStr, "AVATARS")
                                 if (uploaded.startsWith("http")) {
                                     avatarUrl = uploaded
                                     sessionManager.saveAvatarUri(uploaded)
@@ -3171,7 +3224,7 @@ fun HomeScreen(
                             // Recreate group if deleted or missing using upsert (no pre-check select)
                             try {
                                 supabaseClient.postgrest.from("pals")
-                                    .upsert(PalDbItem(code = cleanCode, name = "Pals Group"), onConflict = "pal_code")
+                                    .upsert(PalDbItem(code = cleanCode, name = pal.name), onConflict = "pal_code")
                             } catch (e: Exception) {
                                 // Ignore conflict to preserve original group name
                             }
@@ -6017,8 +6070,8 @@ fun GroupMembersSmileysRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         itemsToRender.forEach { (i, isLit) ->
-            val outerColor = palTextLogoColor
-            val innerColor = accentColor
+            val outerColor = shufflingColors[i % 6]
+            val innerColor = shufflingColors[(i + 3) % 6]
             
             Box(
                 modifier = Modifier
@@ -6036,7 +6089,7 @@ fun GroupMembersSmileysRow(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                val currentInnerSize = if (isLit) (smileySize - 5.dp) else smileySize
+                val currentInnerSize = if (isLit) innerSize else smileySize
                 Box(
                     modifier = Modifier
                         .size(currentInnerSize)
@@ -9821,72 +9874,43 @@ fun VlogScreenContent(
                     val distinctHours = remember(daySubmissions) {
                         daySubmissions.map { it.getHourBucket() }.distinct().sorted()
                     }
-                    val hourlyCount = distinctHours.size
-                    val computedSmileySize = when {
-                        hourlyCount <= 4 -> 22.dp
-                        hourlyCount <= 6 -> 16.dp
-                        hourlyCount <= 8 -> 12.dp
-                        else -> 9.dp
-                    }
-                    val computedInnerSize = when {
-                        hourlyCount <= 4 -> 15.dp
-                        hourlyCount <= 6 -> 11.dp
-                        hourlyCount <= 8 -> 8.5.dp
-                        else -> 6.5.dp
-                    }
-                    val shufflingColors = listOf(
-                        Color(0xFFFFE600), // Yellow
-                        Color(0xFFFF6700), // Orange
-                        Color(0xFFFF007F), // Pink
-                        Color(0xFF00F0FF), // Blue
-                        Color(0xFFB000FF), // Purple
-                        Color(0xFFFF073A)  // Red
-                    )
-                    Row(
-                        modifier = Modifier.offset(y = 27.5.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        distinctHours.forEachIndexed { i, hour ->
-                            val outerColor = shufflingColors[i % 6]
-                            val innerColor = shufflingColors[(i + 3) % 6]
-                            val isCurrentViewingHour = hour == activeViewingHour
-                            Box(
-                                modifier = Modifier
-                                    .size(if (isCurrentViewingHour) computedSmileySize + 6.dp else computedSmileySize)
-                                    .then(
-                                        if (isCurrentViewingHour) {
-                                            Modifier.border(
-                                                width = 2.dp,
-                                                color = palTextLogoColor,
-                                                shape = CircleShape
-                                            )
-                                        } else {
-                                            Modifier.border(
-                                                width = 1.dp,
-                                                color = outerColor,
-                                                shape = CircleShape
-                                            )
-                                        }
-                                    )
-                                    .padding(if (isCurrentViewingHour) 3.dp else 0.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
+                    if (distinctHours.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.offset(y = 26.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            distinctHours.forEachIndexed { i, hour ->
+                                val isSelected = hour == activeViewingHour
                                 Box(
                                     modifier = Modifier
-                                        .size(computedInnerSize)
-                                        .clip(CircleShape)
-                                        .background(innerColor),
+                                        .size(17.dp)
+                                        .then(
+                                            if (isSelected) {
+                                                Modifier.border(1.dp, palTextLogoColor, CircleShape)
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .padding(1.5.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Image(
-                                        painter = painterResource(id = R.drawable.smile_small),
-                                        contentDescription = "Smiley",
+                                    Box(
                                         modifier = Modifier
-                                            .fillMaxSize()
-                                            .rotate(180f),
-                                        colorFilter = ColorFilter.tint(Color.Black)
-                                    )
+                                            .size(14.dp)
+                                            .clip(CircleShape)
+                                            .background(selectedProfileColor),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.smile_small),
+                                            contentDescription = "Smiley",
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .rotate(180f),
+                                            colorFilter = ColorFilter.tint(Color.Black)
+                                        )
+                                    }
                                 }
                             }
                         }
