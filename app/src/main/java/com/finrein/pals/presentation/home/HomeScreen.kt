@@ -13685,7 +13685,7 @@ fun PalChatOverlay(
         }
 
         val feedItems = remember(pal.code, capturedVlogsPaths, allPalsSubmissions, currentUserId, messages) {
-            val soundItems = messages.filter { !it.content.startsWith("REPLY|||") }.mapNotNull { msg ->
+            val soundItems = messages.filter { !it.content.startsWith("REPLY|||") && !it.content.startsWith("REACTION|||") }.mapNotNull { msg ->
                 val instant = if (!msg.createdAt.isNullOrEmpty()) {
                     try {
                         java.time.Instant.parse(msg.createdAt)
@@ -13945,59 +13945,21 @@ fun PalChatOverlay(
 
                                 // 2. Video thumbnails (aligned right for user, left for other members)
                                 items.forEach { feedItem ->
-                                    val feedReactions = remember(messages, feedItem.path, allPalsMembers, currentDisplayName, customAvatarUriString) {
+                                    val feedReactions = remember(messages, feedItem.path) {
                                         messages.filter { msg ->
-                                            if (msg.content.startsWith("REACTION|||")) {
-                                                val parts = msg.content.split("|||")
-                                                val targetPath = parts.getOrNull(3) ?: ""
-                                                targetPath == feedItem.path
-                                            } else {
-                                                false
-                                            }
+                                            msg.content.startsWith("REACTION|||") && msg.content.split("|||").getOrNull(3) == feedItem.path
                                         }.map { msg ->
-                                            val parts = msg.content.split("|||")
-                                            val emoji = parts.getOrNull(4) ?: ""
-                                            val membersList = allPalsMembers[pal.code] ?: emptyList()
-                                            val senderMember = membersList.firstOrNull { it.startsWith("${msg.userId}|||") }
-                                            val (senderName, senderAvatar) = if (senderMember != null) {
-                                                val sParts = senderMember.split("|||")
-                                                Pair(sParts.getOrNull(1) ?: "Pal", sParts.getOrNull(2))
-                                            } else {
-                                                if (msg.userId == currentUserId) {
-                                                    Pair(currentDisplayName, customAvatarUriString)
-                                                } else {
-                                                    Pair("Pal", null)
-                                                }
-                                            }
-                                            Triple(senderName, senderAvatar, emoji)
-                                        }.distinctBy { it.first }
+                                            msg.content.split("|||").getOrNull(4) ?: ""
+                                        }.filter { it.isNotEmpty() }
                                     }
 
-                                    val feedReplies = remember(messages, feedItem.path, allPalsMembers, currentDisplayName, customAvatarUriString) {
+                                    val feedReplies = remember(messages, feedItem.path) {
                                         messages.filter { msg ->
-                                            if (msg.content.startsWith("REPLY|||")) {
-                                                val parts = msg.content.split("|||")
-                                                val targetPath = parts.getOrNull(3) ?: ""
-                                                targetPath == feedItem.path
-                                            } else {
-                                                false
-                                            }
+                                            msg.content.startsWith("REPLY|||") && msg.content.split("|||").getOrNull(3) == feedItem.path
                                         }.map { msg ->
                                             val parts = msg.content.split("|||")
                                             val replyText = parts.getOrNull(4) ?: ""
-                                            val membersList = allPalsMembers[pal.code] ?: emptyList()
-                                            val senderMember = membersList.firstOrNull { it.startsWith("${msg.userId}|||") }
-                                            val (senderName, senderAvatar) = if (senderMember != null) {
-                                                val sParts = senderMember.split("|||")
-                                                Pair(sParts.getOrNull(1) ?: "Pal", sParts.getOrNull(2))
-                                            } else {
-                                                if (msg.userId == currentUserId) {
-                                                    Pair(currentDisplayName, customAvatarUriString)
-                                                } else {
-                                                    Pair("Pal", null)
-                                                }
-                                            }
-                                            Triple(senderName, senderAvatar, replyText)
+                                            Triple(msg.userId == currentUserId, msg.userId, replyText)
                                         }
                                     }
 
@@ -14177,21 +14139,64 @@ fun PalChatOverlay(
                                                                 videoPath = feedItem.path,
                                                                 modifier = Modifier.fillMaxSize()
                                                             )
+                                                            if (feedReactions.isNotEmpty()) {
+                                                                Text(
+                                                                    text = feedReactions.last(),
+                                                                    fontSize = 24.sp,
+                                                                    modifier = Modifier
+                                                                        .align(Alignment.TopStart)
+                                                                        .offset(x = (-10).dp, y = (-10).dp)
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    FeedReactionsAndReplies(
-                                                        feedReactions = feedReactions,
-                                                        feedReplies = feedReplies,
-                                                        textColor = textColor,
-                                                        isDark = isDark,
-                                                        accentColor = accentColor
-                                                    )
+                                                if (feedReplies.isNotEmpty()) {
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Column(
+                                                        horizontalAlignment = Alignment.End,
+                                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        feedReplies.forEach { (isUserReply, _, replyText) ->
+                                                            Column(
+                                                                horizontalAlignment = if (isUserReply) Alignment.End else Alignment.Start,
+                                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth(0.35f)
+                                                                        .aspectRatio(16f / 9f)
+                                                                        .clip(RoundedCornerShape(14.dp))
+                                                                        .background(Color.Black)
+                                                                ) {
+                                                                    VideoThumbnail(
+                                                                        videoPath = feedItem.path,
+                                                                        modifier = Modifier.fillMaxSize()
+                                                                    )
+                                                                }
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .clip(RoundedCornerShape(16.dp))
+                                                                        .background(
+                                                                            if (isUserReply) {
+                                                                                if (isDark) Color(0xFF0A84FF) else Color(0xFF007AFF)
+                                                                            } else {
+                                                                                if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
+                                                                            }
+                                                                        )
+                                                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                                                ) {
+                                                                    Text(
+                                                                        text = replyText,
+                                                                        color = if (isDark) Color.White else Color.Black,
+                                                                        fontSize = 13.sp,
+                                                                        fontFamily = FontFamily.SansSerif
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         } else {
@@ -14365,22 +14370,64 @@ fun PalChatOverlay(
                                                                 videoPath = feedItem.path,
                                                                 modifier = Modifier.fillMaxSize()
                                                             )
+                                                            if (feedReactions.isNotEmpty()) {
+                                                                Text(
+                                                                    text = feedReactions.last(),
+                                                                    fontSize = 24.sp,
+                                                                    modifier = Modifier
+                                                                        .align(Alignment.TopEnd)
+                                                                        .offset(x = 10.dp, y = (-10).dp)
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
-
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    FeedReactionsAndReplies(
-                                                        feedReactions = feedReactions,
-                                                        feedReplies = feedReplies,
-                                                        textColor = textColor,
-                                                        isDark = isDark,
-                                                        accentColor = accentColor
-                                                    )
+                                                if (feedReplies.isNotEmpty()) {
+                                                    Spacer(modifier = Modifier.height(6.dp))
+                                                    Column(
+                                                        horizontalAlignment = Alignment.Start,
+                                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        feedReplies.forEach { (isUserReply, _, replyText) ->
+                                                            Column(
+                                                                horizontalAlignment = if (isUserReply) Alignment.End else Alignment.Start,
+                                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth(0.35f)
+                                                                        .aspectRatio(16f / 9f)
+                                                                        .clip(RoundedCornerShape(14.dp))
+                                                                        .background(Color.Black)
+                                                                ) {
+                                                                    VideoThumbnail(
+                                                                        videoPath = feedItem.path,
+                                                                        modifier = Modifier.fillMaxSize()
+                                                                    )
+                                                                }
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .clip(RoundedCornerShape(16.dp))
+                                                                        .background(
+                                                                            if (isUserReply) {
+                                                                                if (isDark) Color(0xFF0A84FF) else Color(0xFF007AFF)
+                                                                            } else {
+                                                                                if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
+                                                                            }
+                                                                        )
+                                                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                                                ) {
+                                                                    Text(
+                                                                        text = replyText,
+                                                                        color = if (isDark) Color.White else Color.Black,
+                                                                        fontSize = 13.sp,
+                                                                        fontFamily = FontFamily.SansSerif
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
