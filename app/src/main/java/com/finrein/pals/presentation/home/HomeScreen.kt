@@ -3230,6 +3230,14 @@ fun HomeScreen(
                             }
 
                             supabaseClient.postgrest.from("submissions").insert(newSubmission)
+                            try {
+                                val sentHour = java.time.LocalTime.now().hour
+                                val sentPrefs = context.getSharedPreferences("palzee_prefs", android.content.Context.MODE_PRIVATE)
+                                val sentTodayStr = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date())
+                                sentPrefs.edit().putBoolean("pal_logged_${sentTodayStr}_$sentHour", true).apply()
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
                             withContext(kotlinx.coroutines.Dispatchers.Main) {
                                 if (cleanCode != "vlog") {
                                     refreshActivePalDetails(cleanCode)
@@ -6908,31 +6916,13 @@ fun CapturedPreviewScreen(
                 
                 val lastHourSub = if (pal.isVlog) null else {
                     val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
-                    val oneHourAgo = System.currentTimeMillis() - 3600 * 1000
                     groupSubs.filter { it.userId == currentUserId }
                         .filter { sub ->
                             val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
                             path !in currentDeleted && sub.imageUrl !in currentDeleted
                         }
                         .firstOrNull { sub ->
-                            var subTime = 0L
-                            if (!sub.createdAt.isNullOrEmpty()) {
-                                try {
-                                    subTime = java.time.Instant.parse(sub.createdAt).toEpochMilli()
-                                } catch (e: Exception) {}
-                            }
-                            if (subTime == 0L) {
-                                val parts = sub.imageUrl.split("|||")
-                                val path = parts.getOrNull(0) ?: ""
-                                val regex = Regex("\\d{13}")
-                                val match = regex.find(path)
-                                if (match != null) {
-                                    try {
-                                        subTime = match.value.toLong()
-                                    } catch (e: Exception) {}
-                                }
-                            }
-                            subTime > oneHourAgo
+                            isSubmissionInCurrentHourWindow(sub)
                         }
                 }
                 val isHourlyRestricted = lastHourSub != null
@@ -7091,11 +7081,7 @@ fun CapturedPreviewScreen(
                                 else -> 8.dp
                             }
                             val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
-                            val finalSubs = if (isSelected && !groupSubs.any { it.userId == currentUserId }) {
-                                groupSubs + SubmissionDbItem(palCode = pal.code, userId = currentUserId, userDisplayName = currentDisplayName, imageUrl = "", createdAt = java.time.Instant.now().toString())
-                            } else {
-                                groupSubs
-                            }
+                            val finalSubs = groupSubs
                             GroupMembersSmileysRow(
                                 members = groupMembersList,
                                 submissions = finalSubs,

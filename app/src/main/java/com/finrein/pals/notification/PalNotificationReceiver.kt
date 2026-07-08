@@ -32,23 +32,60 @@ class PalNotificationReceiver : BroadcastReceiver() {
         val scheduledHour = intent.getIntExtra("EXTRA_SCHEDULED_HOUR", -1)
         val hourToUse = if (scheduledHour in 0..23) scheduledHour else currentHour
 
+        val sharedPrefs = context.getSharedPreferences("palzee_prefs", Context.MODE_PRIVATE)
+        val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+        val firstNotifiedKey = "first_pal_notified_$dateStamp"
+
+        // Check if user has sent any pal or been notified for any hour today (starting from 4 AM)
+        var hasLoggedAnyToday = false
+        var hasNotifiedAnyToday = false
+        for (h in 0..23) {
+            if (sharedPrefs.getBoolean("pal_logged_${dateStamp}_$h", false)) {
+                hasLoggedAnyToday = true
+            }
+            if (sharedPrefs.getBoolean("pal_notified_${dateStamp}_$h", false)) {
+                hasNotifiedAnyToday = true
+            }
+        }
+        val isFirstTimeToday = !hasLoggedAnyToday && !hasNotifiedAnyToday && currentHour >= 4
+
         when (intent.action) {
             Intent.ACTION_USER_PRESENT -> {
                 // User just unlocked their phone!
-                if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
-                    if (isAfterTargetTimeForHour(hourToUse)) {
-                        showNativeNotification(context, hourToUse)
-                        markAsNotifiedForHour(context, hourToUse)
+                if (isFirstTimeToday) {
+                    showNativeNotification(context, currentHour, isFirstPal = true)
+                    markAsNotifiedForHour(context, currentHour)
+                    sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                } else {
+                    if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
+                        if (isAfterTargetTimeForHour(hourToUse)) {
+                            val isFirstPal = !sharedPrefs.getBoolean(firstNotifiedKey, false)
+                            showNativeNotification(context, hourToUse, isFirstPal)
+                            markAsNotifiedForHour(context, hourToUse)
+                            if (isFirstPal) {
+                                sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                            }
+                        }
                     }
                 }
             }
 
             PalAlarmScheduler.ACTION_PAL_ALARM, Intent.ACTION_BOOT_COMPLETED -> {
                 // Top of the hour fallback check / System Reboot
-                if (intent.action == PalAlarmScheduler.ACTION_PAL_ALARM) {
-                    if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
-                        showNativeNotification(context, hourToUse)
-                        markAsNotifiedForHour(context, hourToUse)
+                if (intent.action == PalAlarmScheduler.ACTION_PAL_ALARM || intent.action == Intent.ACTION_BOOT_COMPLETED) {
+                    if (isFirstTimeToday) {
+                        showNativeNotification(context, currentHour, isFirstPal = true)
+                        markAsNotifiedForHour(context, currentHour)
+                        sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                    } else if (intent.action == PalAlarmScheduler.ACTION_PAL_ALARM) {
+                        if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
+                            val isFirstPal = !sharedPrefs.getBoolean(firstNotifiedKey, false)
+                            showNativeNotification(context, hourToUse, isFirstPal)
+                            markAsNotifiedForHour(context, hourToUse)
+                            if (isFirstPal) {
+                                sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                            }
+                        }
                     }
                 }
                 // Schedule the next hourly fallback window
@@ -93,7 +130,7 @@ class PalNotificationReceiver : BroadcastReceiver() {
         sharedPrefs.edit().putBoolean(alertSentKey, true).apply()
     }
 
-    private fun showNativeNotification(context: Context, hour: Int) {
+    private fun showNativeNotification(context: Context, hour: Int, isFirstPal: Boolean) {
         val channelId = "palzee_hourly_reminders"
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -127,10 +164,13 @@ class PalNotificationReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .build()
 
+        val titleText = if (isFirstPal) "Time for your first pal 📹" else "Time for your $timeString pal"
+        val descText = if (isFirstPal) "Start the day with a quick moment." else "Capture this hour before it passes."
+
         val notificationBuilder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(com.finrein.pals.R.drawable.pal_logo)
-            .setContentTitle("Time for your $timeString pal")
-            .setContentText("Capture this hour before it passes.")
+            .setContentTitle(titleText)
+            .setContentText(descText)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(publicNotification)
