@@ -991,6 +991,13 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
     return cleanInputPath
 }
 
+class ZoomCameraEffect(
+    targets: Int,
+    executor: java.util.concurrent.Executor,
+    surfaceProcessor: androidx.camera.core.SurfaceProcessor,
+    errorListener: androidx.core.util.Consumer<Throwable>
+) : androidx.camera.core.CameraEffect(targets, executor, surfaceProcessor, errorListener)
+
 class EglOutput(
     val surfaceOutput: androidx.camera.core.SurfaceOutput,
     val eglSurface: android.opengl.EGLSurface,
@@ -1003,7 +1010,7 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
     val errorListener = androidx.core.util.Consumer<Throwable> { throwable ->
         throwable.printStackTrace()
     }
-    return androidx.camera.core.CameraEffect(
+    return ZoomCameraEffect(
         androidx.camera.core.CameraEffect.PREVIEW or androidx.camera.core.CameraEffect.VIDEO_CAPTURE,
         effectExecutor,
         object : androidx.camera.core.SurfaceProcessor {
@@ -1075,8 +1082,8 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                         val output = EglOutput(
                             surfaceOutput = surfaceOutput,
                             eglSurface = eglSurface,
-                            width = surfaceOutput.resolution.width,
-                            height = surfaceOutput.resolution.height
+                            width = surfaceOutput.getResolution().width,
+                            height = surfaceOutput.getResolution().height
                         )
                         outputs[surfaceOutput] = output
                     } catch (e: Exception) {
