@@ -991,7 +991,82 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
     return cleanInputPath
 }
 
+fun transcodeAndCropVideo(
+    context: android.content.Context,
+    inputPath: String,
+    zoomFactor: Float,
+    isLandscape: Boolean,
+    onComplete: (String) -> Unit
+) {
+    if (zoomFactor <= 1.05f) {
+        onComplete(inputPath)
+        return
+    }
 
+    val inputFile = java.io.File(inputPath)
+    if (!inputFile.exists() || inputFile.length() == 0L) {
+        onComplete(inputPath)
+        return
+    }
+
+    val outputFilePath = java.io.File(context.cacheDir, "Cropped_Pal_${System.currentTimeMillis()}.mp4")
+
+    try {
+        val scaleEffect = androidx.media3.effect.ScaleAndRotateTransformation.Builder()
+            .setScale(zoomFactor, zoomFactor)
+            .build()
+
+        val targetWidth = if (isLandscape) 1280 else 720
+        val targetHeight = if (isLandscape) 720 else 1280
+
+        val presentationEffect = androidx.media3.effect.Presentation.createForWidthAndHeight(
+            targetWidth, targetHeight,
+            androidx.media3.effect.Presentation.LAYOUT_SCALE_TO_FIT
+        )
+
+        val editedMediaItem = androidx.media3.transformer.EditedMediaItem.Builder(
+            androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(inputFile))
+        )
+            .setEffects(
+                androidx.media3.transformer.Effects(
+                    /* audioProcessors = */ listOf(),
+                    /* videoEffects = */ listOf(scaleEffect, presentationEffect)
+                )
+            )
+            .build()
+
+        val transformer = androidx.media3.transformer.Transformer.Builder(context)
+            .setVideoMimeType(androidx.media3.common.MimeTypes.VIDEO_H264)
+            .build()
+
+        transformer.addListener(object : androidx.media3.transformer.Transformer.Listener {
+            override fun onCompleted(
+                composition: androidx.media3.transformer.Composition,
+                exportResult: androidx.media3.transformer.ExportResult
+            ) {
+                if (outputFilePath.exists() && outputFilePath.length() > 0) {
+                    onComplete(outputFilePath.absolutePath)
+                } else {
+                    onComplete(inputPath)
+                }
+            }
+
+            override fun onError(
+                composition: androidx.media3.transformer.Composition,
+                exportResult: androidx.media3.transformer.ExportResult,
+                exportException: androidx.media3.transformer.ExportException
+            ) {
+                android.util.Log.e("CropVideo", "Transformer error: ${exportException.localizedMessage}", exportException)
+                onComplete(inputPath)
+            }
+        })
+
+        transformer.start(editedMediaItem, outputFilePath.absolutePath)
+    } catch (e: Exception) {
+        android.util.Log.e("CropVideo", "Error starting transcode: ${e.localizedMessage}", e)
+        onComplete(inputPath)
+    }
+}
 
 suspend fun sendVideoPalToVlog(context: android.content.Context, localUri: android.net.Uri, userId: String, palCode: String) {
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -5110,17 +5185,11 @@ fun CameraPreview(
         
         val isNewCameraSession = lastBoundCamera.value != camera
 
-        val targetZoomRatio = 1.0f + linearZoom * 1.5f
-        val zoomState = camera.cameraInfo.zoomState.value
-        val minZ = zoomState?.minZoomRatio ?: 1.0f
-        val maxZ = zoomState?.maxZoomRatio ?: 3.0f
-        val coercedRatio = targetZoomRatio.coerceIn(minZ, maxZ)
-
         if (isNewCameraSession || elapsed >= 16) {
             lastBoundCamera.value = camera
             lastZoomTime[0] = currentTime
             try {
-                camera.cameraControl.setZoomRatio(coercedRatio)
+                camera.cameraControl.setZoomRatio(1.0f)
             } catch (exc: Exception) {
                 exc.printStackTrace()
             }
@@ -5129,7 +5198,7 @@ fun CameraPreview(
             if (activeCamera == camera) {
                 lastZoomTime[0] = System.currentTimeMillis()
                 try {
-                    camera.cameraControl.setZoomRatio(coercedRatio)
+                    camera.cameraControl.setZoomRatio(1.0f)
                 } catch (exc: Exception) {
                     exc.printStackTrace()
                 }
@@ -5137,10 +5206,23 @@ fun CameraPreview(
         }
     }
     
-    AndroidView(
-        factory = { previewView },
+    val currentZoomFactor = 1.0f + linearZoom * 1.5f
+    androidx.compose.foundation.layout.Box(
         modifier = modifier
-    )
+            .fillMaxSize()
+            .clip(androidx.compose.ui.graphics.RectangleShape)
+    ) {
+        AndroidView(
+            factory = { previewView },
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = currentZoomFactor,
+                    scaleY = currentZoomFactor,
+                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
+                )
+        )
+    }
 }
 
 @SuppressLint("MissingPermission")
@@ -5277,7 +5359,15 @@ fun CameraScreenContent(
                                 val fileExists = outputFile.exists() && outputFile.length() > 0
                                 if (fileExists && (!recordEvent.hasError() || recordEvent.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE)) {
                                     android.util.Log.d("ProductionCamera", "Video encoding success: ${outputFile.absolutePath}")
-                                    onCaptureSuccess(outputFile.absolutePath, durationMs, linearZoom > 0f)
+                                    val zoomFactor = 1.0f + linearZoom * 1.5f
+                                    if (linearZoom > 0f) {
+                                        val isLandscape = rotationAngle == 0f || rotationAngle == 180f
+                                        transcodeAndCropVideo(context, outputFile.absolutePath, zoomFactor, isLandscape) { finalPath ->
+                                            onCaptureSuccess(finalPath, durationMs, true)
+                                        }
+                                    } else {
+                                        onCaptureSuccess(outputFile.absolutePath, durationMs, false)
+                                    }
                                 } else {
                                     android.util.Log.e("ProductionCamera", "Encoder finalized with error: ${recordEvent.error}, fileExists: $fileExists")
                                     recordingStarted.completeExceptionally(java.lang.RuntimeException("Recording failed to start"))
