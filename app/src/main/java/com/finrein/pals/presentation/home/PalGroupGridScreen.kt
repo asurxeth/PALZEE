@@ -319,6 +319,49 @@ fun PalGroupGridScreen(
                                 )
 
 
+                                // Overlay 1: Profile picture & user's first name on top left (avatar size = 15.dp, text size = 15.sp)
+                                Row(
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .padding(top = 5.5.dp, start = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (customAvatarUriString != null) {
+                                        UriImage(
+                                            uriString = customAvatarUriString,
+                                            modifier = Modifier
+                                                .size(15.dp)
+                                                .clip(CircleShape)
+                                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(15.dp)
+                                                .clip(CircleShape)
+                                                .background(accentColor),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Image(
+                                                painter = painterResource(id = R.drawable.smile_medium),
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .rotate(180f)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = firstName,
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = Color.White
+                                    )
+                                }
+
                                 // Overlay 2: vlog name (left center) and time text (right center), time text size to perfect 12.5sp
                                 Row(
                                     modifier = Modifier
@@ -803,11 +846,14 @@ fun PalGroupCard(
     val sharedPrefs = remember(context) { context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE) }
     
     val groupSubs = allPalsSubmissions[pal.code] ?: emptyList()
-    val userSub = groupSubs.firstOrNull { it.userId == currentUserId }
+    val userSub = remember(groupSubs, currentUserId) {
+        groupSubs.filter { it.userId == currentUserId }
+            .maxByOrNull { getSubmissionTimestamp(it) }
+    }
     val otherSubs = groupSubs.filter { it.userId != currentUserId }
     val lastViewed = sharedPrefs.getLong("viewed_${pal.code}", 0L)
 
-    val subtitleAnnotated = remember(groupSubs, lastViewed, members.size) {
+    val subtitleAnnotated = remember(userSub, otherSubs, lastViewed, members.size) {
         buildAnnotatedString {
             if (userSub != null) {
                 val timestamp = getSubmissionTimestamp(userSub)
@@ -815,26 +861,50 @@ fun PalGroupCard(
                 withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
                     append("sent pal ")
                 }
-                val numberPart = durationStr.takeWhile { it.isDigit() }
-                val suffixPart = durationStr.dropWhile { it.isDigit() }
-                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
-                    append(numberPart)
-                }
-                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
-                    append(suffixPart)
+                var i = 0
+                while (i < durationStr.length) {
+                    if (durationStr[i].isDigit()) {
+                        val start = i
+                        while (i < durationStr.length && durationStr[i].isDigit()) {
+                            i++
+                        }
+                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                            append(durationStr.substring(start, i))
+                        }
+                    } else {
+                        val start = i
+                        while (i < durationStr.length && !durationStr[i].isDigit()) {
+                            i++
+                        }
+                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                            append(durationStr.substring(start, i))
+                        }
+                    }
                 }
             } else if (otherSubs.isNotEmpty() && lastViewed > 0L) {
                 val durationStr = formatDuration(lastViewed)
                 withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
                     append("viewed ")
                 }
-                val numberPart = durationStr.takeWhile { it.isDigit() }
-                val suffixPart = durationStr.dropWhile { it.isDigit() }
-                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
-                    append(numberPart)
-                }
-                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
-                    append(suffixPart)
+                var i = 0
+                while (i < durationStr.length) {
+                    if (durationStr[i].isDigit()) {
+                        val start = i
+                        while (i < durationStr.length && durationStr[i].isDigit()) {
+                            i++
+                        }
+                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                            append(durationStr.substring(start, i))
+                        }
+                    } else {
+                        val start = i
+                        while (i < durationStr.length && !durationStr[i].isDigit()) {
+                            i++
+                        }
+                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                            append(durationStr.substring(start, i))
+                        }
+                    }
                 }
             } else {
                 if (members.size <= 1) {
@@ -950,18 +1020,15 @@ fun PalGroupCard(
 }
 
 private fun formatDuration(fromMillis: Long): String {
-    val diffMs = System.currentTimeMillis() - fromMillis
-    if (diffMs < 0) return "0m"
-    val diffMins = Math.round(diffMs / 60000.0)
-    if (diffMins < 60) {
-        return "${diffMins}m"
+    val diffMs = Math.max(0L, System.currentTimeMillis() - fromMillis)
+    val diffMins = diffMs / 60000
+    val hours = diffMins / 60
+    val mins = diffMins % 60
+    return if (hours > 0) {
+        "${hours}h ${mins} min"
+    } else {
+        "${mins} min"
     }
-    val diffHours = Math.round(diffMs / 3600000.0)
-    if (diffHours < 24) {
-        return "${diffHours}h"
-    }
-    val diffDays = Math.round(diffMs / 86400000.0)
-    return "${diffDays}d"
 }
 
 private fun getSubmissionTimestamp(sub: SubmissionDbItem): Long {

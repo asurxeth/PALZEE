@@ -510,6 +510,8 @@ fun handleVlogSubmission(
     targetPals: List<PalItem>,
     capturedVideoPath: String?,
     capturedVideoDuration: Long,
+    capturedVideoTimeText: String,
+    capturedVideoInstant: java.time.Instant,
     currentUserId: String,
     firstName: String,
     customAvatarUriString: String?,
@@ -532,13 +534,13 @@ fun handleVlogSubmission(
     onUpdateAvatarUrl: (String) -> Unit
 ) {
     val localVideoPath = capturedVideoPath
-    val time = java.time.LocalTime.now()
-    val formattedTime = String.format("%02d:%02d", time.hour, time.minute)
+    val formattedTime = capturedVideoTimeText
 
     // Mark that a pal was successfully sent for this specific hour
-    val sentHour = time.hour
+    val zonedDateTime = capturedVideoInstant.atZone(java.time.ZoneId.systemDefault())
+    val sentHour = zonedDateTime.hour
     val sentPrefs = context.getSharedPreferences("palzee_prefs", android.content.Context.MODE_PRIVATE)
-    val sentTodayStr = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date())
+    val sentTodayStr = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date.from(capturedVideoInstant))
     val sentLogKey = "pal_logged_${sentTodayStr}_$sentHour"
     sentPrefs.edit().putBoolean(sentLogKey, true).apply()
 
@@ -596,10 +598,10 @@ fun handleVlogSubmission(
                 userId = currentUserId,
                 userDisplayName = if (finalAvatarUrl.isNotEmpty()) "$firstName|||$finalAvatarUrl" else firstName,
                 imageUrl = "${localVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}",
-                createdAt = java.time.Instant.now().toString()
+                createdAt = capturedVideoInstant.toString()
             )
             val currentList = allPalsSubmissions[targetPalCode] ?: emptyList()
-            val newHour = (java.time.LocalTime.now().hour - 4 + 24) % 24
+            val newHour = (zonedDateTime.hour - 4 + 24) % 24
             val updatedList = currentList.filterNot { sub ->
                 sub.userId == currentUserId && getSubmissionRelativeHour(sub) == newHour
             } + localSubmission
@@ -624,7 +626,7 @@ fun handleVlogSubmission(
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         android.widget.Toast.makeText(context, "Upload failed. Please try again.", android.widget.Toast.LENGTH_LONG).show()
                         val currentList = allPalsSubmissions[targetPalCode] ?: emptyList()
-                        val currentHour = (java.time.LocalTime.now().hour - 4 + 24) % 24
+                        val currentHour = (zonedDateTime.hour - 4 + 24) % 24
                         allPalsSubmissions[targetPalCode] = currentList.filterNot { it.userId == currentUserId && getSubmissionRelativeHour(it) == currentHour }
                     }
                     return@launch
@@ -674,7 +676,7 @@ fun handleVlogSubmission(
                     userId = currentUserId,
                     userDisplayName = formattedName,
                     imageUrl = delimiterString,
-                    createdAt = java.time.Instant.now().toString()
+                    createdAt = capturedVideoInstant.toString()
                 )
                 try {
                     // Recreate group if deleted or missing using upsert (no pre-check select)
@@ -914,6 +916,15 @@ suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: 
 }
 
 suspend fun ensureVideoCached(context: android.content.Context, videoPath: String): String {
+    val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+    val vlogPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+    
+    val cachedLocal = palPrefs.getString("local_path_$videoPath", null)
+        ?: vlogPrefs.getString("local_path_$videoPath", null)
+    if (cachedLocal != null && java.io.File(cachedLocal).exists()) {
+        return cachedLocal
+    }
+
     if (videoPath.startsWith("http")) {
         var resolvedPath = videoPath
         if (resolvedPath.contains("/pals/", ignoreCase = true)) {
@@ -925,53 +936,46 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
         if (resolvedPath.contains("/avatars/", ignoreCase = true)) {
             resolvedPath = resolvedPath.replace("/avatars/", "/AVATARS/")
         }
-        return resolvedPath
-    }
-    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
-        val vlogPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
-        val cachedLocal = palPrefs.getString("local_path_$videoPath", null)
-            ?: vlogPrefs.getString("local_path_$videoPath", null)
-        if (cachedLocal != null && java.io.File(cachedLocal).exists()) {
-            cachedLocal
-        } else {
-            val fileName = videoPath.substringAfterLast("/")
-            val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
-            if (cacheFile.exists() && cacheFile.length() > 0) {
-                cacheFile.absolutePath
-            } else {
-                try {
-                    val bytes = try {
-                        val connection = java.net.URL(videoPath).openConnection() as java.net.HttpURLConnection
-                        connection.connectTimeout = 10000
-                        connection.readTimeout = 10000
-                        connection.requestMethod = "GET"
-                        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
-                        if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
-                            connection.inputStream.use { it.readBytes() }
-                        } else {
-                            throw java.io.IOException("HTTP error ${connection.responseCode}")
-                        }
-                    } catch (httpEx: Exception) {
-                        val bucketName = if (videoPath.contains("pals_vlogs", ignoreCase = true)) "PALS_VLOGS" else "PALS"
-                        val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
-                        try {
-                            storage.downloadPublic(fileName)
-                        } catch (e1: Exception) {
-                            storage.downloadAuthenticated(fileName)
-                        }
+
+        val fileName = resolvedPath.substringAfterLast("/")
+        val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
+        if (cacheFile.exists() && cacheFile.length() > 0) {
+            return cacheFile.absolutePath
+        }
+
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val bytes = try {
+                    val connection = java.net.URL(resolvedPath).openConnection() as java.net.HttpURLConnection
+                    connection.connectTimeout = 5000
+                    connection.readTimeout = 5000
+                    connection.requestMethod = "GET"
+                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
+                    if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                        connection.inputStream.use { it.readBytes() }
+                    } else {
+                        throw java.io.IOException("HTTP error ${connection.responseCode}")
                     }
-                    cacheFile.writeBytes(bytes)
-                    palPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
-                    vlogPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
-                    cacheFile.absolutePath
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    videoPath
+                } catch (httpEx: Exception) {
+                    val bucketName = if (resolvedPath.contains("pals_vlogs", ignoreCase = true)) "PALS_VLOGS" else "PALS"
+                    val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+                    try {
+                        storage.downloadPublic(fileName)
+                    } catch (e1: Exception) {
+                        storage.downloadAuthenticated(fileName)
+                    }
                 }
+                cacheFile.writeBytes(bytes)
+                palPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
+                vlogPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
+                cacheFile.absolutePath
+            } catch (e: Exception) {
+                resolvedPath
             }
         }
     }
+    
+    return videoPath
 }
 
 
@@ -2125,6 +2129,7 @@ fun HomeScreen(
     var capturedVideoDuration by remember(currentUserId) { mutableStateOf(2000L) }
     var capturedCaptionText by remember(currentUserId) { mutableStateOf("") }
     var capturedVideoTimeText by remember(currentUserId) { mutableStateOf("") }
+    var capturedVideoInstant by remember(currentUserId) { mutableStateOf<java.time.Instant?>(null) }
     var isMuted by remember { mutableStateOf(false) }
     var initialSyncCompleted by remember { mutableStateOf(false) }
 
@@ -2266,30 +2271,7 @@ fun HomeScreen(
                             .decodeList<SubmissionDbItem>()
                         
                         val todaySubs = dbSubs.filter { sub ->
-                            if (sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR")) {
-                                false
-                            } else {
-                                var subDate: java.time.LocalDate? = null
-                                if (!sub.createdAt.isNullOrEmpty()) {
-                                    try {
-                                        val instant = java.time.Instant.parse(sub.createdAt)
-                                        subDate = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                                    } catch (e: Exception) {}
-                                }
-                                if (subDate == null) {
-                                    val parts = sub.imageUrl.split("|||")
-                                    val path = parts.getOrNull(0) ?: ""
-                                    val regex = Regex("\\d{13}")
-                                    val match = regex.find(path)
-                                    if (match != null) {
-                                        try {
-                                            val millis = match.value.toLong()
-                                            subDate = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                                        } catch (e: Exception) {}
-                                    }
-                                }
-                                subDate == java.time.LocalDate.now()
-                            }
+                            !(sub.imageUrl == "PROFILE_AVATAR" || sub.imageUrl.startsWith("PROFILE_AVATAR"))
                         }
 
                         val mappings = com.finrein.pals.PalApplication.supabase.postgrest.from("user_pals")
@@ -2420,7 +2402,7 @@ fun HomeScreen(
         activeLocalDate.minusDays(selectedDayOffset.toLong())
     }
 
-    val activePalSubmissions = remember(activeVlogPal, capturedVlogsPaths, capturedVlogsTimes, capturedVlogsCaptions, capturedVlogsDurations, allPalsSubmissions) {
+    val activePalSubmissions = remember(activeVlogPal, capturedVlogsPaths, capturedVlogsTimes, capturedVlogsCaptions, capturedVlogsDurations, allPalsSubmissions.toMap()) {
         val pal = activeVlogPal
         if (pal == null || pal.code == "vlog") {
             capturedVlogsPaths.mapIndexed { idx, path ->
@@ -2433,12 +2415,24 @@ fun HomeScreen(
                 val filename = java.io.File(path).name
                 val matchingSub = allPalsSubmissions["vlog"]?.firstOrNull { sub ->
                     val subPath = sub.imageUrl.split("|||").firstOrNull() ?: ""
-                    subPath == path || subPath.endsWith("/$filename") || (subPath.startsWith("http") && path.startsWith("http") && subPath == path)
+                    val subFilename = subPath.substringAfterLast("/")
+                    val pathFilename = path.substringAfterLast("/")
+                    subPath.equals(path, ignoreCase = true) || 
+                    subFilename.equals(pathFilename, ignoreCase = true)
                 }
-                val createdAtStr = matchingSub?.createdAt ?: if (file.exists()) {
-                    java.time.Instant.ofEpochMilli(file.lastModified()).toString()
-                } else {
-                    java.time.Instant.now().toString()
+                val createdAtStr = matchingSub?.createdAt ?: try {
+                    val timeStr = capturedVlogsTimes.getOrNull(idx) ?: "12:00"
+                    val parts = timeStr.split(":")
+                    val hr = parts.getOrNull(0)?.toIntOrNull() ?: 12
+                    val min = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                    val zdt = targetDate.atTime(hr, min).atZone(java.time.ZoneId.systemDefault())
+                    zdt.toInstant().toString()
+                } catch (e: Exception) {
+                    if (file.exists()) {
+                        java.time.Instant.ofEpochMilli(file.lastModified()).toString()
+                    } else {
+                        java.time.Instant.now().toString()
+                    }
                 }
                 SubmissionDbItem(
                     id = matchingSub?.id,
@@ -3735,16 +3729,21 @@ fun HomeScreen(
                             isTransitioningToPreview = false
                         },
                         onSend = { caption, targetPals ->
-                            val time = java.time.LocalTime.now()
-                            val formattedTime = String.format("%02d:%02d", time.hour, time.minute)
-                            capturedVideoTimeText = formattedTime
                             capturedCaptionText = caption
+
+                            val finalTimeText = capturedVideoTimeText.ifEmpty {
+                                val time = java.time.LocalTime.now()
+                                String.format(java.util.Locale.US, "%02d:%02d", time.hour, time.minute)
+                            }
+                            val finalInstant = capturedVideoInstant ?: java.time.Instant.now()
 
                             handleVlogSubmission(
                                 caption = caption,
                                 targetPals = targetPals,
                                 capturedVideoPath = capturedVideoPath,
                                 capturedVideoDuration = capturedVideoDuration,
+                                capturedVideoTimeText = finalTimeText,
+                                capturedVideoInstant = finalInstant,
                                 currentUserId = currentUserId,
                                 firstName = firstName,
                                 customAvatarUriString = customAvatarUriString,
@@ -3942,6 +3941,10 @@ fun HomeScreen(
                         cameraProviderFuture = cameraProviderFuture,
                         previewView = previewView,
                         onCaptureSuccess = { path, duration, isZoomed ->
+                            val time = java.time.LocalTime.now()
+                            val formattedTime = String.format(java.util.Locale.US, "%02d:%02d", time.hour, time.minute)
+                            capturedVideoTimeText = formattedTime
+                            capturedVideoInstant = java.time.Instant.now()
                             capturedVideoPath = path
                             capturedVideoDuration = duration
                             isCapturedVideoZoomed = isZoomed
@@ -6404,7 +6407,14 @@ fun CapturedPreviewScreen(
             }
     }
 
-    var videoRotation by remember(capturedVideoPath) { mutableStateOf(if (isZoomed) 0 else 270) }
+    val isLandscapeCapture = remember(rotationAngle) {
+        rotationAngle == 0f || rotationAngle == 180f
+    }
+    val defaultRotation = remember(isZoomed, isLandscapeCapture) {
+        if (isLandscapeCapture || isZoomed) 0 else 270
+    }
+
+    var videoRotation by remember(capturedVideoPath) { mutableStateOf(defaultRotation) }
 
     // 2. FORCE RE-EVALUATION FLOW:
     // We listen to the raw capturedVideoPath. Whenever this string changes, we forcefully flush the player stack.
@@ -6448,7 +6458,7 @@ fun CapturedPreviewScreen(
             // Asynchronously read the rotation tag using MediaMetadataRetriever on Dispatchers.IO with retries
             val rot = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 var retrieverSuccess = false
-                var parsedRot = 270
+                var parsedRot = defaultRotation
                 var attempts = 0
                 while (attempts < 5 && !retrieverSuccess) {
                     try {
@@ -6457,7 +6467,7 @@ fun CapturedPreviewScreen(
                             val retriever = android.media.MediaMetadataRetriever()
                             retriever.setDataSource(cleanPath)
                             val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                            parsedRot = rotationStr?.toIntOrNull() ?: (if (isZoomed) 0 else 270)
+                            parsedRot = if (isLandscapeCapture || isZoomed) 0 else (rotationStr?.toIntOrNull() ?: 270)
                             retriever.release()
                             retrieverSuccess = true
                         }
@@ -6492,7 +6502,7 @@ fun CapturedPreviewScreen(
             }
         } else {
             android.util.Log.d("PalPipeline", "Path is completely empty. Retaining silent black display slate.")
-            videoRotation = if (isZoomed) 0 else 270
+            videoRotation = defaultRotation
         }
     }
 
@@ -6933,15 +6943,31 @@ fun CapturedPreviewScreen(
                 }
                 val isHourlyRestricted = lastHourSub != null
                 
-                val hourlySentText = if (lastHourSub != null) {
+                val latestTodaySub = if (pal.isVlog) null else {
+                    val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
+                    groupSubs.filter { it.userId == currentUserId }
+                        .filter { sub ->
+                            val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                            path !in currentDeleted && sub.imageUrl !in currentDeleted
+                        }
+                        .maxByOrNull { sub ->
+                            try {
+                                java.time.Instant.parse(sub.createdAt).toEpochMilli()
+                            } catch (e: Exception) {
+                                0L
+                            }
+                        }
+                }
+                
+                val hourlySentText = if (latestTodaySub != null) {
                     var subTime = 0L
-                    if (!lastHourSub.createdAt.isNullOrEmpty()) {
+                    if (!latestTodaySub.createdAt.isNullOrEmpty()) {
                         try {
-                            subTime = java.time.Instant.parse(lastHourSub.createdAt).toEpochMilli()
+                            subTime = java.time.Instant.parse(latestTodaySub.createdAt).toEpochMilli()
                         } catch (e: Exception) {}
                     }
                     if (subTime == 0L) {
-                        val parts = lastHourSub.imageUrl.split("|||")
+                        val parts = latestTodaySub.imageUrl.split("|||")
                         val path = parts.getOrNull(0) ?: ""
                         val regex = Regex("\\d{13}")
                         val match = regex.find(path)
@@ -6952,9 +6978,14 @@ fun CapturedPreviewScreen(
                         }
                     }
                     if (subTime > 0L) {
-                        val instant = java.time.Instant.ofEpochMilli(subTime)
-                        val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
-                        String.format("sent for %02d:00", zonedDateTime.hour)
+                        val diffMin = Math.max(0L, (System.currentTimeMillis() - subTime) / 60000L)
+                        val h = diffMin / 60
+                        val m = diffMin % 60
+                        if (h > 0) {
+                            "sent pal ${h}h ${m} min"
+                        } else {
+                            "sent pal ${m} min"
+                        }
                     } else {
                         "sent"
                     }
@@ -7274,13 +7305,13 @@ fun GroupMemberCard(
                     cleanSubName.equals(memberName, ignoreCase = true)
                 }
             }
-            matchesUser && (!isCurrentHourOnToday || isSubmissionInCurrentHourWindow(sub))
+            matchesUser
         }
     } else {
         emptyList()
     }
 
-    val sortedMemberSubs = remember(memberSubs) {
+    val sortedMemberSubs = remember(memberSubs, isCurrentHourOnToday, activeViewingHour) {
         memberSubs.mapNotNull { sub ->
             val parts = sub.imageUrl.split("|||")
             val path = parts.getOrNull(0) ?: ""
@@ -7300,9 +7331,14 @@ fun GroupMemberCard(
                 Triple(sub, hour, timestamp)
             }
         }
-        .groupBy { it.second }
-        .map { entry -> entry.value.maxByOrNull { it.third }!! }
-        .sortedBy { it.third }
+        .filter {
+            if (isCurrentHourOnToday) {
+                true
+            } else {
+                it.second == (activeViewingHour - 4 + 24) % 24
+            }
+        }
+        .sortedByDescending { it.third }
         .map { it.first }
     }
 
@@ -8797,7 +8833,7 @@ fun VlogScreenContent(
                         pal = pal,
                         groupMembers = groupMembers,
                         userFirstName = userFirstName,
-                        filteredSubmissions = filteredSubmissions,
+                        filteredSubmissions = daySubmissions,
                         currentUserId = currentUserId,
                         currentDisplayName = currentDisplayName,
                         accentColor = accentColor,
@@ -9108,7 +9144,7 @@ fun VlogScreenContent(
                                     }
 
                                     Text(
-                                        text = currentDisplayName,
+                                        text = userFirstName,
                                         fontFamily = FontFamily.SansSerif,
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Normal,
@@ -10607,6 +10643,7 @@ fun VlogScreenContent(
             selectedProfileColor = selectedProfileColor,
             capturedVlogsPaths = capturedVlogsPaths,
             capturedVlogsCaptions = capturedVlogsCaptions,
+            capturedVlogsTimes = capturedVlogsTimes,
             allPalsSubmissions = allPalsSubmissions,
             currentUserId = currentUserId,
             currentDisplayName = currentDisplayName,
@@ -10621,7 +10658,9 @@ fun VlogScreenContent(
             allPalsMembers = allPalsMembers,
             messages = messages,
             onDeleteMessageLocal = onDeleteMessageLocal,
-            onDeleteVlog = onDeleteVlog
+            onDeleteVlog = onDeleteVlog,
+            selectedDayOffset = selectedDayOffset,
+            onSelectedDayOffsetChange = onSelectedDayOffsetChange
         )
 
         // --- Reply Preview Overlay ---
@@ -10668,6 +10707,9 @@ fun VlogScreenContent(
                     advanceExportHour()
                 }
             }
+            LaunchedEffect(dayHoursList) {
+                exportHourIndex = 0
+            }
             var hasAdvancedThisHour by remember(exportHourIndex) { mutableStateOf(false) }
             val onPlaybackEnded = {
                 if (!hasAdvancedThisHour) {
@@ -10693,7 +10735,31 @@ fun VlogScreenContent(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
-                    ) { onShowExportDialogChange(false) },
+                    ) { onShowExportDialogChange(false) }
+                    .pointerInput(selectedDayOffset) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onDragEnd = {
+                                val threshold = 100f
+                                if (totalDrag > threshold) {
+                                    // Swipe Right -> Older day (increment offset)
+                                    if (selectedDayOffset < 6) {
+                                        onSelectedDayOffsetChange(selectedDayOffset + 1)
+                                    }
+                                } else if (totalDrag < -threshold) {
+                                    // Swipe Left -> Newer day (decrement offset)
+                                    if (selectedDayOffset > 0) {
+                                        onSelectedDayOffsetChange(selectedDayOffset - 1)
+                                    }
+                                }
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                totalDrag += dragAmount
+                            }
+                        )
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 val screenWidth = maxWidth
@@ -10910,6 +10976,7 @@ fun VlogScreenContent(
                                         val originalIndex = (capturedVlogsPaths.lastIndex - exportActiveIndex).coerceIn(0, capturedVlogsPaths.lastIndex.coerceAtLeast(0))
                                         val currentCaption = capturedVlogsCaptions.getOrNull(originalIndex) ?: ""
                                         val currentTime = capturedVlogsTimes.getOrNull(originalIndex) ?: ""
+
 
                                         // Left center: "vlog" text in BricolageVariableFontFamily
                                         Text(
@@ -13483,6 +13550,7 @@ fun PalChatOverlay(
     selectedProfileColor: Color,
     capturedVlogsPaths: List<String>,
     capturedVlogsCaptions: List<String>,
+    capturedVlogsTimes: List<String> = emptyList(),
     allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
     currentUserId: String,
     currentDisplayName: String,
@@ -13497,7 +13565,9 @@ fun PalChatOverlay(
     allPalsMembers: Map<String, List<String>> = emptyMap(),
     messages: List<MessageDbItem> = emptyList(),
     onDeleteMessageLocal: (String) -> Unit = {},
-    onDeleteVlog: (Int) -> Unit = {}
+    onDeleteVlog: (Int) -> Unit = {},
+    selectedDayOffset: Int = 0,
+    onSelectedDayOffsetChange: (Int) -> Unit = {}
 ) {
     if (!showChat) return
 
@@ -13510,6 +13580,30 @@ fun PalChatOverlay(
                 indication = null,
                 onClick = {}
             )
+            .pointerInput(selectedDayOffset) {
+                var totalDrag = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDrag = 0f },
+                    onDragEnd = {
+                        val threshold = 100f
+                        if (totalDrag > threshold) {
+                            // Swipe Right -> Older day (increment offset)
+                            if (selectedDayOffset < 6) {
+                                onSelectedDayOffsetChange(selectedDayOffset + 1)
+                            }
+                        } else if (totalDrag < -threshold) {
+                            // Swipe Left -> Newer day (decrement offset)
+                            if (selectedDayOffset > 0) {
+                                onSelectedDayOffsetChange(selectedDayOffset - 1)
+                            }
+                        }
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDrag += dragAmount
+                    }
+                )
+            }
     ) {
         var messageInput by remember { mutableStateOf("") }
         var selectedVlogPreviewItem by remember { mutableStateOf<FeedItem?>(null) }
@@ -13670,7 +13764,17 @@ fun PalChatOverlay(
             }
         }
 
-        val feedItems = remember(pal.code, capturedVlogsPaths, allPalsSubmissions, currentUserId, messages) {
+        val targetDate = remember(selectedDayOffset) {
+            val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+            val activeLocalDate = if (now.hour < 4) {
+                now.toLocalDate().minusDays(1)
+            } else {
+                now.toLocalDate()
+            }
+            activeLocalDate.minusDays(selectedDayOffset.toLong())
+        }
+
+        val allFeedItems = remember(pal.code, capturedVlogsPaths, capturedVlogsTimes, allPalsSubmissions.toMap(), currentUserId, messages) {
             val soundItems = messages.filter { !it.content.startsWith("REPLY|||") && !it.content.startsWith("REACTION|||") }.mapNotNull { msg ->
                 val instant = if (!msg.createdAt.isNullOrEmpty()) {
                     try {
@@ -13683,7 +13787,7 @@ fun PalChatOverlay(
                 }
                 val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
                 val dayDateStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d", java.util.Locale.US))
-                val timeStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US))
+                val timeStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
                 
                 val membersList = allPalsMembers[pal.code] ?: emptyList()
                 val senderMember = membersList.firstOrNull { it.startsWith("${msg.userId}|||") }
@@ -13741,21 +13845,41 @@ fun PalChatOverlay(
                     val cleanPath = if (resolvedPath.startsWith("file://")) resolvedPath.substring(7) else resolvedPath
                     val file = java.io.File(cleanPath)
                     if (file.exists() || path.startsWith("http")) {
-                        val matchingSub = allPalsSubmissions["vlog"]?.firstOrNull { it.imageUrl.startsWith(path) }
+                        val matchingSub = allPalsSubmissions["vlog"]?.firstOrNull { sub ->
+                            val subPath = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                            val subFilename = subPath.substringAfterLast("/")
+                            val pathFilename = path.substringAfterLast("/")
+                            subPath.equals(path, ignoreCase = true) || 
+                            subFilename.equals(pathFilename, ignoreCase = true)
+                        }
                         val instant = if (matchingSub?.createdAt != null) {
                             try {
                                 java.time.Instant.parse(matchingSub.createdAt)
                             } catch (e: Exception) {
                                 if (file.exists()) java.time.Instant.ofEpochMilli(file.lastModified()) else java.time.Instant.now()
                             }
-                        } else if (file.exists()) {
-                            java.time.Instant.ofEpochMilli(file.lastModified())
                         } else {
-                            java.time.Instant.now()
+                            try {
+                                val timeStr = capturedVlogsTimes.getOrNull(idx) ?: "12:00"
+                                val parts = timeStr.split(":")
+                                val hr = parts.getOrNull(0)?.toIntOrNull() ?: 12
+                                val min = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                                val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+                                val activeLocalDate = if (now.hour < 4) {
+                                    now.toLocalDate().minusDays(1)
+                                } else {
+                                    now.toLocalDate()
+                                }
+                                val targetLocalDate = activeLocalDate.minusDays(selectedDayOffset.toLong())
+                                val zdt = targetLocalDate.atTime(hr, min).atZone(java.time.ZoneId.systemDefault())
+                                zdt.toInstant()
+                            } catch (e: Exception) {
+                                if (file.exists()) java.time.Instant.ofEpochMilli(file.lastModified()) else java.time.Instant.now()
+                            }
                         }
                         val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
                         val dayDateStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d", java.util.Locale.US))
-                        val timeStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US))
+                        val timeStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
                         val caption = capturedVlogsCaptions.getOrNull(idx) ?: ""
                         FeedItem(
                             path = path,
@@ -13792,7 +13916,7 @@ fun PalChatOverlay(
                         }
                         val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
                         val dayDateStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d", java.util.Locale.US))
-                        val timeStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US))
+                        val timeStr = zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
                         FeedItem(
                             path = path,
                             caption = caption,
@@ -13812,6 +13936,10 @@ fun PalChatOverlay(
             }
         }
 
+        val feedItems = remember(allFeedItems, targetDate) {
+            allFeedItems.filter { it.localDate == targetDate }
+        }
+
         val groupedByDay = remember(feedItems) {
             feedItems.groupBy { it.localDate }
         }
@@ -13824,9 +13952,9 @@ fun PalChatOverlay(
                 val dayLabel = when (item.localDate) {
                     today -> "Today"
                     today.minusDays(1) -> "Yesterday"
-                    else -> item.localDate.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d", java.util.Locale.US))
+                    else -> item.localDate.format(java.time.format.DateTimeFormatter.ofPattern("EEEE", java.util.Locale.US))
                 }
-                val header = "$dayLabel ${item.timeStr}"
+                val header = "$dayLabel, ${item.timeStr}"
                 groups.getOrPut(header) { mutableListOf() }.add(item)
             }
             groups.toList()
@@ -14125,6 +14253,7 @@ fun PalChatOverlay(
                                                                 videoPath = feedItem.path,
                                                                 modifier = Modifier.fillMaxSize()
                                                             )
+
                                                             if (feedReactions.isNotEmpty()) {
                                                                 Text(
                                                                     text = feedReactions.last(),
@@ -14356,6 +14485,7 @@ fun PalChatOverlay(
                                                                 videoPath = feedItem.path,
                                                                 modifier = Modifier.fillMaxSize()
                                                             )
+
                                                             if (feedReactions.isNotEmpty()) {
                                                                 Text(
                                                                     text = feedReactions.last(),
@@ -14550,7 +14680,18 @@ fun PalChatOverlay(
                     )
                 }
 
-                val headerTitleText = if (pal.isVlog) "vlog" else pal.name
+                val dayText = if (selectedDayOffset > 0) {
+                    val targetLocalDate = java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
+                    val dayName = if (selectedDayOffset == 1) {
+                        "Yesterday"
+                    } else {
+                        targetLocalDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US)
+                    }
+                    " ($dayName)"
+                } else {
+                    ""
+                }
+                val headerTitleText = (if (pal.isVlog) "vlog" else pal.name) + dayText
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -14862,51 +15003,113 @@ fun PalChatOverlay(
                             )
                         }
 
-                        // Center: Large bold hour-only time slot (e.g. 23:00)
-                        val captureHourOnlyText = try {
-                            val zonedDateTime = item.rawInstant.atZone(java.time.ZoneId.systemDefault())
-                            String.format(java.util.Locale.US, "%02d:00", zonedDateTime.hour)
-                        } catch (e: Exception) {
-                            item.timeStr
-                        }
-
-                        Text(
-                            text = captureHourOnlyText,
-                            fontFamily = DelaGothicOneFontFamily,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = Color.White,
-                            modifier = Modifier.align(Alignment.Center),
-                            style = TextStyle(
-                                shadow = androidx.compose.ui.graphics.Shadow(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                    blurRadius = 2f
-                                )
-                            )
-                        )
-
-                        // Bottom: Caption text (if present)
-                        if (item.caption.isNotEmpty()) {
-                            Text(
-                                text = item.caption,
-                                fontFamily = FontFamily.SansSerif,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Normal,
-                                color = Color.White,
+                        if (pal.isVlog) {
+                            // Overlay 2: vlog name (left center) and time text (right center), time text size to perfect 12.5sp
+                            Row(
                                 modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 12.dp)
-                                    .padding(horizontal = 24.dp),
-                                textAlign = TextAlign.Center,
-                                style = TextStyle(
-                                    shadow = androidx.compose.ui.graphics.Shadow(
-                                        color = Color.Black.copy(alpha = 0.5f),
-                                        offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                        blurRadius = 3f
+                                    .fillMaxWidth()
+                                    .align(Alignment.Center)
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "vlog",
+                                    fontFamily = BricolageVariableFontFamily,
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    style = TextStyle(
+                                        shadow = androidx.compose.ui.graphics.Shadow(
+                                            color = Color.Black.copy(alpha = 0.5f),
+                                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                            blurRadius = 3f
+                                        )
                                     )
                                 )
-                            )
+
+                                Text(
+                                    text = item.timeStr,
+                                    fontFamily = RobotoFontFamily,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = Color.White,
+                                    style = TextStyle(
+                                        shadow = androidx.compose.ui.graphics.Shadow(
+                                            color = Color.Black.copy(alpha = 0.5f),
+                                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                            blurRadius = 3f
+                                        )
+                                    )
+                                )
+                            }
+
+                            if (item.caption.isNotEmpty()) {
+                                Text(
+                                    text = item.caption,
+                                    fontFamily = RobotoFontFamily,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    color = Color.White,
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .padding(horizontal = 48.dp),
+                                    textAlign = TextAlign.Center,
+                                    style = TextStyle(
+                                        shadow = androidx.compose.ui.graphics.Shadow(
+                                            color = Color.Black.copy(alpha = 0.5f),
+                                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                            blurRadius = 3f
+                                        )
+                                    )
+                                )
+                            }
+                        } else {
+                            // Center: Large bold hour-only time slot (e.g. 23:00)
+                            val captureHourOnlyText = try {
+                                val zonedDateTime = item.rawInstant.atZone(java.time.ZoneId.systemDefault())
+                                String.format(java.util.Locale.US, "%02d:00", zonedDateTime.hour)
+                            } catch (e: Exception) {
+                                item.timeStr
+                            }
+
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier.align(Alignment.Center)
+                            ) {
+                                Text(
+                                    text = captureHourOnlyText,
+                                    fontFamily = DelaGothicOneFontFamily,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    style = TextStyle(
+                                        shadow = androidx.compose.ui.graphics.Shadow(
+                                            color = Color.Black.copy(alpha = 0.6f),
+                                            offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                                            blurRadius = 4f
+                                        )
+                                    )
+                                )
+                                if (item.caption.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(5.dp))
+                                    Text(
+                                        text = item.caption,
+                                        fontFamily = RobotoFontFamily,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Normal,
+                                        color = Color.White,
+                                        style = TextStyle(
+                                            shadow = androidx.compose.ui.graphics.Shadow(
+                                                color = Color.Black.copy(alpha = 0.6f),
+                                                offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                                                blurRadius = 4f
+                                            )
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
                 }

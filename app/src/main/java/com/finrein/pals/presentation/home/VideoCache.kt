@@ -53,4 +53,16 @@ object VideoCache {
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
+
+    fun getLowLatencyLoadControl(): androidx.media3.exoplayer.LoadControl {
+        return androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                100,  // minBufferMs
+                500,  // maxBufferMs
+                50,   // bufferForPlaybackMs
+                50    // bufferForPlaybackAfterRebufferMs
+            )
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+    }
 }
