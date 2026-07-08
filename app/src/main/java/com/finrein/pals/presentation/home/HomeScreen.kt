@@ -4955,11 +4955,17 @@ fun CameraPreview(
         
         val isNewCameraSession = lastBoundCamera.value != camera
 
+        val targetZoomRatio = 1.0f + linearZoom * 2.0f
+        val zoomState = camera.cameraInfo.zoomState.value
+        val minZ = zoomState?.minZoomRatio ?: 1.0f
+        val maxZ = zoomState?.maxZoomRatio ?: 3.0f
+        val coercedRatio = targetZoomRatio.coerceIn(minZ, maxZ)
+
         if (isNewCameraSession || elapsed >= 16) {
             lastBoundCamera.value = camera
             lastZoomTime[0] = currentTime
             try {
-                camera.cameraControl.setLinearZoom(linearZoom)
+                camera.cameraControl.setZoomRatio(coercedRatio)
             } catch (exc: Exception) {
                 exc.printStackTrace()
             }
@@ -4968,7 +4974,7 @@ fun CameraPreview(
             if (activeCamera == camera) {
                 lastZoomTime[0] = System.currentTimeMillis()
                 try {
-                    camera.cameraControl.setLinearZoom(linearZoom)
+                    camera.cameraControl.setZoomRatio(coercedRatio)
                 } catch (exc: Exception) {
                     exc.printStackTrace()
                 }
