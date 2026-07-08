@@ -12337,6 +12337,7 @@ fun VideoThumbnail(
 }
 
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun VideoPlayerItem(
     videoPath: String,
@@ -12350,6 +12351,7 @@ fun VideoPlayerItem(
     )
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun VideoPlayerItem(
     videoPaths: List<String>,
@@ -12373,7 +12375,6 @@ fun VideoPlayerItem(
         }
     }
 
-    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     val localPlayer = remember(context) {
         androidx.media3.exoplayer.ExoPlayer.Builder(context)
             .setRenderersFactory(
@@ -12422,7 +12423,6 @@ fun VideoPlayerItem(
         }
     }
 
-    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     LaunchedEffect(localPlayer, resolvedPaths) {
         if (resolvedPaths.isEmpty()) {
             localPlayer.stop()
