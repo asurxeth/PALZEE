@@ -53,8 +53,6 @@ class ActivePalRepositoryImpl @Inject constructor(
                 .select {
                     filter {
                         eq("pal_code", palCode)
-                        gte("created_at", startUtc)
-                        lt("created_at", endUtc)
                     }
                 }
                 .decodeList<SubmissionDbItem>()

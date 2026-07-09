@@ -70,13 +70,18 @@ class MainActivity : ComponentActivity() {
         }
         super.onCreate(savedInstanceState)
         
-
-
         val sessionManager = com.finrein.pals.data.local.SessionManager(applicationContext)
+        val interval = sessionManager.getNotificationInterval()
         com.finrein.pals.notification.PalAlarmScheduler.updateScheduling(
             applicationContext,
-            sessionManager.getNotificationInterval()
+            interval
         )
+        if (sessionManager.getUser() != null && interval != "off" && interval.isNotEmpty()) {
+            val checkIntent = Intent(applicationContext, com.finrein.pals.notification.PalNotificationReceiver::class.java).apply {
+                action = Intent.ACTION_USER_PRESENT
+            }
+            applicationContext.sendBroadcast(checkIntent)
+        }
 
         setContent {
             var selectedThemeColor by remember { 

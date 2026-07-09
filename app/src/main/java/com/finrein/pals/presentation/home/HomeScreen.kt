@@ -614,6 +614,14 @@ fun handleVlogSubmission(
             allPalsSubmissions[targetPalCode] = updatedList
         }
 
+        val uniqueKey = java.util.UUID.randomUUID().toString()
+        if (targetPalCode != "vlog") {
+            val pendingPrefs = context.getSharedPreferences("pending_submissions_prefs", android.content.Context.MODE_PRIVATE)
+            val localDisplayName = if (finalAvatarUrl.isNotEmpty()) "$firstName|||$finalAvatarUrl" else firstName
+            val pendingValue = "$targetPalCode;;;$currentUserId;;;$localDisplayName;;;${localVideoPath ?: ""}|||${caption}|||${capturedVideoDuration};;;${capturedVideoInstant.toString()}"
+            pendingPrefs.edit().putString(uniqueKey, pendingValue).apply()
+        }
+
         coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val uploadedVideoUrl = if (!localVideoPath.isNullOrBlank()) {
@@ -694,6 +702,10 @@ fun handleVlogSubmission(
                     }
 
                     supabaseClient.postgrest.from("submissions").insert(newSubmission)
+                    if (targetPalCode != "vlog") {
+                        val pendingPrefs = context.getSharedPreferences("pending_submissions_prefs", android.content.Context.MODE_PRIVATE)
+                        pendingPrefs.edit().remove(uniqueKey).apply()
+                    }
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         if (cleanCode != "vlog") {
                             refreshActivePalDetails(cleanCode)
@@ -712,10 +724,139 @@ fun handleVlogSubmission(
             }
         }
     }
-
     onUpdateVlogLists(currentPaths, currentTimes, currentCaptions, currentDurations)
     onShowingCapturedPreviewChange(false)
     onSelectedTabChange("pals")
+}
+
+fun syncLocalVlogsToDatabase(
+    context: android.content.Context,
+    currentUserId: String,
+    firstName: String,
+    customAvatarUriString: String?,
+    sessionManager: com.finrein.pals.data.local.SessionManager,
+    supabaseClient: io.github.jan.supabase.SupabaseClient,
+    coroutineScope: kotlinx.coroutines.CoroutineScope
+) {
+    if (currentUserId.isEmpty()) return
+    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        try {
+            val dbSubs = supabaseClient.postgrest.from("submissions")
+                .select {
+                    filter {
+                        eq("pal_code", "vlog")
+                        eq("user_id", currentUserId)
+                    }
+                }
+                .decodeList<SubmissionDbItem>()
+            
+            val prefs = getVlogPrefs(context)
+            val localPaths = prefs.getString("vlog_paths", null)?.split(";;;")?.filter { it.isNotEmpty() } ?: emptyList()
+            val localTimes = prefs.getString("vlog_times", null)?.split(";;;")?.filter { it.isNotEmpty() } ?: emptyList()
+            val localCaptions = prefs.getString("vlog_captions", null)?.split(";;;")?.filter { it.isNotEmpty() } ?: emptyList()
+            val localDurations = prefs.getString("vlog_durations", null)?.split(";;;")?.filter { it.isNotEmpty() } ?: emptyList()
+            
+            for (idx in localPaths.indices) {
+                val path = localPaths[idx]
+                val filename = java.io.File(path).name
+                
+                val isSynced = dbSubs.any { sub ->
+                    val subPath = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                    val subFilename = subPath.substringAfterLast("/")
+                    subPath.equals(path, ignoreCase = true) || subFilename.equals(filename, ignoreCase = true)
+                }
+                
+                if (!isSynced) {
+                    val cleanPath = if (path.startsWith("file://")) path.substring(7) else path
+                    val file = java.io.File(cleanPath)
+                    if (file.exists()) {
+                        val uri = android.net.Uri.fromFile(file)
+                        val uploadedUrl = uploadPalVideoAndGetUrl(context, uri, currentUserId)
+                        if (uploadedUrl != null && uploadedUrl.startsWith("http")) {
+                            prefs.edit().putString("local_path_$uploadedUrl", path).apply()
+                            
+                            val caption = localCaptions.getOrNull(idx) ?: ""
+                            val duration = localDurations.getOrNull(idx) ?: "2000"
+                            
+                            val lastModified = file.lastModified()
+                            val instant = java.time.Instant.ofEpochMilli(lastModified)
+                            
+                            val avatarUrl = if (!customAvatarUriString.isNullOrEmpty() && customAvatarUriString.startsWith("http")) {
+                                customAvatarUriString
+                            } else {
+                                ""
+                            }
+                            val formattedName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
+                            val delimiterString = "$uploadedUrl|||$caption|||$duration"
+                            
+                            val newSubmission = SubmissionDbItem(
+                                palCode = "vlog",
+                                userId = currentUserId,
+                                userDisplayName = formattedName,
+                                imageUrl = delimiterString,
+                                createdAt = instant.toString()
+                            )
+                            supabaseClient.postgrest.from("submissions").insert(newSubmission)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}
+
+fun syncPendingSubmissions(
+    context: android.content.Context,
+    supabaseClient: io.github.jan.supabase.SupabaseClient,
+    coroutineScope: kotlinx.coroutines.CoroutineScope
+) {
+    val pendingPrefs = context.getSharedPreferences("pending_submissions_prefs", android.content.Context.MODE_PRIVATE)
+    val allPending = pendingPrefs.all
+    if (allPending.isEmpty()) return
+    
+    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        allPending.forEach { (key, value) ->
+            val valueStr = value as? String ?: return@forEach
+            val parts = valueStr.split(";;;")
+            if (parts.size >= 5) {
+                val palCode = parts[0]
+                val userId = parts[1]
+                val displayName = parts[2]
+                val imageUrlAndDetails = parts[3]
+                val createdAt = parts[4]
+                
+                try {
+                    val imageParts = imageUrlAndDetails.split("|||")
+                    val localPath = imageParts.getOrNull(0) ?: ""
+                    val caption = imageParts.getOrNull(1) ?: ""
+                    val duration = imageParts.getOrNull(2) ?: "2000"
+                    
+                    val uploadedUrl = if (localPath.isNotEmpty()) {
+                        uploadFileToSupabase(context, localPath, "PALS")
+                    } else {
+                        ""
+                    }
+                    
+                    if (uploadedUrl.isNotEmpty() && uploadedUrl.startsWith("http")) {
+                        val delimiterString = "$uploadedUrl|||${caption}|||${duration}"
+                        val newSubmission = SubmissionDbItem(
+                            palCode = palCode,
+                            userId = userId,
+                            userDisplayName = displayName,
+                            imageUrl = delimiterString,
+                            createdAt = createdAt
+                        )
+                        supabaseClient.postgrest.from("submissions").insert(newSubmission)
+                        pendingPrefs.edit().remove(key).apply()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
 }
 
 fun handleGlobalSearchTrigger(
@@ -1030,13 +1171,8 @@ class ZoomStateHolder(initialZoom: Float) {
     @Volatile var linearZoom: Float = initialZoom
 }
 
-object ZoomEffectExecutors {
-    val effectExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-    val glExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-}
-
 fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.core.CameraEffect {
-    val effectExecutor = ZoomEffectExecutors.effectExecutor
+    val effectExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     val errorListener = androidx.core.util.Consumer<Throwable> { throwable ->
         throwable.printStackTrace()
     }
@@ -1044,7 +1180,7 @@ fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.co
         androidx.camera.core.CameraEffect.PREVIEW or androidx.camera.core.CameraEffect.VIDEO_CAPTURE,
         effectExecutor,
         object : androidx.camera.core.SurfaceProcessor {
-            private val glExecutor = ZoomEffectExecutors.glExecutor
+            private val glExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
             private var eglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
             private var eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
             private var eglConfig: android.opengl.EGLConfig? = null
@@ -1112,6 +1248,9 @@ fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.co
                                     }
                                 } catch (e: Exception) {
                                     e.printStackTrace()
+                                } finally {
+                                    glExecutor.shutdown()
+                                    effectExecutor.shutdown()
                                 }
                             }
                         }
@@ -1175,7 +1314,7 @@ fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.co
                         output.surfaceOutput.updateTransformMatrix(correctedMatrix, originalTexMatrix)
 
                         val finalMatrix = FloatArray(16)
-                        android.opengl.Matrix.multiplyMM(finalMatrix, 0, correctedMatrix, 0, scaleMatrix, 0)
+                        android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, correctedMatrix, 0)
 
                         drawTexture(textureId, finalMatrix)
                         android.opengl.EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
@@ -2895,18 +3034,20 @@ fun HomeScreen(
                     subPath.equals(path, ignoreCase = true) || 
                     subFilename.equals(pathFilename, ignoreCase = true)
                 }
-                val createdAtStr = matchingSub?.createdAt ?: try {
-                    val timeStr = capturedVlogsTimes.getOrNull(idx) ?: "12:00"
-                    val parts = timeStr.split(":")
-                    val hr = parts.getOrNull(0)?.toIntOrNull() ?: 12
-                    val min = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                    val zdt = targetDate.atTime(hr, min).atZone(java.time.ZoneId.systemDefault())
-                    zdt.toInstant().toString()
-                } catch (e: Exception) {
+                val createdAtStr = matchingSub?.createdAt ?: run {
                     if (file.exists()) {
                         java.time.Instant.ofEpochMilli(file.lastModified()).toString()
                     } else {
-                        java.time.Instant.now().toString()
+                        try {
+                            val timeStr = capturedVlogsTimes.getOrNull(idx) ?: "12:00"
+                            val parts = timeStr.split(":")
+                            val hr = parts.getOrNull(0)?.toIntOrNull() ?: 12
+                            val min = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                            val zdt = targetDate.atTime(hr, min).atZone(java.time.ZoneId.systemDefault())
+                            zdt.toInstant().toString()
+                        } catch (e: Exception) {
+                            java.time.Instant.now().toString()
+                        }
                     }
                 }
                 SubmissionDbItem(
@@ -3353,11 +3494,44 @@ fun HomeScreen(
             try {
                 channel = supabaseClient.channel("pals_realtime_channel")
                 
+                val palsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") { table = "pals" }
                 val userPalsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") { table = "user_pals" }
                 val submissionsFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") { table = "submissions" }
                 val messagesFlow = channel.postgresChangeFlow<PostgresAction>(schema = "public") { table = "messages" }
                 
                 channel.subscribe()
+                
+                // PALS STREAM WATCHDOG (Group Deletion by Creator)
+                launch {
+                    palsFlow.collect { action ->
+                        try {
+                            viewModel.globalSyncMutex.withLock {
+                                if (action is PostgresAction.Delete) {
+                                    val record = action.oldRecord
+                                    val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
+                                    if (eventPalCode != null) {
+                                        val currentActiveCode = activePalCodeState.value
+                                        if (currentActiveCode == eventPalCode) {
+                                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                showVlogChatScreen = false
+                                                showVlogDropdownMenu = false
+                                                showEditPalFlow = false
+                                                showDeletePalDialog = false
+                                                showLeavePalDialog = false
+                                                activeVlogPal = null
+                                            }
+                                        }
+                                        locallyDeletedPals[eventPalCode] = true
+                                        refreshPals()
+                                        refreshVlogs()
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("WarpGuardError", "pals collection boundary caught: ${e.message}")
+                        }
+                    }
+                }
                 
                 // USER_PALS STREAM WATCHDOG
                 launch {
@@ -3375,18 +3549,30 @@ fun HomeScreen(
                                         val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
                                         
                                         if (eventUserId == currentUserId) {
-                                            // Run sequentially under a single coroutine job to avoid thread racing
+                                            if (eventPalCode != null && action is PostgresAction.Delete) {
+                                                val currentActiveCode = activePalCodeState.value
+                                                if (currentActiveCode == eventPalCode) {
+                                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                        showVlogChatScreen = false
+                                                        showVlogDropdownMenu = false
+                                                        showEditPalFlow = false
+                                                        showDeletePalDialog = false
+                                                        showLeavePalDialog = false
+                                                        activeVlogPal = null
+                                                    }
+                                                }
+                                                locallyDeletedPals[eventPalCode] = true
+                                            }
                                             refreshPals()
                                             refreshVlogs()
-                                        }
-                                        if (action is PostgresAction.Delete) {
-                                            val currentActiveCode = activePalCodeState.value
-                                            if (currentActiveCode != null) {
-                                                refreshActivePalDetails(currentActiveCode)
-                                            }
                                         } else {
-                                            if (eventPalCode != null && eventPalCode == activePalCodeState.value) {
-                                                refreshActivePalDetails(eventPalCode)
+                                            if (eventPalCode != null) {
+                                                refreshPals()
+                                                refreshVlogs()
+                                                val currentActiveCode = activePalCodeState.value
+                                                if (currentActiveCode == eventPalCode) {
+                                                    refreshActivePalDetails(eventPalCode)
+                                                }
                                             }
                                         }
                                     }
@@ -3413,11 +3599,17 @@ fun HomeScreen(
                                         }
                                         val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
                                         
-                                        if (action is PostgresAction.Delete) {
+                                        refreshPals()
+                                        refreshVlogs()
+                                        
+                                        if (eventPalCode != null) {
                                             val currentActiveCode = activePalCodeState.value
-                                            if (currentActiveCode != null) {
-                                                refreshActivePalDetails(currentActiveCode)
+                                            if (currentActiveCode == eventPalCode) {
+                                                refreshActivePalDetails(eventPalCode)
                                             }
+                                        }
+                                        
+                                        if (action is PostgresAction.Delete) {
                                             try {
                                                 val imageUrl = record?.get("image_url")?.jsonPrimitive?.content
                                                 val deletedPath = imageUrl?.split("|||")?.firstOrNull()
@@ -3427,12 +3619,7 @@ fun HomeScreen(
                                             } catch (e: Exception) {
                                                 e.printStackTrace()
                                             }
-                                        } else {
-                                            if (eventPalCode != null && eventPalCode == activePalCodeState.value) {
-                                                refreshActivePalDetails(eventPalCode)
-                                            }
                                         }
-                                        refreshVlogs()
                                     }
                                     else -> android.util.Log.d("WarpGuard", "Suppressed submissions update echo.")
                                 }
@@ -3486,6 +3673,22 @@ fun HomeScreen(
                         refreshActivePalDetails(code)
                     }
                 }
+
+                syncLocalVlogsToDatabase(
+                    context = context,
+                    currentUserId = currentUserId,
+                    firstName = firstName,
+                    customAvatarUriString = customAvatarUriString,
+                    sessionManager = sessionManager,
+                    supabaseClient = supabaseClient,
+                    coroutineScope = coroutineScope
+                )
+                
+                syncPendingSubmissions(
+                    context = context,
+                    supabaseClient = supabaseClient,
+                    coroutineScope = coroutineScope
+                )
             } catch (e: Exception) {
                 android.util.Log.e("StartupSync", "Clean launch bypassed: ${e.message}")
             }
@@ -4063,6 +4266,7 @@ fun HomeScreen(
                         capturedVlogsPaths = filteredPaths,
                         capturedVlogsTimes = filteredTimes,
                         capturedVlogsCaptions = filteredCaptions,
+                        allCapturedVlogsPaths = capturedVlogsPaths,
                         currentPlayingIndex = currentPlayingIndex,
                         vlogPlaybackProgress = vlogPlaybackProgress,
                         vlogExoPlayer = vlogExoPlayer,
@@ -4533,6 +4737,17 @@ fun HomeScreen(
                 onNotificationIntervalChange = { interval ->
                     notificationInterval = interval
                     sessionManager.saveNotificationInterval(interval)
+                    if (interval != "off" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                                context, android.Manifest.permission.POST_NOTIFICATIONS
+                            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                        ) {
+                            (context as? android.app.Activity)?.requestPermissions(
+                                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                                102
+                            )
+                        }
+                    }
                     com.finrein.pals.notification.PalAlarmScheduler.updateScheduling(context, interval)
                 },
                 selectedThemeColor = selectedThemeColor,
@@ -7675,6 +7890,7 @@ data class VlogScreenContentParams(
     val capturedVlogsPaths: List<String>,
     val capturedVlogsTimes: List<String>,
     val capturedVlogsCaptions: List<String>,
+    val allCapturedVlogsPaths: List<String> = emptyList(),
     val currentPlayingIndex: Int,
     val vlogPlaybackProgress: Float,
     val vlogExoPlayer: androidx.media3.exoplayer.ExoPlayer,
@@ -9052,6 +9268,7 @@ fun VlogScreenContent(
     val capturedVlogsPaths = params.capturedVlogsPaths
     val capturedVlogsTimes = params.capturedVlogsTimes
     val capturedVlogsCaptions = params.capturedVlogsCaptions
+    val allCapturedVlogsPaths = params.allCapturedVlogsPaths
     val currentPlayingIndex = params.currentPlayingIndex
     val vlogPlaybackProgress = params.vlogPlaybackProgress
     val vlogExoPlayer = params.vlogExoPlayer
@@ -9129,7 +9346,44 @@ fun VlogScreenContent(
 
     val density = androidx.compose.ui.platform.LocalDensity.current
     var selectedMemberIndex by remember(pal.code) { mutableStateOf(0) }
-    val activePalSubmissions = params.allPalsSubmissions[pal.code] ?: emptyList<SubmissionDbItem>()
+    val activePalSubmissions = remember(pal.code, params.allPalsSubmissions, params.allCapturedVlogsPaths) {
+        if (pal.isVlog) {
+            val dbSubs = params.allPalsSubmissions["vlog"] ?: emptyList()
+            val localSubs = params.allCapturedVlogsPaths.map { path ->
+                val localPath = getVlogPrefs(context).getString("local_path_$path", null)
+                val resolvedPath = localPath ?: path
+                val cleanPath = if (resolvedPath.startsWith("file://")) resolvedPath.substring(7) else resolvedPath
+                val file = java.io.File(cleanPath)
+                val matchingSub = dbSubs.firstOrNull { sub ->
+                    val subPath = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                    val subFilename = subPath.substringAfterLast("/")
+                    val pathFilename = path.substringAfterLast("/")
+                    subPath.equals(path, ignoreCase = true) || 
+                    subFilename.equals(pathFilename, ignoreCase = true)
+                }
+                val createdAtStr = matchingSub?.createdAt ?: run {
+                    if (file.exists()) {
+                        java.time.Instant.ofEpochMilli(file.lastModified()).toString()
+                    } else {
+                        java.time.Instant.now().toString()
+                    }
+                }
+                SubmissionDbItem(
+                    id = matchingSub?.id,
+                    palCode = "vlog",
+                    userId = currentUserId,
+                    userDisplayName = currentDisplayName,
+                    imageUrl = "$path|||||2000",
+                    createdAt = createdAtStr
+                )
+            }
+            (dbSubs + localSubs).distinctBy { sub ->
+                sub.imageUrl.split("|||").firstOrNull() ?: ""
+            }
+        } else {
+            params.allPalsSubmissions[pal.code] ?: emptyList<SubmissionDbItem>()
+        }
+    }
     val activeLocalDate = remember {
         val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
         if (now.hour < 4) {
@@ -10151,6 +10405,7 @@ fun VlogScreenContent(
                     textColor = textColor,
                     mutedTextColor = mutedTextColor,
                     palTextLogoColor = palTextLogoColor,
+                    capturedVlogsPaths = allCapturedVlogsPaths,
                     onDismiss = { showArchiveView = false }
                 )
             }
@@ -12429,13 +12684,43 @@ fun PermissionsScreen(
         )
     }
 
+    var isNotificationGranted by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.POST_NOTIFICATIONS
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
+
     var permissionSubStep by remember {
         mutableStateOf(
             if (!isCameraGranted) 1
             else if (!isMicrophoneGranted) 2
             else if (!isStorageGranted) 3
-            else 4
+            else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isNotificationGranted) 4
+            else 5
         )
+    }
+
+    val notificationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        val sessionManager = com.finrein.pals.data.local.SessionManager(context.applicationContext)
+        if (isGranted) {
+            isNotificationGranted = true
+            sessionManager.saveNotificationInterval("every 1hr")
+            com.finrein.pals.notification.PalAlarmScheduler.updateScheduling(context.applicationContext, "every 1hr")
+        } else {
+            isNotificationGranted = false
+            sessionManager.saveNotificationInterval("off")
+            com.finrein.pals.notification.PalAlarmScheduler.cancelAlarm(context.applicationContext)
+        }
+        permissionSubStep = 5
+        onDone()
     }
 
     val storageLauncher = rememberLauncherForActivityResult(
@@ -12443,8 +12728,12 @@ fun PermissionsScreen(
     ) { isGranted ->
         if (isGranted) {
             isStorageGranted = true
-            permissionSubStep = 4
-            onDone()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                permissionSubStep = 4
+            } else {
+                permissionSubStep = 5
+                onDone()
+            }
         }
     }
 
@@ -12602,10 +12891,43 @@ fun PermissionsScreen(
                 }
             }
 
+            // Notification Permission Status/Details (Only for Android 13+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (isNotificationGranted) {
+                    Text(
+                        text = "✓ notification",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 18.sp,
+                        color = checkmarkColor,
+                        fontWeight = FontWeight.Medium
+                    )
+                } else if (permissionSubStep == 4) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "notification",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 18.sp,
+                            color = textColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "we require this permission to keep you updated with your activity inside the app nd reminding you to send pals",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 15.sp,
+                            color = textColor,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // Action Trigger
-            if (isCameraGranted && isMicrophoneGranted && isStorageGranted) {
+            val isAllDone = isCameraGranted && isMicrophoneGranted && isStorageGranted && 
+                    (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || isNotificationGranted)
+
+            if (isAllDone) {
                 Text(
                     text = "done →",
                     fontFamily = FontFamily.Monospace,
@@ -12626,6 +12948,11 @@ fun PermissionsScreen(
                             1 -> cameraLauncher.launch(android.Manifest.permission.CAMERA)
                             2 -> microphoneLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                             3 -> storageLauncher.launch(storagePermissionString)
+                            4 -> {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    notificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            }
                         }
                     }
                 )
@@ -17433,6 +17760,7 @@ fun VlogArchiveCard(
     textColor: Color,
     mutedTextColor: Color,
     palTextLogoColor: Color = Color(0xFFFFE600),
+    capturedVlogsPaths: List<String> = emptyList(),
     onDismiss: () -> Unit
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -17450,23 +17778,39 @@ fun VlogArchiveCard(
         }
     }
 
-    val datesWithSubmissions = remember(activePalSubmissions, currentUserId) {
+    val datesWithSubmissions = remember(activePalSubmissions, currentUserId, capturedVlogsPaths) {
+        val dates = mutableSetOf<java.time.LocalDate>()
         activePalSubmissions
             .filter { it.userId == currentUserId }
-            .mapNotNull { sub ->
+            .forEach { sub ->
                 val instant = safeParseInstant(sub.createdAt)
                 if (instant != null) {
                     val zdt = instant.atZone(java.time.ZoneId.systemDefault())
-                    if (zdt.hour < 4) {
+                    val date = if (zdt.hour < 4) {
                         zdt.toLocalDate().minusDays(1)
                     } else {
                         zdt.toLocalDate()
                     }
-                } else {
-                    null
+                    dates.add(date)
                 }
             }
-            .toSet()
+        capturedVlogsPaths.forEach { path ->
+            if (!path.startsWith("http")) {
+                val file = java.io.File(path)
+                if (file.exists()) {
+                    val lastModified = file.lastModified()
+                    val instant = java.time.Instant.ofEpochMilli(lastModified)
+                    val zdt = instant.atZone(java.time.ZoneId.systemDefault())
+                    val date = if (zdt.hour < 4) {
+                        zdt.toLocalDate().minusDays(1)
+                    } else {
+                        zdt.toLocalDate()
+                    }
+                    dates.add(date)
+                }
+            }
+        }
+        dates
     }
 
     GlassmorphicCard(
@@ -17570,7 +17914,7 @@ fun VlogArchiveCard(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .aspectRatio(1f),
+                                    .height(54.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (dayNum in 1..daysInMonth) {
@@ -17613,13 +17957,14 @@ fun VlogArchiveCard(
                                                     .size(16.dp)
                                                     .clip(CircleShape)
                                                     .background(accentColor),
-                                                contentAlignment = Alignment.Center
+                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Image(
-                                                    painter = painterResource(id = R.drawable.smile_small),
+                                                    painter = painterResource(id = R.drawable.custom_rotate_smiley),
                                                     contentDescription = null,
                                                     modifier = Modifier
                                                         .fillMaxSize()
+                                                        .clip(CircleShape)
                                                         .padding(1.dp)
                                                         .rotate(0f)
                                                 )

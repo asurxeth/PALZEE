@@ -21,7 +21,8 @@ class PalNotificationReceiver : BroadcastReceiver() {
         val sessionManager = SessionManager(context.applicationContext)
         val interval = sessionManager.getNotificationInterval()
 
-        if (interval == "off" || interval.isBlank()) {
+        // 1. Notifications are sent ONLY if the user is logged in
+        if (sessionManager.getUser() == null || interval == "off" || interval.isBlank()) {
             PalAlarmScheduler.cancelAlarm(context)
             return
         }
@@ -36,7 +37,7 @@ class PalNotificationReceiver : BroadcastReceiver() {
         val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
         val firstNotifiedKey = "first_pal_notified_$dateStamp"
 
-        // Check if user has sent any pal or been notified for any hour today (starting from 4 AM)
+        // Check if user has sent any pal or been notified for any hour today
         var hasLoggedAnyToday = false
         var hasNotifiedAnyToday = false
         for (h in 0..23) {
@@ -47,42 +48,27 @@ class PalNotificationReceiver : BroadcastReceiver() {
                 hasNotifiedAnyToday = true
             }
         }
-        val isFirstTimeToday = !hasLoggedAnyToday && !hasNotifiedAnyToday && currentHour >= 2
+        val hasFirstPalOccurred = sharedPrefs.getBoolean(firstNotifiedKey, false) || hasLoggedAnyToday
 
         // Night time sleep cycle cutoff (2 AM to 8 AM)
         val isNightTime = currentHour in 2..7
 
         when (intent.action) {
             Intent.ACTION_USER_PRESENT -> {
-                // User just unlocked their phone! They are active now.
-                if (isFirstTimeToday) {
+                // First notification of the day is sent ONLY when the user opens/unlocks the phone after the sleep cycle
+                if (!hasFirstPalOccurred && !isNightTime) {
                     showNativeNotification(context, currentHour, isFirstPal = true)
                     markAsNotifiedForHour(context, currentHour)
                     sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
-                } else {
-                    val hasFirstPalOccurred = sharedPrefs.getBoolean(firstNotifiedKey, false) || hasLoggedAnyToday
-                    if (hasFirstPalOccurred && !isNightTime) {
-                        if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
-                            if (isAfterTargetTimeForHour(hourToUse)) {
-                                showNativeNotification(context, hourToUse, isFirstPal = false)
-                                markAsNotifiedForHour(context, hourToUse)
-                            }
-                        }
-                    }
+                    PalAlarmScheduler.updateScheduling(context, interval)
                 }
             }
 
             PalAlarmScheduler.ACTION_PAL_ALARM, Intent.ACTION_BOOT_COMPLETED -> {
-                // Fallback alarm / System Boot
-                // 1. If the first pal notification of the day hasn't been sent yet and it is NOT night time, we send it.
-                // 2. We send subsequent hourly/3-hourly notifications if the first pal has already occurred and it is NOT night time!
+                // Subsequent notifications are sent via alarms/boot irrespective of phone use,
+                // but ONLY if the first pal notification of the day has already been triggered.
                 if (intent.action == PalAlarmScheduler.ACTION_PAL_ALARM) {
-                    val hasFirstPalOccurred = sharedPrefs.getBoolean(firstNotifiedKey, false) || hasLoggedAnyToday
-                    if (isFirstTimeToday && !isNightTime) {
-                        showNativeNotification(context, currentHour, isFirstPal = true)
-                        markAsNotifiedForHour(context, currentHour)
-                        sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
-                    } else if (hasFirstPalOccurred && !isNightTime) {
+                    if (hasFirstPalOccurred && !isNightTime) {
                         if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
                             showNativeNotification(context, hourToUse, isFirstPal = false)
                             markAsNotifiedForHour(context, hourToUse)
