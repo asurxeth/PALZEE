@@ -77,8 +77,8 @@ class MainActivity : ComponentActivity() {
             interval
         )
         if (sessionManager.getUser() != null && interval != "off" && interval.isNotEmpty()) {
-            val checkIntent = Intent(applicationContext, com.finrein.pals.notification.PalNotificationReceiver::class.java).apply {
-                action = Intent.ACTION_USER_PRESENT
+            val checkIntent = android.content.Intent(applicationContext, com.finrein.pals.notification.PalNotificationReceiver::class.java).apply {
+                action = android.content.Intent.ACTION_USER_PRESENT
             }
             applicationContext.sendBroadcast(checkIntent)
         }

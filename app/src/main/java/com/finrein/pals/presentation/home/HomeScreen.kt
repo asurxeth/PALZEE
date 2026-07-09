@@ -1248,9 +1248,6 @@ fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.co
                                     }
                                 } catch (e: Exception) {
                                     e.printStackTrace()
-                                } finally {
-                                    glExecutor.shutdown()
-                                    effectExecutor.shutdown()
                                 }
                             }
                         }
