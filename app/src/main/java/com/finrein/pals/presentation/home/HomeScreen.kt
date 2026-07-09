@@ -9608,7 +9608,7 @@ fun VlogScreenContent(
                                                         val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
                                                         val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
                                                         
-                                                        val isZoomed = (capturedVlogsZoomed.getOrNull(page) == true) || isPathZoomed(path)
+                                                        val isZoomed = isLocalVlogZoomed(context, path) || isPathZoomed(path)
                                                         val zoomFactor = if (isZoomed) 2.5f else 1.0f
                                                         val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * zoomFactor
                                                         
@@ -11485,8 +11485,7 @@ fun VlogScreenContent(
                                                             
                                                             val reversedPaths = capturedVlogsPaths.reversed()
                                                             val currentPath = reversedPaths.getOrNull(exportActiveIndex)
-                                                            val reversedZoomed = capturedVlogsZoomed.reversed()
-                                                            val isZoomed = (reversedZoomed.getOrNull(exportActiveIndex) == true) || isPathZoomed(currentPath)
+                                                            val isZoomed = isLocalVlogZoomed(context, currentPath) || isPathZoomed(currentPath)
                                                             val zoomFactor = if (isZoomed) 2.5f else 1.0f
                                                             val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * zoomFactor
                                                             
