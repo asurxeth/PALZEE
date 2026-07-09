@@ -103,6 +103,17 @@ class MainActivity : ComponentActivity() {
                             onAuthSuccess = { user ->
                                 sessionManager.saveUser(user)
                                 currentUser = user
+                                val currentInterval = sessionManager.getNotificationInterval()
+                                com.finrein.pals.notification.PalAlarmScheduler.updateScheduling(
+                                    applicationContext,
+                                    currentInterval
+                                )
+                                if (currentInterval != "off" && currentInterval.isNotEmpty()) {
+                                    val checkIntent = android.content.Intent(applicationContext, com.finrein.pals.notification.PalNotificationReceiver::class.java).apply {
+                                        action = "com.finrein.pals.ACTION_CHECK_FIRST_PAL"
+                                    }
+                                    applicationContext.sendBroadcast(checkIntent)
+                                }
                             }
                         )
                     } else {

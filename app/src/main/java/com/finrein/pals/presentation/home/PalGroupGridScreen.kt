@@ -247,6 +247,7 @@ fun PalGroupGridScreen(
                                                 val videoSize = vlogExoPlayer.videoSize
                                                 val videoWidth = videoSize.width
                                                 val videoHeight = videoSize.height
+                                                val videoRotation = videoSize.unappliedRotationDegrees
                                                 val textureView = getVideoSurfaceView() as? android.view.TextureView
                                                 if (textureView == null) {
                                                     postDelayed({ applyVideoScale() }, 100)

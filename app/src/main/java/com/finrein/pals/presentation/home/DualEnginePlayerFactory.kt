@@ -74,10 +74,6 @@ object DualEnginePlayerFactory {
 
         return ExoPlayer.Builder(context.applicationContext)
             .setRenderersFactory(renderersFactory)
-            .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context.applicationContext)
-                    .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context.applicationContext))
-            )
             .setLoadControl(loadControl)
             .build()
     }

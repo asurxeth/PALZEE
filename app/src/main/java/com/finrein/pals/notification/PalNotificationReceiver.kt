@@ -68,18 +68,24 @@ class PalNotificationReceiver : BroadcastReceiver() {
                     showNativeNotification(context, currentHour, isFirstPal = true)
                     markAsNotifiedForHour(context, currentHour)
                     sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
-                    PalAlarmScheduler.updateScheduling(context, interval)
                 }
+                PalAlarmScheduler.updateScheduling(context, interval)
             }
 
             PalAlarmScheduler.ACTION_PAL_ALARM, Intent.ACTION_BOOT_COMPLETED -> {
-                // Subsequent notifications are sent via alarms/boot irrespective of phone use,
-                // but ONLY if the first pal notification of the day has already been triggered.
+                // Subsequent notifications are sent via alarms/boot irrespective of phone use.
+                // If the first pal notification of the day has not been triggered yet, trigger it now.
                 if (intent.action == PalAlarmScheduler.ACTION_PAL_ALARM) {
-                    if (hasFirstPalOccurred && !isNightTime) {
-                        if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
-                            showNativeNotification(context, hourToUse, isFirstPal = false)
+                    if (!isNightTime) {
+                        if (!hasFirstPalOccurred) {
+                            showNativeNotification(context, hourToUse, isFirstPal = true)
                             markAsNotifiedForHour(context, hourToUse)
+                            sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                        } else {
+                            if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
+                                showNativeNotification(context, hourToUse, isFirstPal = false)
+                                markAsNotifiedForHour(context, hourToUse)
+                            }
                         }
                     }
                 }
