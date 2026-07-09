@@ -4343,7 +4343,6 @@ fun HomeScreen(
                         palReactions = palReactions,
                         onEmojiReacted = { path, emoji ->
                             palReactions[path] = emoji
-                            activeReactionPreview = Pair(path, emoji)
                             
                             val targetPalCode = activeVlogPal?.code
                             if (!targetPalCode.isNullOrEmpty() && targetPalCode != "vlog") {
@@ -4354,6 +4353,20 @@ fun HomeScreen(
                                 val targetUserDisplayName = targetSub?.userDisplayName?.let { parseUserDisplayName(it).first } ?: "Pal"
                                 
                                 val reactionContent = "REACTION|||$targetUserId|||$targetUserDisplayName|||$path|||$emoji"
+                                
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    try {
+                                        com.finrein.pals.PalApplication.supabase.postgrest.from("messages").delete {
+                                            filter {
+                                                eq("pal_code", targetPalCode)
+                                                eq("user_id", currentUserId)
+                                                like("message_text", "REACTION|||%|||%|||$path|||%")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
                                 viewModel.sendMessage(targetPalCode, currentUserId, reactionContent)
                             }
                         },
@@ -4450,7 +4463,8 @@ fun HomeScreen(
                         currentUserId = currentUserId,
                         currentDisplayName = currentDisplayName,
                         allPalsSubmissions = allPalsSubmissions,
-                        customAvatarUriString = customAvatarUriString
+                        customAvatarUriString = customAvatarUriString,
+                        allPalsMembers = allPalsMembers
                     )
                 }
             } else {
@@ -6930,6 +6944,7 @@ fun CapturedPreviewScreen(
     currentDisplayName: String,
     allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
     customAvatarUriString: String?,
+    allPalsMembers: Map<String, List<String>> = emptyMap(),
     onPlayerReady: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -6954,7 +6969,13 @@ fun CapturedPreviewScreen(
 
     val coroutineScope = rememberCoroutineScope()
     var selectedPals by remember { mutableStateOf<Set<String>>(emptySet()) }
-    val groupMembersMap = remember { mutableStateMapOf<String, List<String>>() }
+    val groupMembersMap = remember(createdPals, allPalsMembers) {
+        val map = androidx.compose.runtime.mutableStateMapOf<String, List<String>>()
+        createdPals.forEach { pal ->
+            map[pal.code] = if (pal.isVlog) listOf("only you") else (allPalsMembers[pal.code] ?: emptyList())
+        }
+        map
+    }
     
     val groupSubmissionsMap = createdPals.associate { pal ->
         val subs = allPalsSubmissions[pal.code] ?: emptyList()
@@ -7991,8 +8012,10 @@ fun GroupMemberCard(
                     Pair("Pal", null)
                 }
             }
-            Pair(senderName, senderAvatar)
-        }.distinctBy { it.first }
+            val parts = msg.content.split("|||")
+            val replyText = parts.getOrNull(4) ?: ""
+            Triple(senderAvatar, replyText, senderName)
+        }.distinctBy { it.second }
     }
 
     val memberSubs = if (isActualMember) {
@@ -8043,6 +8066,32 @@ fun GroupMemberCard(
         val videoPaths = remember(sortedMemberSubs) { sortedMemberSubs.map { it.imageUrl.split("|||").firstOrNull() ?: "" }.filter { it.isNotEmpty() } }
         val videoPath = videoPaths.firstOrNull() ?: ""
         val caption = firstSub.imageUrl.split("|||").getOrNull(1) ?: ""
+
+        val memberReactions = remember(messages, videoPath) {
+            if (videoPath.isEmpty()) emptyList() else {
+                val userReactions = LinkedHashMap<String, String>()
+                messages.filter { msg ->
+                    msg.content.startsWith("REACTION|||") && msg.content.split("|||").getOrNull(3) == videoPath
+                }.forEach { msg ->
+                    val emoji = msg.content.split("|||").getOrNull(4) ?: ""
+                    if (emoji.isNotEmpty()) {
+                        userReactions[msg.userId] = emoji
+                    }
+                }
+                userReactions.values.toList()
+            }
+        }
+        val latestReaction = memberReactions.lastOrNull()
+
+        var currentReplyIndex by remember(memberReplies) { mutableStateOf(0) }
+        LaunchedEffect(memberReplies) {
+            if (memberReplies.size > 1) {
+                while (true) {
+                    kotlinx.coroutines.delay(1000)
+                    currentReplyIndex = (currentReplyIndex + 1) % memberReplies.size
+                }
+            }
+        }
         if (isUser) {
             LaunchedEffect(isEditingCaption) {
                 if (isEditingCaption) {
@@ -8277,34 +8326,36 @@ fun GroupMemberCard(
                     }
                 }
             } else {
-                // Stacked Reply and Love icons aligned vertically at the right end
-                Column(
+                // 1. Reply Arrow exactly at the center of the right side
+                Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(end = if (isGrid) 10.dp else 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(if (isGrid) 16.dp else 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(end = if (isGrid) 10.dp else 16.dp)
+                        .clickable { onReplyClick(videoPath) },
+                    contentAlignment = Alignment.Center
                 ) {
-                    // Reply Icon
-                    Box(
-                        modifier = Modifier
-                            .clickable { onReplyClick(videoPath) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Reply,
-                            contentDescription = "Reply",
-                            tint = Color.White,
-                            modifier = Modifier.size(if (isGrid) 18.dp else 25.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                        contentDescription = "Reply",
+                        tint = Color.White,
+                        modifier = Modifier.size(if (isGrid) 18.dp else 25.dp)
+                    )
+                }
 
-                    // Love Icon
-                    Box(
-                        modifier = Modifier
-                            .clickable { showEmojiOverlay = true },
-                        contentAlignment = Alignment.Center
-                    ) {
+                // 2. Love Icon or Reacted Emoji in the bottom right corner
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
+                        .clickable { showEmojiOverlay = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (latestReaction != null) {
+                        Text(
+                            text = latestReaction,
+                            fontSize = if (isGrid) 16.sp else 24.sp
+                        )
+                    } else {
                         Icon(
                             imageVector = Icons.Filled.FavoriteBorder,
                             contentDescription = "Love",
@@ -8314,58 +8365,67 @@ fun GroupMemberCard(
                     }
                 }
 
-                // Replies pills shown at Bottom Left corner
+                // 3. Replies slideshow shown at Bottom Left corner
                 if (memberReplies.isNotEmpty()) {
-                    Row(
+                    Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .padding(bottom = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        contentAlignment = Alignment.CenterStart
                     ) {
-                        memberReplies.take(2).forEach { (replierName, replierAvatar) ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                if (!replierAvatar.isNullOrEmpty()) {
-                                    UriImage(
-                                        uriString = replierAvatar,
-                                        modifier = Modifier
-                                            .size(if (isGrid) 16.dp else 20.dp)
-                                            .clip(CircleShape)
-                                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                    )
-                                } else {
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = currentReplyIndex,
+                            transitionSpec = {
+                                (androidx.compose.animation.slideInVertically { height -> height } + androidx.compose.animation.fadeIn()) togetherWith 
+                                (androidx.compose.animation.slideOutVertically { height -> -height } + androidx.compose.animation.fadeOut())
+                            }
+                        ) { index ->
+                            val reply = memberReplies.getOrNull(index)
+                            if (reply != null) {
+                                val (avatar, text, name) = reply
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    if (!avatar.isNullOrEmpty()) {
+                                        UriImage(
+                                            uriString = avatar,
+                                            modifier = Modifier
+                                                .size(if (isGrid) 16.dp else 20.dp)
+                                                .clip(CircleShape)
+                                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(if (isGrid) 16.dp else 20.dp)
+                                                .clip(CircleShape)
+                                                .background(accentColor),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Image(
+                                                painter = painterResource(id = R.drawable.smile_medium),
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .rotate(180f)
+                                            )
+                                        }
+                                    }
+
                                     Box(
                                         modifier = Modifier
-                                            .size(if (isGrid) 16.dp else 20.dp)
-                                            .clip(CircleShape)
-                                            .background(accentColor),
-                                        contentAlignment = Alignment.Center
+                                            .background(Color.White, RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
-                                        Image(
-                                            painter = painterResource(id = R.drawable.smile_medium),
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .rotate(180f)
+                                        Text(
+                                            text = text,
+                                            color = Color.Black,
+                                            fontSize = if (isGrid) 9.sp else 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.SansSerif
                                         )
                                     }
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .background(Color.White, RoundedCornerShape(10.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = replierName,
-                                        color = Color.Black,
-                                        fontSize = if (isGrid) 9.sp else 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.SansSerif
-                                    )
                                 }
                             }
                         }
@@ -11276,81 +11336,78 @@ fun VlogScreenContent(
                     ) { onShowLeaveChange(false) },
                 contentAlignment = Alignment.Center
             ) {
-                GlassmorphicCard(
+                val dialogBg = if (isDark) Color(0xFF2B2930) else Color(0xFFF5F3EB)
+                val titleColor = if (isDark) Color(0xFFE6E1E5) else Color(0xFF1C1B1F)
+                val subtitleColor = if (isDark) Color(0xFFCAC4D0) else Color(0xFF49454F)
+                val buttonColor = if (isDark) Color(0xFFD0BCFF) else Color(0xFF6750A4)
+
+                Box(
                     modifier = Modifier
-                        .width(280.dp)
+                        .padding(horizontal = 24.dp)
+                        .widthIn(max = 320.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(dialogBg)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {}
-                        ),
-                    borderRadius = 24.dp,
-                    isDark = isDark,
-                    gradientColors = if (isDark) activeGradientColors else listOf(Color(0xFFF5F3EB), Color(0xFFF5F3EB)),
-                    borderColor = if (isDark) accentColor else Color.White
+                        )
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
+                            .padding(24.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
                             text = "leave group",
-                            fontFamily = BricolageVariableFontFamily,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textColor
+                            fontFamily = FontFamily.SansSerif,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = titleColor,
+                            lineHeight = 22.sp
                         )
                         
                         Text(
                             text = "are you sure you want to leave this group? you will lose access to future pals.",
-                            fontSize = 13.sp,
-                            color = textColor
+                            fontFamily = FontFamily.SansSerif,
+                            fontSize = 14.sp,
+                            color = subtitleColor
                         )
                         
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            GlassmorphicCard(
+                            Text(
+                                text = "Cancel",
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = buttonColor,
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(40.dp),
-                                onClick = { onShowLeaveChange(false) },
-                                borderRadius = 20.dp,
-                                isDark = isDark
-                            ) {
-                                Text(
-                                    text = "cancel",
-                                    fontSize = 13.sp,
-                                    color = textColor
-                                )
-                            }
+                                    .clickable { onShowLeaveChange(false) }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
                             
-                            GlassmorphicCard(
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Text(
+                                text = "leave",
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = buttonColor,
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(40.dp),
-                                onClick = {
-                                    onShowLeaveChange(false)
-                                    onLeavePal()
-                                },
-                                borderRadius = 20.dp,
-                                isDark = isDark,
-                                gradientColors = listOf(
-                                    Color(0xFFF35F38).copy(alpha = 0.85f),
-                                    Color(0xFFF35F38).copy(alpha = 0.70f)
-                                ),
-                                borderColor = Color(0xFFF35F38)
-                            ) {
-                                Text(
-                                    text = "leave",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
+                                    .clickable {
+                                        onShowLeaveChange(false)
+                                        onLeavePal()
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
                         }
                     }
                 }
@@ -14273,7 +14330,7 @@ fun MemeSoundWaveformCard(
     
     Row(
         modifier = modifier
-            .width(180.dp)
+            .width(112.dp)
             .height(36.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(cardBg)
@@ -14306,7 +14363,7 @@ fun MemeSoundWaveformCard(
             }
         }
         
-        val barCount = 20
+        val barCount = 10
         val amplitudes = remember(soundName) {
             val random = java.util.Random(soundName.hashCode().toLong())
             List(barCount) { 2.dp + random.nextInt(14).dp }
@@ -14324,7 +14381,7 @@ fun MemeSoundWaveformCard(
                     .weight(1f)
                     .height(20.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(1.5.dp, Alignment.End)
+                horizontalArrangement = Arrangement.spacedBy(1.5.dp, Alignment.Start)
             ) {
                 amplitudes.forEachIndexed { index, barHeight ->
                     val barProgressLimit = index.toFloat() / barCount
@@ -14891,14 +14948,18 @@ fun PalChatOverlay(
                                     )
                                 }
 
-                                // 2. Video thumbnails (aligned right for user, left for other members)
                                 items.forEach { feedItem ->
                                     val feedReactions = remember(messages, feedItem.path) {
+                                        val userReactions = LinkedHashMap<String, String>()
                                         messages.filter { msg ->
                                             msg.content.startsWith("REACTION|||") && msg.content.split("|||").getOrNull(3) == feedItem.path
-                                        }.map { msg ->
-                                            msg.content.split("|||").getOrNull(4) ?: ""
-                                        }.filter { it.isNotEmpty() }
+                                        }.forEach { msg ->
+                                            val emoji = msg.content.split("|||").getOrNull(4) ?: ""
+                                            if (emoji.isNotEmpty()) {
+                                                userReactions[msg.userId] = emoji
+                                            }
+                                        }
+                                        userReactions.values.toList()
                                     }
 
                                     val feedReplies = remember(messages, feedItem.path) {
@@ -15121,16 +15182,27 @@ fun PalChatOverlay(
                                                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                                                             ) {
                                                                 Box(
+
                                                                     modifier = Modifier
+
                                                                         .fillMaxWidth(0.35f)
+
                                                                         .aspectRatio(16f / 9f)
+
                                                                         .clip(RoundedCornerShape(14.dp))
-                                                                        .background(Color.Black)
+
                                                                 ) {
+
                                                                     VideoThumbnail(
+
                                                                         videoPath = feedItem.path,
-                                                                        modifier = Modifier.fillMaxSize()
+
+                                                                        modifier = Modifier.fillMaxSize(),
+
+                                                                        shape = RoundedCornerShape(14.dp)
+
                                                                     )
+
                                                                 }
                                                                 Box(
                                                                     modifier = Modifier
@@ -15361,16 +15433,27 @@ fun PalChatOverlay(
                                                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                                                             ) {
                                                                 Box(
+
                                                                     modifier = Modifier
+
                                                                         .fillMaxWidth(0.35f)
+
                                                                         .aspectRatio(16f / 9f)
+
                                                                         .clip(RoundedCornerShape(14.dp))
-                                                                        .background(Color.Black)
+
                                                                 ) {
+
                                                                     VideoThumbnail(
+
                                                                         videoPath = feedItem.path,
-                                                                        modifier = Modifier.fillMaxSize()
+
+                                                                        modifier = Modifier.fillMaxSize(),
+
+                                                                        shape = RoundedCornerShape(14.dp)
+
                                                                     )
+
                                                                 }
                                                                 Box(
                                                                     modifier = Modifier
@@ -17877,7 +17960,7 @@ fun VlogArchiveCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 val daysOfWeek = listOf("S", "M", "T", "W", "T", "F", "S")
@@ -17893,7 +17976,7 @@ fun VlogArchiveCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             val firstDayOfWeek = currentMonth.atDay(1).dayOfWeek.value % 7
             val daysInMonth = currentMonth.lengthOfMonth()
@@ -17901,7 +17984,7 @@ fun VlogArchiveCard(
             val rows = (totalCells + 6) / 7
 
             Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 for (r in 0 until rows) {
                     Row(modifier = Modifier.fillMaxWidth()) {
@@ -17911,7 +17994,7 @@ fun VlogArchiveCard(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(54.dp),
+                                    .height(46.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (dayNum in 1..daysInMonth) {
@@ -17947,7 +18030,7 @@ fun VlogArchiveCard(
                                                 }
                                             )
                                         }
-                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Spacer(modifier = Modifier.height(1.5.dp))
                                         if (hasUserSub) {
                                             Box(
                                                 modifier = Modifier
@@ -17967,7 +18050,7 @@ fun VlogArchiveCard(
                                                 )
                                             }
                                         } else {
-                                            Spacer(modifier = Modifier.height(16.dp))
+                                            Spacer(modifier = Modifier.height(17.5.dp))
                                         }
                                     }
                                 }

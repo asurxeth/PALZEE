@@ -21,8 +21,16 @@ class PalNotificationReceiver : BroadcastReceiver() {
         val sessionManager = SessionManager(context.applicationContext)
         val interval = sessionManager.getNotificationInterval()
 
+        val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+
         // 1. Notifications are sent ONLY if the user is logged in
-        if (sessionManager.getUser() == null || interval == "off" || interval.isBlank()) {
+        if (sessionManager.getUser() == null || interval == "off" || interval.isBlank() || !hasPermission) {
             PalAlarmScheduler.cancelAlarm(context)
             return
         }
@@ -54,8 +62,8 @@ class PalNotificationReceiver : BroadcastReceiver() {
         val isNightTime = currentHour in 2..7
 
         when (intent.action) {
-            Intent.ACTION_USER_PRESENT -> {
-                // First notification of the day is sent ONLY when the user opens/unlocks the phone after the sleep cycle
+            "com.finrein.pals.ACTION_CHECK_FIRST_PAL" -> {
+                // First notification of the day is sent ONLY when the user opens the app after the sleep cycle
                 if (!hasFirstPalOccurred && !isNightTime) {
                     showNativeNotification(context, currentHour, isFirstPal = true)
                     markAsNotifiedForHour(context, currentHour)

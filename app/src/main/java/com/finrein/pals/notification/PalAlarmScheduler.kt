@@ -11,7 +11,15 @@ object PalAlarmScheduler {
     const val ACTION_PAL_ALARM = "com.finrein.pals.ACTION_HOURLY_PAL_ALARM"
 
     fun updateScheduling(context: Context, interval: String) {
-        if (interval == "off" || interval.isBlank()) {
+        val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+
+        if (interval == "off" || interval.isBlank() || !hasPermission) {
             cancelAlarm(context)
         } else {
             scheduleNextAlarm(context, interval)

@@ -853,68 +853,31 @@ fun PalGroupCard(
     val otherSubs = groupSubs.filter { it.userId != currentUserId }
     val lastViewed = sharedPrefs.getLong("viewed_${pal.code}", 0L)
 
-    val subtitleAnnotated = remember(userSub, otherSubs, lastViewed, members.size) {
+    val subtitleAnnotated = remember(userSub) {
         buildAnnotatedString {
-            if (userSub != null) {
+            val now = System.currentTimeMillis()
+            val userSubAgeMs = if (userSub != null) {
                 val timestamp = getSubmissionTimestamp(userSub)
-                val durationStr = formatDuration(timestamp)
+                now - timestamp
+            } else {
+                Long.MAX_VALUE
+            }
+
+            if (userSub != null && userSubAgeMs <= 3600000L) {
+                val timestamp = getSubmissionTimestamp(userSub)
+                val diffMins = Math.max(0L, (now - timestamp) / 60000)
                 withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
                     append("sent pal ")
                 }
-                var i = 0
-                while (i < durationStr.length) {
-                    if (durationStr[i].isDigit()) {
-                        val start = i
-                        while (i < durationStr.length && durationStr[i].isDigit()) {
-                            i++
-                        }
-                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
-                            append(durationStr.substring(start, i))
-                        }
-                    } else {
-                        val start = i
-                        while (i < durationStr.length && !durationStr[i].isDigit()) {
-                            i++
-                        }
-                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
-                            append(durationStr.substring(start, i))
-                        }
-                    }
+                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                    append(diffMins.toString())
                 }
-            } else if (otherSubs.isNotEmpty() && lastViewed > 0L) {
-                val durationStr = formatDuration(lastViewed)
                 withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
-                    append("viewed ")
-                }
-                var i = 0
-                while (i < durationStr.length) {
-                    if (durationStr[i].isDigit()) {
-                        val start = i
-                        while (i < durationStr.length && durationStr[i].isDigit()) {
-                            i++
-                        }
-                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
-                            append(durationStr.substring(start, i))
-                        }
-                    } else {
-                        val start = i
-                        while (i < durationStr.length && !durationStr[i].isDigit()) {
-                            i++
-                        }
-                        withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
-                            append(durationStr.substring(start, i))
-                        }
-                    }
+                    append(" minutes ago")
                 }
             } else {
-                if (members.size <= 1) {
-                    withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
-                        append("only you")
-                    }
-                } else {
-                    withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
-                        append("${members.size} members")
-                    }
+                withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                    append("no pals sent")
                 }
             }
         }

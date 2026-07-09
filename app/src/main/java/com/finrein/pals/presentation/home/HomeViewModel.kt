@@ -63,22 +63,32 @@ class HomeViewModel @Inject constructor(
     }
 
     fun sendMessage(palCode: String, userId: String, messageText: String) {
-        val newMessage = MessageDbItem(
+        val tempId = java.util.UUID.randomUUID().toString()
+        val localMsg = MessageDbItem(
+            id = tempId,
             palCode = palCode,
             userId = userId,
-            messageText = messageText
+            messageText = messageText,
+            createdAt = java.time.Instant.now().toString()
         )
+        val currentMsgs = _palMessages.value[palCode] ?: emptyList()
+        val updatedMsgs = if (messageText.startsWith("REACTION|||")) {
+            val parts = messageText.split("|||")
+            val targetPath = parts.getOrNull(3) ?: ""
+            currentMsgs.filterNot { msg ->
+                msg.content.startsWith("REACTION|||") &&
+                msg.content.split("|||").getOrNull(3) == targetPath &&
+                msg.userId == userId
+            } + localMsg
+        } else {
+            currentMsgs + localMsg
+        }
+        _palMessages.value = _palMessages.value + (palCode to updatedMsgs)
+
         viewModelScope.launch(Dispatchers.IO) {
-            val result = chatRepository.postMessage(newMessage)
+            val result = chatRepository.postMessage(localMsg.copy(id = null))
             if (result.isSuccess) {
                 refreshMessages(palCode)
-            } else {
-                val localMsg = MessageDbItem(
-                    palCode = palCode,
-                    userId = userId,
-                    messageText = messageText
-                )
-                _palMessages.value = _palMessages.value + (palCode to ((_palMessages.value[palCode] ?: emptyList()) + localMsg))
             }
         }
     }
