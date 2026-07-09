@@ -4366,8 +4366,10 @@ fun HomeScreen(
                                     } catch (e: Exception) {
                                         e.printStackTrace()
                                     }
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        viewModel.sendMessage(targetPalCode, currentUserId, reactionContent)
+                                    }
                                 }
-                                viewModel.sendMessage(targetPalCode, currentUserId, reactionContent)
                             }
                         },
                         activeReplyPreviewPath = activeReplyPreviewPath,
@@ -16415,14 +16417,14 @@ fun JoinPalDialogOverlay(
     refreshPals: () -> Unit,
     supabaseClient: io.github.jan.supabase.SupabaseClient,
     currentDisplayName: String,
-    customAvatarUriString: String?
+    customAvatarUriString: String?,
+    coroutineScope: kotlinx.coroutines.CoroutineScope
 ) {
     if (showJoinPalFlow) {
         androidx.activity.compose.BackHandler {
             onShowJoinPalFlowChange(false)
         }
 
-        val localScope = rememberCoroutineScope()
         val context = LocalContext.current
         var isFocused by remember { mutableStateOf(false) }
         val verticalBias by animateFloatAsState(
@@ -16601,7 +16603,7 @@ fun JoinPalDialogOverlay(
                                 )
                                 .clickable(enabled = isCodeValid) {
                                     val code = joinPalCode.trim().lowercase(java.util.Locale.ROOT)
-                                    localScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
                                             // 1. Check/Insert mapping first to bypass pals RLS select policy
                                             val existingMapping = supabaseClient.postgrest.from("user_pals")
@@ -16658,7 +16660,7 @@ fun JoinPalDialogOverlay(
                                                 refreshPals()
                                                 onShowJoinPalFlowChange(false)
                                                 val groupNameToShow = matchedPalDb?.name?.removeSuffix(" ($code)") ?: "Pals Group"
-                                                android.widget.Toast.makeText(context, "Successfully joined $groupNameToShow!", android.widget.Toast.LENGTH_SHORT).show()
+                                                android.widget.Toast.makeText(context.applicationContext, "Successfully joined $groupNameToShow!", android.widget.Toast.LENGTH_SHORT).show()
                                             }
                                         } catch (e: Exception) {
                                             e.printStackTrace()
@@ -16672,7 +16674,7 @@ fun JoinPalDialogOverlay(
                                                 }
                                             } catch (ex: Exception) {}
                                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                android.widget.Toast.makeText(context, "Pal code not found or invalid", android.widget.Toast.LENGTH_SHORT).show()
+                                                android.widget.Toast.makeText(context.applicationContext, "Pal code not found or invalid", android.widget.Toast.LENGTH_SHORT).show()
                                             }
                                         }
                                     }
@@ -18938,7 +18940,8 @@ fun HomeScreenOverlays(
         refreshPals = refreshPals,
         supabaseClient = supabaseClient,
         currentDisplayName = currentDisplayName,
-        customAvatarUriString = customAvatarUriString
+        customAvatarUriString = customAvatarUriString,
+        coroutineScope = coroutineScope
     )
 
     // Edit Name Dialog Flow (Centered Screen Overlay)
