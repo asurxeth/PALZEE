@@ -305,7 +305,8 @@ fun handleDeleteVlog(
     capturedVlogsTimes: List<String>,
     capturedVlogsCaptions: List<String>,
     capturedVlogsDurations: List<String>,
-    onUpdateVlogLists: (List<String>, List<String>, List<String>, List<String>) -> Unit,
+    capturedVlogsZoomed: List<Boolean>,
+    onUpdateVlogLists: (List<String>, List<String>, List<String>, List<String>, List<Boolean>) -> Unit,
     vlogExoPlayer: androidx.media3.exoplayer.ExoPlayer,
     targetDate: java.time.LocalDate,
     onActiveVlogPalChange: (PalItem?) -> Unit,
@@ -334,9 +335,10 @@ fun handleDeleteVlog(
         }
         
         locallyDeletedSubmissions[deletedPath] = true
+        
         if (palCode != "vlog") {
             // GROUP Pal DELETION
-            // 1. Remove from allPalsSubmissions
+            // 1. Remove from allPalsSubmissions instantly
             val currentSubs = allPalsSubmissions[palCode]
             if (currentSubs != null) {
                 val updatedSubs = currentSubs.filterNot { 
@@ -344,9 +346,16 @@ fun handleDeleteVlog(
                     pathPart == deletedPath || it.imageUrl == deletedPath
                 }
                 allPalsSubmissions[palCode] = updatedSubs
+                try {
+                    val jsonSubs = kotlinx.serialization.json.Json.encodeToString(allPalsSubmissions.toMap())
+                    context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+                        .edit().putString("cached_all_pals_submissions", jsonSubs).apply()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
             
-            // 2. Delete from Supabase
+            // 2. Delete from Supabase in the background
             coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 try {
                     val dbSubs = supabaseClient.postgrest.from("submissions")
@@ -380,19 +389,18 @@ fun handleDeleteVlog(
                 val updatedTimes = ArrayList(capturedVlogsTimes).apply { if (globalIndex < size) removeAt(globalIndex) }
                 val updatedCaptions = ArrayList(capturedVlogsCaptions).apply { if (globalIndex < size) removeAt(globalIndex) }
                 val updatedDurations = ArrayList(capturedVlogsDurations).apply { if (globalIndex < size) removeAt(globalIndex) }
+                val updatedZoomed = ArrayList(capturedVlogsZoomed).apply { if (globalIndex < size) removeAt(globalIndex) }
                 
                 getVlogPrefs(context).edit().apply {
                     putString("vlog_paths", updatedPaths.joinToString(";;;"))
                     putString("vlog_times", updatedTimes.joinToString(";;;"))
                     putString("vlog_captions", updatedCaptions.joinToString(";;;"))
                     putString("vlog_durations", updatedDurations.joinToString(";;;"))
+                    putString("vlog_zoomed", updatedZoomed.map { it.toString() }.joinToString(";;;"))
                     apply()
                 }
                 
-                onUpdateVlogLists(updatedPaths, updatedTimes, updatedCaptions, updatedDurations)
-                if (updatedPaths.isEmpty()) {
-                    onActiveVlogPalChange(null)
-                }
+                onUpdateVlogLists(updatedPaths, updatedTimes, updatedCaptions, updatedDurations, updatedZoomed)
                 
                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                     try {
@@ -420,33 +428,43 @@ fun handleDeleteVlog(
                         e.printStackTrace()
                     }
                 }
-                
-                vlogExoPlayer.stop()
-                vlogExoPlayer.clearMediaItems()
-                val newFilteredPaths = updatedPaths.filter { getVlogLocalDate(it) == targetDate }
-                newFilteredPaths.forEach { path ->
-                    val cleanPath2 = when {
-                        path.startsWith("file://") -> path.substring(7)
-                        else -> path
-                    }
-                    val fileTarget = java.io.File(cleanPath2)
-                    if (fileTarget.exists() && fileTarget.length() > 0) {
-                        val targetUri = android.net.Uri.fromFile(fileTarget)
-                        vlogExoPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
-                    }
+            }
+        }
+
+        // 3. Update player and active index instantly for both group and standard vlogs!
+        val newFilteredPaths = filteredPaths.filterNot { it == deletedPath }
+        vlogExoPlayer.stop()
+        vlogExoPlayer.clearMediaItems()
+        
+        // Resolve cache paths synchronously to avoid empty gaps in viewer
+        val resolved = newFilteredPaths.map { path ->
+            val cached = getCachedVideoPathSync(context, path)
+            cached ?: path
+        }
+        resolved.forEach { resolvedPath ->
+            if (resolvedPath.startsWith("http")) {
+                vlogExoPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(resolvedPath)))
+            } else {
+                val cleanPath = if (resolvedPath.startsWith("file://")) resolvedPath.substring(7) else resolvedPath
+                val fileTarget = java.io.File(cleanPath)
+                if (fileTarget.exists()) {
+                    vlogExoPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(fileTarget)))
                 }
-                if (newFilteredPaths.isNotEmpty()) {
-                    val nextIndex = indexToDelete.coerceAtMost(newFilteredPaths.lastIndex)
-                    if (nextIndex < vlogExoPlayer.mediaItemCount) {
-                        vlogExoPlayer.seekTo(nextIndex, 0L)
-                        vlogExoPlayer.prepare()
-                        vlogExoPlayer.playWhenReady = true
-                        vlogExoPlayer.play()
-                    }
-                    onCurrentPlayingIndexChange(nextIndex)
-                } else {
-                    onCurrentPlayingIndexChange(0)
-                }
+            }
+        }
+        if (resolved.isNotEmpty()) {
+            vlogExoPlayer.prepare()
+            val nextIndex = indexToDelete.coerceAtMost(newFilteredPaths.lastIndex)
+            if (nextIndex in 0 until vlogExoPlayer.mediaItemCount) {
+                vlogExoPlayer.seekTo(nextIndex, 0L)
+                vlogExoPlayer.playWhenReady = true
+                vlogExoPlayer.play()
+            }
+            onCurrentPlayingIndexChange(nextIndex)
+        } else {
+            onCurrentPlayingIndexChange(0)
+            if (palCode == "vlog") {
+                onActiveVlogPalChange(null)
             }
         }
     }
@@ -525,9 +543,10 @@ fun handleVlogSubmission(
     capturedVlogsTimes: List<String>,
     capturedVlogsCaptions: List<String>,
     capturedVlogsDurations: List<String>,
+    capturedVlogsZoomed: List<Boolean>,
     allPalsSubmissions: MutableMap<String, List<SubmissionDbItem>>,
     palPalsCount: MutableMap<String, Int>,
-    onUpdateVlogLists: (List<String>, List<String>, List<String>, List<String>) -> Unit,
+    onUpdateVlogLists: (List<String>, List<String>, List<String>, List<String>, List<Boolean>) -> Unit,
     context: android.content.Context,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     supabaseClient: io.github.jan.supabase.SupabaseClient,
@@ -537,7 +556,8 @@ fun handleVlogSubmission(
     onActiveVlogPalChange: (PalItem?) -> Unit,
     onShowingCapturedPreviewChange: (Boolean) -> Unit,
     onSelectedTabChange: (String) -> Unit,
-    onUpdateAvatarUrl: (String) -> Unit
+    onUpdateAvatarUrl: (String) -> Unit,
+    isZoomed: Boolean
 ) {
     val localVideoPath = capturedVideoPath
     val formattedTime = capturedVideoTimeText
@@ -554,6 +574,7 @@ fun handleVlogSubmission(
     var currentTimes = capturedVlogsTimes
     var currentCaptions = capturedVlogsCaptions
     var currentDurations = capturedVlogsDurations
+    var currentZoomed = capturedVlogsZoomed
     var finalAvatarUrl = customAvatarUriString ?: ""
 
     targetPals.forEach { targetPal ->
@@ -594,6 +615,11 @@ fun handleVlogSubmission(
                 updatedDurations.add(0, capturedVideoDuration.toString())
                 currentDurations = updatedDurations
                 getVlogPrefs(context).edit().putString("vlog_durations", updatedDurations.joinToString(";;;")).apply()
+
+                val updatedZoomed = ArrayList(currentZoomed)
+                updatedZoomed.add(0, isZoomed)
+                currentZoomed = updatedZoomed
+                getVlogPrefs(context).edit().putString("vlog_zoomed", updatedZoomed.map { it.toString() }.joinToString(";;;")).apply()
             }
         }
 
@@ -603,7 +629,7 @@ fun handleVlogSubmission(
                 palCode = targetPalCode,
                 userId = currentUserId,
                 userDisplayName = if (finalAvatarUrl.isNotEmpty()) "$firstName|||$finalAvatarUrl" else firstName,
-                imageUrl = "${localVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}",
+                imageUrl = "${localVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}|||$isZoomed",
                 createdAt = capturedVideoInstant.toString()
             )
             val currentList = allPalsSubmissions[targetPalCode] ?: emptyList()
@@ -618,7 +644,7 @@ fun handleVlogSubmission(
         if (targetPalCode != "vlog") {
             val pendingPrefs = context.getSharedPreferences("pending_submissions_prefs", android.content.Context.MODE_PRIVATE)
             val localDisplayName = if (finalAvatarUrl.isNotEmpty()) "$firstName|||$finalAvatarUrl" else firstName
-            val pendingValue = "$targetPalCode;;;$currentUserId;;;$localDisplayName;;;${localVideoPath ?: ""}|||${caption}|||${capturedVideoDuration};;;${capturedVideoInstant.toString()}"
+            val pendingValue = "$targetPalCode;;;$currentUserId;;;$localDisplayName;;;${localVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}|||$isZoomed;;;${capturedVideoInstant.toString()}"
             pendingPrefs.edit().putString(uniqueKey, pendingValue).apply()
         }
 
@@ -679,7 +705,7 @@ fun handleVlogSubmission(
                 
                 val formattedName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
 
-                val delimiterString = "$uploadedVideoUrl|||${caption}|||${capturedVideoDuration}"
+                val delimiterString = "$uploadedVideoUrl|||${caption}|||${capturedVideoDuration}|||$isZoomed"
                 val cleanCode = targetPalCode.trim()
                 if (cleanCode.isBlank()) {
                     android.util.Log.e("SubmissionError", "Aborting upload: pal_code is empty.")
@@ -724,7 +750,7 @@ fun handleVlogSubmission(
             }
         }
     }
-    onUpdateVlogLists(currentPaths, currentTimes, currentCaptions, currentDurations)
+    onUpdateVlogLists(currentPaths, currentTimes, currentCaptions, currentDurations, currentZoomed)
     onShowingCapturedPreviewChange(false)
     onSelectedTabChange("pals")
 }
@@ -755,6 +781,7 @@ fun syncLocalVlogsToDatabase(
             val localTimes = prefs.getString("vlog_times", null)?.split(";;;")?.filter { it.isNotEmpty() } ?: emptyList()
             val localCaptions = prefs.getString("vlog_captions", null)?.split(";;;")?.filter { it.isNotEmpty() } ?: emptyList()
             val localDurations = prefs.getString("vlog_durations", null)?.split(";;;")?.filter { it.isNotEmpty() } ?: emptyList()
+            val localZoomed = prefs.getString("vlog_zoomed", null)?.split(";;;")?.filter { it.isNotEmpty() } ?: emptyList()
             
             for (idx in localPaths.indices) {
                 val path = localPaths[idx]
@@ -777,6 +804,7 @@ fun syncLocalVlogsToDatabase(
                             
                             val caption = localCaptions.getOrNull(idx) ?: ""
                             val duration = localDurations.getOrNull(idx) ?: "2000"
+                            val isZoomed = localZoomed.getOrNull(idx) == "true"
                             
                             val lastModified = file.lastModified()
                             val instant = java.time.Instant.ofEpochMilli(lastModified)
@@ -787,7 +815,7 @@ fun syncLocalVlogsToDatabase(
                                 ""
                             }
                             val formattedName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
-                            val delimiterString = "$uploadedUrl|||$caption|||$duration"
+                            val delimiterString = "$uploadedUrl|||$caption|||$duration|||$isZoomed"
                             
                             val newSubmission = SubmissionDbItem(
                                 palCode = "vlog",
@@ -832,6 +860,7 @@ fun syncPendingSubmissions(
                     val localPath = imageParts.getOrNull(0) ?: ""
                     val caption = imageParts.getOrNull(1) ?: ""
                     val duration = imageParts.getOrNull(2) ?: "2000"
+                    val isZoomedStr = imageParts.getOrNull(3) ?: "false"
                     
                     val uploadedUrl = if (localPath.isNotEmpty()) {
                         uploadFileToSupabase(context, localPath, "PALS")
@@ -840,7 +869,7 @@ fun syncPendingSubmissions(
                     }
                     
                     if (uploadedUrl.isNotEmpty() && uploadedUrl.startsWith("http")) {
-                        val delimiterString = "$uploadedUrl|||${caption}|||${duration}"
+                        val delimiterString = "$uploadedUrl|||${caption}|||${duration}|||$isZoomedStr"
                         val newSubmission = SubmissionDbItem(
                             palCode = palCode,
                             userId = userId,
@@ -923,40 +952,46 @@ fun handleGlobalSearchTrigger(
 
 object VlogPlayerManager {
     private val playerCache = ConcurrentHashMap<String, androidx.media3.exoplayer.ExoPlayer>()
+    private val lruKeys = java.util.concurrent.CopyOnWriteArrayList<String>()
+    private const val MAX_PLAYERS = 3
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun getOrCreatePlayer(context: android.content.Context, videoUrl: String): androidx.media3.exoplayer.ExoPlayer {
+        lruKeys.remove(videoUrl)
+        lruKeys.add(videoUrl)
+
+        while (lruKeys.size > MAX_PLAYERS) {
+            val oldestKey = lruKeys.removeAt(0)
+            if (oldestKey != videoUrl) {
+                releasePlayer(oldestKey)
+            }
+        }
+
         return playerCache.getOrPut(videoUrl) {
-            androidx.media3.exoplayer.ExoPlayer.Builder(context.applicationContext)
-                .setRenderersFactory(
-                    androidx.media3.exoplayer.DefaultRenderersFactory(context.applicationContext).apply {
-                        setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
-                        setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                    }
-                )
-                .setMediaSourceFactory(
-                    androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context.applicationContext)
-                        .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context.applicationContext))
-                )
-                .setLoadControl(VideoCache.getLowLatencyLoadControl())
-                .build().apply {
-                    setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUrl))
-                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                    volume = 0f // Muted feed
-                    prepare()
-                    playWhenReady = true
-                }
+            com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context.applicationContext).apply {
+                setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUrl))
+                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                volume = 0f // Muted feed
+                prepare()
+                playWhenReady = true
+            }
         }
     }
 
     fun releasePlayer(videoUrl: String) {
+        lruKeys.remove(videoUrl)
         playerCache.remove(videoUrl)?.apply {
-            stop()
-            release()
+            try {
+                stop()
+                release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     fun clearAll() {
+        lruKeys.clear()
         playerCache.keys.forEach { releasePlayer(it) }
     }
 }
@@ -1084,384 +1119,106 @@ suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: 
     }
 }
 
+fun isPathZoomed(path: String?): Boolean {
+    if (path == null) return false
+    val parts = path.split("|||")
+    val token = parts.getOrNull(3) ?: return false
+    return token.trim().equals("true", ignoreCase = true)
+}
+
+fun isLocalVlogZoomed(context: android.content.Context, path: String?): Boolean {
+    if (path == null) return false
+    val prefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+    val savedPaths = prefs.getString("vlog_paths", "") ?: ""
+    val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
+    val idx = paths.indexOf(path)
+    if (idx != -1) {
+        val savedZoomed = prefs.getString("vlog_zoomed", "") ?: ""
+        val zoomed = if (savedZoomed.isEmpty()) emptyList() else savedZoomed.split(";;;")
+        return zoomed.getOrNull(idx) == "true"
+    }
+    return false
+}
+
+private val cacheMutexes = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+
 suspend fun ensureVideoCached(context: android.content.Context, videoPath: String): String {
     if (videoPath.isBlank()) return videoPath
 
-    val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
-    val vlogPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
-    
-    val cachedLocal = palPrefs.getString("local_path_$videoPath", null)
-        ?: vlogPrefs.getString("local_path_$videoPath", null)
-    if (cachedLocal != null) {
-        val cleanLocalPath = if (cachedLocal.startsWith("file://")) cachedLocal.substring(7) else cachedLocal
-        if (java.io.File(cleanLocalPath).exists()) {
-            return cleanLocalPath
-        }
-    }
-
-    if (videoPath.startsWith("http")) {
-        var resolvedPath = videoPath
-        if (resolvedPath.contains("/pals/", ignoreCase = true)) {
-            resolvedPath = resolvedPath.replace("/pals/", "/PALS/")
-        }
-        if (resolvedPath.contains("/pals_vlogs/", ignoreCase = true)) {
-            resolvedPath = resolvedPath.replace("/pals_vlogs/", "/PALS_VLOGS/")
-        }
-        if (resolvedPath.contains("/avatars/", ignoreCase = true)) {
-            resolvedPath = resolvedPath.replace("/avatars/", "/AVATARS/")
-        }
-
-        val fileName = resolvedPath.substringAfterLast("/")
-        val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
-        if (cacheFile.exists() && cacheFile.length() > 0) {
-            return cacheFile.absolutePath
-        }
-
-        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            try {
-                val bytes = try {
-                    val connection = java.net.URL(resolvedPath).openConnection() as java.net.HttpURLConnection
-                    connection.connectTimeout = 5000
-                    connection.readTimeout = 5000
-                    connection.requestMethod = "GET"
-                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
-                    if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
-                        connection.inputStream.use { it.readBytes() }
-                    } else {
-                        throw java.io.IOException("HTTP error ${connection.responseCode}")
-                    }
-                } catch (httpEx: Exception) {
-                    val bucketName = if (resolvedPath.contains("pals_vlogs", ignoreCase = true)) "PALS_VLOGS" else "PALS"
-                    val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
-                    try {
-                        storage.downloadPublic(fileName)
-                    } catch (e1: Exception) {
-                        storage.downloadAuthenticated(fileName)
-                    }
-                }
-                cacheFile.writeBytes(bytes)
-                palPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
-                vlogPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
-                cacheFile.absolutePath
-            } catch (e: Exception) {
-                resolvedPath
+    val mutex = cacheMutexes.getOrPut(videoPath) { kotlinx.coroutines.sync.Mutex() }
+    return mutex.withLock {
+        val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+        val vlogPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+        
+        val cachedLocal = palPrefs.getString("local_path_$videoPath", null)
+            ?: vlogPrefs.getString("local_path_$videoPath", null)
+        if (cachedLocal != null) {
+            val cleanLocalPath = if (cachedLocal.startsWith("file://")) cachedLocal.substring(7) else cachedLocal
+            if (java.io.File(cleanLocalPath).exists()) {
+                return@withLock cleanLocalPath
             }
         }
-    }
-    
-    val cleanInputPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
-    return cleanInputPath
-}
 
-class ZoomCameraEffect(
-    targets: Int,
-    executor: java.util.concurrent.Executor,
-    surfaceProcessor: androidx.camera.core.SurfaceProcessor,
-    errorListener: androidx.core.util.Consumer<Throwable>
-) : androidx.camera.core.CameraEffect(targets, executor, surfaceProcessor, errorListener)
-
-class EglOutput(
-    val surfaceOutput: androidx.camera.core.SurfaceOutput,
-    val eglSurface: android.opengl.EGLSurface,
-    val width: Int,
-    val height: Int
-)
-
-class ZoomStateHolder(initialZoom: Float) {
-    @Volatile var linearZoom: Float = initialZoom
-}
-
-fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.core.CameraEffect {
-    val effectExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-    val errorListener = androidx.core.util.Consumer<Throwable> { throwable ->
-        throwable.printStackTrace()
-    }
-    return ZoomCameraEffect(
-        androidx.camera.core.CameraEffect.PREVIEW or androidx.camera.core.CameraEffect.VIDEO_CAPTURE,
-        effectExecutor,
-        object : androidx.camera.core.SurfaceProcessor {
-            private val glExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-            private var eglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
-            private var eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
-            private var eglConfig: android.opengl.EGLConfig? = null
-            private var eglDummySurface = android.opengl.EGL14.EGL_NO_SURFACE
-            private var program = 0
-            private var texMatrixLoc = 0
-            private var textureId = 0
-            private var surfaceTexture: android.graphics.SurfaceTexture? = null
-            private var inputSurface: android.view.Surface? = null
-            private val outputs = java.util.concurrent.ConcurrentHashMap<androidx.camera.core.SurfaceOutput, EglOutput>()
-
-            override fun onInputSurface(surfaceRequest: androidx.camera.core.SurfaceRequest) {
-                glExecutor.execute {
-                    try {
-                        initEglIfNeeded()
-                        val textures = IntArray(1)
-                        android.opengl.GLES20.glGenTextures(1, textures, 0)
-                        textureId = textures[0]
-                        android.opengl.GLES20.glBindTexture(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
-                        android.opengl.GLES20.glTexParameteri(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, android.opengl.GLES20.GL_TEXTURE_MIN_FILTER, android.opengl.GLES20.GL_LINEAR)
-                        android.opengl.GLES20.glTexParameteri(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, android.opengl.GLES20.GL_TEXTURE_MAG_FILTER, android.opengl.GLES20.GL_LINEAR)
-                        android.opengl.GLES20.glTexParameteri(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, android.opengl.GLES20.GL_TEXTURE_WRAP_S, android.opengl.GLES20.GL_CLAMP_TO_EDGE)
-                        android.opengl.GLES20.glTexParameteri(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, android.opengl.GLES20.GL_TEXTURE_WRAP_T, android.opengl.GLES20.GL_CLAMP_TO_EDGE)
-
-                        val st = android.graphics.SurfaceTexture(textureId)
-                        st.setDefaultBufferSize(surfaceRequest.resolution.width, surfaceRequest.resolution.height)
-                        val handler = android.os.Handler(android.os.Looper.getMainLooper())
-                        st.setOnFrameAvailableListener({
-                            glExecutor.execute {
-                                drawFrame()
-                            }
-                        }, handler)
-
-                        surfaceTexture = st
-                        val surface = android.view.Surface(st)
-                        inputSurface = surface
-
-                        surfaceRequest.provideSurface(surface, glExecutor) { result ->
-                            glExecutor.execute {
-                                try {
-                                    st.release()
-                                    surface.release()
-                                    android.opengl.GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
-                                    
-                                    // Properly clear GL program and EGL components to completely prevent graphics leaks
-                                    if (program != 0) {
-                                        android.opengl.GLES20.glDeleteProgram(program)
-                                        program = 0
-                                    }
-                                    outputs.values.forEach { output ->
-                                        android.opengl.EGL14.eglDestroySurface(eglDisplay, output.eglSurface)
-                                    }
-                                    outputs.clear()
-                                    if (eglDummySurface != android.opengl.EGL14.EGL_NO_SURFACE) {
-                                        android.opengl.EGL14.eglDestroySurface(eglDisplay, eglDummySurface)
-                                        eglDummySurface = android.opengl.EGL14.EGL_NO_SURFACE
-                                    }
-                                    if (eglContext != android.opengl.EGL14.EGL_NO_CONTEXT) {
-                                        android.opengl.EGL14.eglDestroyContext(eglDisplay, eglContext)
-                                        eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
-                                    }
-                                    if (eglDisplay != android.opengl.EGL14.EGL_NO_DISPLAY) {
-                                        android.opengl.EGL14.eglTerminate(eglDisplay)
-                                        eglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
-                                    }
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
+        if (videoPath.startsWith("http")) {
+            var resolvedPath = videoPath
+            if (resolvedPath.contains("/pals/", ignoreCase = true)) {
+                resolvedPath = resolvedPath.replace("/pals/", "/PALS/")
+            }
+            if (resolvedPath.contains("/pals_vlogs/", ignoreCase = true)) {
+                resolvedPath = resolvedPath.replace("/pals_vlogs/", "/PALS_VLOGS/")
+            }
+            if (resolvedPath.contains("/avatars/", ignoreCase = true)) {
+                resolvedPath = resolvedPath.replace("/avatars/", "/AVATARS/")
             }
 
-            override fun onOutputSurface(surfaceOutput: androidx.camera.core.SurfaceOutput) {
-                glExecutor.execute {
-                    try {
-                        initEglIfNeeded()
-                        val targetSurface = surfaceOutput.getSurface(glExecutor) { result ->
-                            glExecutor.execute {
-                                val output = outputs.remove(surfaceOutput)
-                                if (output != null) {
-                                    android.opengl.EGL14.eglDestroySurface(eglDisplay, output.eglSurface)
-                                }
-                            }
-                        }
-
-                        val surfaceAttribs = intArrayOf(android.opengl.EGL14.EGL_NONE)
-                        val eglSurface = android.opengl.EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, targetSurface, surfaceAttribs, 0)
-
-                        val output = EglOutput(
-                            surfaceOutput = surfaceOutput,
-                            eglSurface = eglSurface,
-                            width = surfaceOutput.size.width,
-                            height = surfaceOutput.size.height
-                        )
-                        outputs[surfaceOutput] = output
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
+            val fileName = resolvedPath.substringAfterLast("/")
+            val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
+            if (cacheFile.exists() && cacheFile.length() > 0) {
+                return@withLock cacheFile.absolutePath
             }
 
-            private fun drawFrame() {
-                val st = surfaceTexture ?: return
+            return@withLock kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglDummySurface, eglDummySurface, eglContext)
-                    st.updateTexImage()
-                    val originalTexMatrix = FloatArray(16)
-                    st.getTransformMatrix(originalTexMatrix)
-
-                    val currentZoom = zoomStateHolder.linearZoom
-                    val scaleFactor = 1.0f + (currentZoom * 1.5f)
-                    val scaleMatrix = FloatArray(16).apply {
-                        android.opengl.Matrix.setIdentityM(this, 0)
-                        android.opengl.Matrix.translateM(this, 0, 0.5f, 0.5f, 0.0f)
-                        android.opengl.Matrix.scaleM(this, 0, 1f / scaleFactor, 1f / scaleFactor, 1.0f)
-                        android.opengl.Matrix.translateM(this, 0, -0.5f, -0.5f, 0.0f)
+                    val bytes = try {
+                        val connection = java.net.URL(resolvedPath).openConnection() as java.net.HttpURLConnection
+                        connection.connectTimeout = 5000
+                        connection.readTimeout = 5000
+                        connection.requestMethod = "GET"
+                        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
+                        if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                            val resBytes = connection.inputStream.use { it.readBytes() }
+                            connection.disconnect()
+                            resBytes
+                        } else {
+                            connection.disconnect()
+                            throw java.io.IOException("HTTP error ${connection.responseCode}")
+                        }
+                    } catch (httpEx: Exception) {
+                        val bucketName = if (resolvedPath.contains("pals_vlogs", ignoreCase = true)) "PALS_VLOGS" else "PALS"
+                        val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+                        try {
+                            storage.downloadPublic(fileName)
+                        } catch (e1: Exception) {
+                            storage.downloadAuthenticated(fileName)
+                        }
                     }
-
-                    outputs.values.forEach { output ->
-                        android.opengl.EGL14.eglMakeCurrent(eglDisplay, output.eglSurface, output.eglSurface, eglContext)
-                        android.opengl.GLES20.glViewport(0, 0, output.width, output.height)
-
-                        val correctedMatrix = FloatArray(16)
-                        output.surfaceOutput.updateTransformMatrix(correctedMatrix, originalTexMatrix)
-
-                        val finalMatrix = FloatArray(16)
-                        android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, correctedMatrix, 0)
-
-                        drawTexture(textureId, finalMatrix)
-                        android.opengl.EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
-                    }
+                    cacheFile.writeBytes(bytes)
+                    palPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
+                    vlogPrefs.edit().putString("local_path_$videoPath", cacheFile.absolutePath).apply()
+                    cacheFile.absolutePath
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    resolvedPath
                 }
             }
-
-            private fun initEglIfNeeded() {
-                if (eglDisplay != android.opengl.EGL14.EGL_NO_DISPLAY) return
-
-                eglDisplay = android.opengl.EGL14.eglGetDisplay(android.opengl.EGL14.EGL_DEFAULT_DISPLAY)
-                val version = IntArray(2)
-                android.opengl.EGL14.eglInitialize(eglDisplay, version, 0, version, 1)
-
-                val attribList = intArrayOf(
-                    android.opengl.EGL14.EGL_RED_SIZE, 8,
-                    android.opengl.EGL14.EGL_GREEN_SIZE, 8,
-                    android.opengl.EGL14.EGL_BLUE_SIZE, 8,
-                    android.opengl.EGL14.EGL_ALPHA_SIZE, 8,
-                    android.opengl.EGL14.EGL_RENDERABLE_TYPE, android.opengl.EGL14.EGL_OPENGL_ES2_BIT,
-                    android.opengl.EGL14.EGL_SURFACE_TYPE, android.opengl.EGL14.EGL_WINDOW_BIT or android.opengl.EGL14.EGL_PBUFFER_BIT,
-                    android.opengl.EGL14.EGL_NONE
-                )
-                val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
-                val numConfigs = IntArray(1)
-                android.opengl.EGL14.eglChooseConfig(eglDisplay, attribList, 0, configs, 0, configs.size, numConfigs, 0)
-                eglConfig = configs[0]
-
-                val ctxAttribList = intArrayOf(
-                    android.opengl.EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
-                    android.opengl.EGL14.EGL_NONE
-                )
-                eglContext = android.opengl.EGL14.eglCreateContext(eglDisplay, eglConfig, android.opengl.EGL14.EGL_NO_CONTEXT, ctxAttribList, 0)
-
-                val pbufferAttribs = intArrayOf(
-                    android.opengl.EGL14.EGL_WIDTH, 1,
-                    android.opengl.EGL14.EGL_HEIGHT, 1,
-                    android.opengl.EGL14.EGL_NONE
-                )
-                eglDummySurface = android.opengl.EGL14.eglCreatePbufferSurface(eglDisplay, eglConfig, pbufferAttribs, 0)
-                android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglDummySurface, eglDummySurface, eglContext)
-
-                val vertexShader = compileShader(android.opengl.GLES20.GL_VERTEX_SHADER, vertexShaderSource)
-                val fragmentShader = compileShader(android.opengl.GLES20.GL_FRAGMENT_SHADER, fragmentShaderSource)
-                program = android.opengl.GLES20.glCreateProgram().apply {
-                    android.opengl.GLES20.glAttachShader(this, vertexShader)
-                    android.opengl.GLES20.glAttachShader(this, fragmentShader)
-                    android.opengl.GLES20.glLinkProgram(this)
-                }
-                texMatrixLoc = android.opengl.GLES20.glGetUniformLocation(program, "uTexMatrix")
-                initBuffers()
-            }
-
-            private val vertexShaderSource = """
-                attribute vec4 aPosition;
-                attribute vec4 aTextureCoord;
-                varying vec2 vTextureCoord;
-                uniform mat4 uTexMatrix;
-                void main() {
-                    gl_Position = aPosition;
-                    vTextureCoord = (uTexMatrix * aTextureCoord).xy;
-                }
-            """.trimIndent()
-
-            private val fragmentShaderSource = """
-                #extension GL_OES_EGL_image_external : require
-                precision mediump float;
-                varying vec2 vTextureCoord;
-                uniform samplerExternalOES sTexture;
-                void main() {
-                    gl_FragColor = texture2D(sTexture, vTextureCoord);
-                }
-            """.trimIndent()
-
-            private var vertexBuffer: java.nio.FloatBuffer? = null
-            private var texCoordBuffer: java.nio.FloatBuffer? = null
-
-            private fun initBuffers() {
-                val vertices = floatArrayOf(
-                    -1.0f, -1.0f,
-                     1.0f, -1.0f,
-                    -1.0f,  1.0f,
-                     1.0f,  1.0f
-                )
-                vertexBuffer = java.nio.ByteBuffer.allocateDirect(vertices.size * 4)
-                    .order(java.nio.ByteOrder.nativeOrder())
-                    .asFloatBuffer()
-                    .apply {
-                        put(vertices)
-                        position(0)
-                    }
-
-                val texCoords = floatArrayOf(
-                    0.0f, 0.0f,
-                    1.0f, 0.0f,
-                    0.0f, 1.0f,
-                    1.0f, 1.0f
-                )
-                texCoordBuffer = java.nio.ByteBuffer.allocateDirect(texCoords.size * 4)
-                    .order(java.nio.ByteOrder.nativeOrder())
-                    .asFloatBuffer()
-                    .apply {
-                        put(texCoords)
-                        position(0)
-                    }
-            }
-
-            private fun drawTexture(textureId: Int, matrix: FloatArray) {
-                android.opengl.GLES20.glUseProgram(program)
-
-                val posLoc = android.opengl.GLES20.glGetAttribLocation(program, "aPosition")
-                android.opengl.GLES20.glEnableVertexAttribArray(posLoc)
-                android.opengl.GLES20.glVertexAttribPointer(posLoc, 2, android.opengl.GLES20.GL_FLOAT, false, 0, vertexBuffer)
-
-                val texLoc = android.opengl.GLES20.glGetAttribLocation(program, "aTextureCoord")
-                android.opengl.GLES20.glEnableVertexAttribArray(texLoc)
-                android.opengl.GLES20.glVertexAttribPointer(texLoc, 2, android.opengl.GLES20.GL_FLOAT, false, 0, texCoordBuffer)
-
-                android.opengl.GLES20.glUniformMatrix4fv(texMatrixLoc, 1, false, matrix, 0)
-
-                android.opengl.GLES20.glActiveTexture(android.opengl.GLES20.GL_TEXTURE0)
-                android.opengl.GLES20.glBindTexture(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
-
-                android.opengl.GLES20.glDrawArrays(android.opengl.GLES20.GL_TRIANGLE_STRIP, 0, 4)
-
-                android.opengl.GLES20.glDisableVertexAttribArray(posLoc)
-                android.opengl.GLES20.glDisableVertexAttribArray(texLoc)
-            }
-
-            private fun compileShader(type: Int, source: String): Int {
-                val shader = android.opengl.GLES20.glCreateShader(type)
-                android.opengl.GLES20.glShaderSource(shader, source)
-                android.opengl.GLES20.glCompileShader(shader)
-                val compiled = IntArray(1)
-                android.opengl.GLES20.glGetShaderiv(shader, android.opengl.GLES20.GL_COMPILE_STATUS, compiled, 0)
-                if (compiled[0] == 0) {
-                    val log = android.opengl.GLES20.glGetShaderInfoLog(shader)
-                    android.opengl.GLES20.glDeleteShader(shader)
-                    throw RuntimeException("Shader compile error: " + log)
-                }
-                return shader
-            }
-        },
-        errorListener
-    )
+        }
+        val cleanInputPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
+        cleanInputPath
+    }
 }
 
+// Removed ZoomCameraEffect, EglOutput, and ZoomStateHolder.
 
+// Removed createZoomCameraEffect to prevent EGL crashes.
 suspend fun sendVideoPalToVlog(context: android.content.Context, localUri: android.net.Uri, userId: String, palCode: String) {
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val permanentVideoUrl = uploadPalVideoAndGetUrl(context, localUri, userId) ?: return@withContext
@@ -2763,6 +2520,15 @@ fun HomeScreen(
         val filteredDurationsList = validIndices.map { durations.getOrNull(it) ?: "2000" }
         mutableStateOf(ArrayList(filteredDurationsList))
     }
+    var capturedVlogsZoomed by remember(deletedVlogsKey, currentUserId) {
+        val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
+        val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
+        val savedZoomed = getVlogPrefs(context).getString("vlog_zoomed", "") ?: ""
+        val zoomed = if (savedZoomed.isEmpty()) emptyList() else savedZoomed.split(";;;")
+        val validIndices = paths.indices.filter { idx -> paths[idx] !in initialDeleted }
+        val filteredZoomedList = validIndices.map { zoomed.getOrNull(it) == "true" }
+        mutableStateOf(ArrayList(filteredZoomedList))
+    }
     var currentPlayingIndex by remember { mutableStateOf(0) }
     var vlogPlaybackProgress by remember { mutableStateOf(0f) }
     var showVlogDropdownMenu by remember { mutableStateOf(false) }
@@ -3142,23 +2908,11 @@ fun HomeScreen(
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     val vlogExoPlayer = remember {
-        androidx.media3.exoplayer.ExoPlayer.Builder(context)
-            .setRenderersFactory(
-                androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
-                    setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
-                    setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                }
-            )
-            .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
-                    .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
-            )
-            .setLoadControl(VideoCache.getLowLatencyLoadControl())
-            .build().apply {
-                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                volume = 0f
-                playWhenReady = false
-            }
+        com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+            volume = 0f
+            playWhenReady = false
+        }
     }
 
     LaunchedEffect(vlogExoPlayer) {
@@ -3564,6 +3318,22 @@ fun HomeScreen(
                                             refreshVlogs()
                                         } else {
                                             if (eventPalCode != null) {
+                                                if (action is PostgresAction.Delete && eventUserId != null) {
+                                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                        val currentMembers = allPalsMembers[eventPalCode]
+                                                        if (currentMembers != null) {
+                                                            val updatedMembers = currentMembers.filterNot { 
+                                                                it.startsWith(eventUserId) 
+                                                            }
+                                                            allPalsMembers[eventPalCode] = updatedMembers
+                                                            try {
+                                                                val jsonMembers = kotlinx.serialization.json.Json.encodeToString(allPalsMembers.toMap())
+                                                                context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+                                                                    .edit().putString("cached_all_pals_members", jsonMembers).apply()
+                                                            } catch (e: Exception) {}
+                                                        }
+                                                    }
+                                                }
                                                 refreshPals()
                                                 refreshVlogs()
                                                 val currentActiveCode = activePalCodeState.value
@@ -3595,6 +3365,54 @@ fun HomeScreen(
                                             else -> null
                                         }
                                         val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
+                                        
+                                        if (eventPalCode != null && eventPalCode != "vlog") {
+                                            if (action is PostgresAction.Insert) {
+                                                val id = record.get("id")?.jsonPrimitive?.content
+                                                val userId = record.get("user_id")?.jsonPrimitive?.content ?: ""
+                                                val userDisplayName = record.get("user_display_name")?.jsonPrimitive?.content ?: ""
+                                                val imageUrl = record.get("image_url")?.jsonPrimitive?.content ?: ""
+                                                val createdAt = record.get("created_at")?.jsonPrimitive?.content ?: ""
+                                                
+                                                val newSub = SubmissionDbItem(
+                                                    id = id,
+                                                    palCode = eventPalCode,
+                                                    userId = userId,
+                                                    userDisplayName = userDisplayName,
+                                                    imageUrl = imageUrl,
+                                                    createdAt = createdAt
+                                                )
+                                                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                    val currentSubs = allPalsSubmissions[eventPalCode] ?: emptyList()
+                                                    if (!currentSubs.any { it.id == newSub.id || (it.imageUrl == newSub.imageUrl && newSub.imageUrl.isNotEmpty()) }) {
+                                                        allPalsSubmissions[eventPalCode] = currentSubs + newSub
+                                                        try {
+                                                            val jsonSubs = kotlinx.serialization.json.Json.encodeToString(allPalsSubmissions.toMap())
+                                                            context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+                                                                .edit().putString("cached_all_pals_submissions", jsonSubs).apply()
+                                                        } catch (e: Exception) {}
+                                                    }
+                                                }
+                                            } else if (action is PostgresAction.Delete) {
+                                                val id = record.get("id")?.jsonPrimitive?.content
+                                                val imageUrl = record.get("image_url")?.jsonPrimitive?.content ?: ""
+                                                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                    val currentSubs = allPalsSubmissions[eventPalCode]
+                                                    if (currentSubs != null) {
+                                                        val updatedSubs = currentSubs.filterNot { 
+                                                            it.id == id || 
+                                                            (imageUrl.isNotEmpty() && it.imageUrl.startsWith(imageUrl))
+                                                        }
+                                                        allPalsSubmissions[eventPalCode] = updatedSubs
+                                                        try {
+                                                            val jsonSubs = kotlinx.serialization.json.Json.encodeToString(allPalsSubmissions.toMap())
+                                                            context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+                                                                .edit().putString("cached_all_pals_submissions", jsonSubs).apply()
+                                                        } catch (e: Exception) {}
+                                                    }
+                                                }
+                                            }
+                                        }
                                         
                                         refreshPals()
                                         refreshVlogs()
@@ -4290,11 +4108,13 @@ fun HomeScreen(
                                 capturedVlogsTimes = capturedVlogsTimes,
                                 capturedVlogsCaptions = capturedVlogsCaptions,
                                 capturedVlogsDurations = capturedVlogsDurations,
-                                onUpdateVlogLists = { paths, times, captions, durations ->
+                                capturedVlogsZoomed = capturedVlogsZoomed,
+                                onUpdateVlogLists = { paths, times, captions, durations, zoomed ->
                                     capturedVlogsPaths = java.util.ArrayList(paths)
                                     capturedVlogsTimes = java.util.ArrayList(times)
                                     capturedVlogsCaptions = java.util.ArrayList(captions)
                                     capturedVlogsDurations = java.util.ArrayList(durations)
+                                    capturedVlogsZoomed = java.util.ArrayList(zoomed)
                                 },
                                 vlogExoPlayer = vlogExoPlayer,
                                 targetDate = targetDate,
@@ -4442,13 +4262,15 @@ fun HomeScreen(
                                 capturedVlogsTimes = capturedVlogsTimes,
                                 capturedVlogsCaptions = capturedVlogsCaptions,
                                 capturedVlogsDurations = capturedVlogsDurations,
+                                capturedVlogsZoomed = capturedVlogsZoomed,
                                 allPalsSubmissions = allPalsSubmissions,
                                 palPalsCount = palPalsCount,
-                                onUpdateVlogLists = { paths, times, captions, durations ->
+                                onUpdateVlogLists = { paths, times, captions, durations, zoomed ->
                                     capturedVlogsPaths = java.util.ArrayList(paths)
                                     capturedVlogsTimes = java.util.ArrayList(times)
                                     capturedVlogsCaptions = java.util.ArrayList(captions)
                                     capturedVlogsDurations = java.util.ArrayList(durations)
+                                    capturedVlogsZoomed = java.util.ArrayList(zoomed)
                                 },
                                 context = context,
                                 coroutineScope = coroutineScope,
@@ -4459,7 +4281,8 @@ fun HomeScreen(
                                 onActiveVlogPalChange = { activeVlogPal = it },
                                 onShowingCapturedPreviewChange = { showingCapturedPreview = it },
                                 onSelectedTabChange = { selectedTab = it },
-                                onUpdateAvatarUrl = { customAvatarUriString = it }
+                                onUpdateAvatarUrl = { customAvatarUriString = it },
+                                isZoomed = isCapturedVideoZoomed
                             )
                         },
                         currentUserId = currentUserId,
@@ -5592,10 +5415,14 @@ fun CameraPreview(
     }
     
     var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
-    
-    val zoomStateHolder = remember { ZoomStateHolder(linearZoom) }
-    LaunchedEffect(linearZoom) {
-        zoomStateHolder.linearZoom = linearZoom
+
+    LaunchedEffect(activeCamera, linearZoom) {
+        val camera = activeCamera ?: return@LaunchedEffect
+        try {
+            camera.cameraControl.setLinearZoom(linearZoom)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     LaunchedEffect(isCameraFlipped, isCameraActive) {
@@ -5633,20 +5460,12 @@ fun CameraPreview(
         try {
             cameraProvider.unbindAll()
             
-            val zoomEffect = createZoomCameraEffect(zoomStateHolder)
-            
-            // Group UseCases together with the processor effect
-            val useCaseGroup = androidx.camera.core.UseCaseGroup.Builder()
-                .addUseCase(preview)
-                .addUseCase(videoCapture)
-                .addEffect(zoomEffect)
-                .build()
-
-            // Bind the combined group directly
+            // Bind the use cases directly
             val camera = cameraProvider.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
-                useCaseGroup
+                preview,
+                videoCapture
             )
             activeCamera = camera
         } catch (exc: Exception) {
@@ -5666,9 +5485,15 @@ fun CameraPreview(
         }
     }
     
-    AndroidView(
+    val scaleFactor = 1.0f + (linearZoom * 1.5f)
+    androidx.compose.ui.viewinterop.AndroidView(
         factory = { previewView },
         modifier = modifier
+            .clip(androidx.compose.ui.graphics.RectangleShape)
+            .graphicsLayer {
+                scaleX = scaleFactor
+                scaleY = scaleFactor
+            }
     )
 }
 
@@ -7049,32 +6874,13 @@ fun CapturedPreviewScreen(
         }
     }
 
-    // 1. Initialize ExoPlayer safely
     val exoPlayer = remember {
-        androidx.media3.exoplayer.ExoPlayer.Builder(context)
-            .setRenderersFactory(
-                androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
-                    setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
-                    setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                }
-            )
-            .setLoadControl(
-                androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(
-                        100,  // minBufferMs: Only 100ms buffered is needed to play, allowing extremely short zoom clips to loop without stalling
-                        500,  // maxBufferMs: Maximum buffer 500ms
-                        50,   // bufferForPlaybackMs: Playback starts after 50ms is loaded
-                        50    // bufferForPlaybackAfterRebufferMs: Fast rebuffer
-                    )
-                    .setPrioritizeTimeOverSizeThresholds(true)
-                    .build()
-            )
-            .build().apply {
-                playbackParameters = androidx.media3.common.PlaybackParameters(1.0f)
-                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL // Force looping natively at the hardware level
-                setHandleAudioBecomingNoisy(true) // Disable audio surface switching delays during loops
-                playWhenReady = true
-            }
+        com.finrein.pals.presentation.home.DualEnginePlayerFactory.createStandardPreviewPlayer(context).apply {
+            playbackParameters = androidx.media3.common.PlaybackParameters(1.0f)
+            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL // Force looping natively at the hardware level
+            setHandleAudioBecomingNoisy(true) // Disable audio surface switching delays during loops
+            playWhenReady = true
+        }
     }
 
     val isPocoOrIqoo = remember {
@@ -7272,7 +7078,8 @@ fun CapturedPreviewScreen(
                                     val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
                                     val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
                                     
-                                    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                    val zoomFactor = if (isZoomed) 2.5f else 1.0f
+                                    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * zoomFactor
                                     
                                     val calculatedScaleX: Float
                                     val calculatedScaleY: Float
@@ -7657,6 +7464,7 @@ fun CapturedPreviewScreen(
                 }
                 
                 val lastHourSub = run {
+                    if (pal.isVlog) return@run null
                     val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
                     groupSubs.filter { it.userId == currentUserId }
                         .filter { sub ->
@@ -7685,7 +7493,7 @@ fun CapturedPreviewScreen(
                         }
                 }
                 
-                val hourlySentText = if (latestTodaySub != null) {
+                val hourlySentText = if (latestTodaySub != null && !pal.isVlog) {
                     var subTime = 0L
                     if (!latestTodaySub.createdAt.isNullOrEmpty()) {
                         try {
@@ -7820,7 +7628,7 @@ fun CapturedPreviewScreen(
                                 userFirstName = userFirstName,
                                 smileySize = 24.dp,
                                 innerSize = 18.dp,
-                                isHourlyOnly = true
+                                isHourlyOnly = false
                             )
                         } else {
                             val groupMembersList = groupMembersMap[pal.code] ?: emptyList()
@@ -9731,21 +9539,9 @@ fun VlogScreenContent(
                                 // Separate local ExoPlayer for each page to allow rendering adjacent videos during transitions (no black screens)
                                 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
                                 val localPlayer = remember(path) {
-                                    androidx.media3.exoplayer.ExoPlayer.Builder(context)
-                                        .setRenderersFactory(
-                                            androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
-                                                setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
-                                                setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                                            }
-                                        )
-                                        .setMediaSourceFactory(
-                                            androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
-                                                .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
-                                        )
-                                        .setLoadControl(VideoCache.getLowLatencyLoadControl())
-                                        .build().apply {
-                                            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                                            volume = 0f
+                                    com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+                                        repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                                        volume = 0f
                                         val localPath = getVlogPrefs(context).getString("local_path_$path", null)
                                         val resolvedPath = localPath ?: path
                                         if (resolvedPath.startsWith("http")) {
@@ -9812,7 +9608,9 @@ fun VlogScreenContent(
                                                         val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
                                                         val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
                                                         
-                                                        val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                                        val isZoomed = (capturedVlogsZoomed.getOrNull(page) == true) || isPathZoomed(path)
+                                                        val zoomFactor = if (isZoomed) 2.5f else 1.0f
+                                                        val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * zoomFactor
                                                         
                                                         val calculatedScaleX: Float
                                                         val calculatedScaleY: Float
@@ -11589,18 +11387,10 @@ fun VlogScreenContent(
                                     )
                                 } else {
                                     val exportLocalPlayer = remember(capturedVlogsPaths) {
-                                        androidx.media3.exoplayer.ExoPlayer.Builder(context)
-                                            .setRenderersFactory(
-                                                androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
-                                                    setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
-                                                    setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                                                }
-                                            )
-                                            .setLoadControl(VideoCache.getLowLatencyLoadControl())
-                                            .build().apply {
-                                                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                                                volume = 0f
-                                            }
+                                        com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+                                            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                                            volume = 0f
+                                        }
                                     }
 
                                     DisposableEffect(exportLocalPlayer) {
@@ -11693,7 +11483,12 @@ fun VlogScreenContent(
                                                             val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
                                                             val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
                                                             
-                                                            val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                                            val reversedPaths = capturedVlogsPaths.reversed()
+                                                            val currentPath = reversedPaths.getOrNull(exportActiveIndex)
+                                                            val reversedZoomed = capturedVlogsZoomed.reversed()
+                                                            val isZoomed = (reversedZoomed.getOrNull(exportActiveIndex) == true) || isPathZoomed(currentPath)
+                                                            val zoomFactor = if (isZoomed) 2.5f else 1.0f
+                                                            val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * zoomFactor
                                                             
                                                             val calculatedScaleX: Float
                                                             val calculatedScaleY: Float
@@ -13165,22 +12960,10 @@ fun VideoPlayerItem(
     }
 
     val localPlayer = remember(context) {
-        androidx.media3.exoplayer.ExoPlayer.Builder(context)
-            .setRenderersFactory(
-                androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
-                    setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
-                    setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                }
-            )
-            .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
-                    .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
-            )
-            .setLoadControl(VideoCache.getLowLatencyLoadControl())
-            .build().apply {
-                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-                volume = 0f
-            }
+        com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+            repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+            volume = 0f
+        }
     }
 
     DisposableEffect(localPlayer) {
@@ -13305,7 +13088,11 @@ fun VideoPlayerItem(
                                 val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
                                 val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
                                 
-                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                val currentIdx = localPlayer.currentMediaItemIndex
+                                val rawPath = videoPaths.getOrNull(currentIdx)
+                                val isZoomed = isPathZoomed(rawPath)
+                                val zoomFactor = if (isZoomed) 2.5f else 1.0f
+                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * zoomFactor
                                 
                                 val calculatedScaleX: Float
                                 val calculatedScaleY: Float
@@ -18491,22 +18278,10 @@ private fun GroupExportMemberSlot(
         if (videoPaths.isNotEmpty()) {
             @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
             val localPlayer = remember(videoPaths) {
-                androidx.media3.exoplayer.ExoPlayer.Builder(context)
-                    .setRenderersFactory(
-                        androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
-                            setMediaCodecSelector(androidx.media3.exoplayer.mediacodec.MediaCodecSelector.DEFAULT)
-                            setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                        }
-                    )
-                    .setMediaSourceFactory(
-                        androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
-                            .setDataSourceFactory(VideoCache.getCacheDataSourceFactory(context))
-                    )
-                    .setLoadControl(VideoCache.getLowLatencyLoadControl())
-                    .build().apply {
-                        repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
-                        volume = 0f
-                    }
+                com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
+                    volume = 0f
+                }
             }
             DisposableEffect(localPlayer) {
                 onDispose {
@@ -18565,7 +18340,11 @@ private fun GroupExportMemberSlot(
                                 val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
                                 val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
                                 
-                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
+                                val currentIdx = localPlayer.currentMediaItemIndex
+                                val rawPath = videoPaths.getOrNull(currentIdx)
+                                val isZoomed = isPathZoomed(rawPath)
+                                val zoomFactor = if (isZoomed) 2.5f else 1.0f
+                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * zoomFactor
                                 
                                 val calculatedScaleX: Float
                                 val calculatedScaleY: Float
@@ -18963,6 +18742,8 @@ fun HomeScreenOverlays(
         useDarkTextOnAccent = themeConfig.useDarkTextOnAccent
     )
 }
+
+
 
 
 
