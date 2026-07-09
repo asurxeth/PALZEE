@@ -865,16 +865,12 @@ fun compressImageBytes(bytes: ByteArray): ByteArray {
 suspend fun uploadFileToSupabase(context: android.content.Context, uriString: String, bucketName: String): String {
     try {
         val uri = android.net.Uri.parse(uriString)
-        val inputStream = if (uri.scheme == "content" || uri.scheme == "file") {
-            context.contentResolver.openInputStream(uri)
+        val cleanPath = if (uriString.startsWith("file://")) uriString.substring(7) else uriString
+        val file = java.io.File(cleanPath)
+        val inputStream = if (file.exists()) {
+            java.io.FileInputStream(file)
         } else {
-            val cleanPath = if (uriString.startsWith("file://")) uriString.substring(7) else uriString
-            val file = java.io.File(cleanPath)
-            if (file.exists()) {
-                java.io.FileInputStream(file)
-            } else {
-                context.contentResolver.openInputStream(uri)
-            }
+            context.contentResolver.openInputStream(uri)
         }
         if (inputStream == null) {
             android.util.Log.e("SupabaseUpload", "Could not open input stream for $uriString")
@@ -890,8 +886,18 @@ suspend fun uploadFileToSupabase(context: android.content.Context, uriString: St
 
         val fileName = "${java.util.UUID.randomUUID()}.$extension"
         val storageBucket = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
-        storageBucket.upload(fileName, bytes, upsert = true)
-        val publicUrl = storageBucket.publicUrl(fileName)
+        
+        val publicUrl = try {
+            storageBucket.upload(fileName, bytes, upsert = true)
+            storageBucket.publicUrl(fileName)
+        } catch (e: Exception) {
+            android.util.Log.w("SupabaseUpload", "Failed to upload to $bucketName, trying lowercase fallback: ${e.message}")
+            val lowercaseBucket = bucketName.lowercase(java.util.Locale.US)
+            val fallbackBucket = com.finrein.pals.PalApplication.supabase.storage.from(lowercaseBucket)
+            fallbackBucket.upload(fileName, bytes, upsert = true)
+            fallbackBucket.publicUrl(fileName)
+        }
+        
         android.util.Log.d("SupabaseUpload", "Uploaded successfully! Public URL: $publicUrl")
         return publicUrl
     } catch (e: Exception) {
@@ -904,17 +910,32 @@ suspend fun uploadFileToSupabase(context: android.content.Context, uriString: St
 suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: android.net.Uri, userId: String): String? {
     return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
-            val inputStream = context.contentResolver.openInputStream(localUri)
+            val uriString = localUri.toString()
+            val cleanPath = if (uriString.startsWith("file://")) uriString.substring(7) else uriString
+            val file = java.io.File(cleanPath)
+            val inputStream = if (file.exists()) {
+                java.io.FileInputStream(file)
+            } else {
+                context.contentResolver.openInputStream(localUri)
+            }
             val bytes = inputStream?.readBytes() ?: return@withContext null
             inputStream.close()
             
             // Generate a unique filename with a timestamp and proper extension
             val fileName = "${userId}_${System.currentTimeMillis()}.mp4"
             
-            val bucket = com.finrein.pals.PalApplication.supabase.storage.from("PALS_VLOGS")
-            bucket.upload(fileName, bytes, upsert = true)
+            val publicUrl = try {
+                val bucket = com.finrein.pals.PalApplication.supabase.storage.from("PALS_VLOGS")
+                bucket.upload(fileName, bytes, upsert = true)
+                bucket.publicUrl(fileName)
+            } catch (e: Exception) {
+                android.util.Log.w("VIDEO_STORAGE_ERR", "Failed to upload to PALS_VLOGS, trying lowercase pals_vlogs: ${e.message}")
+                val fallbackBucket = com.finrein.pals.PalApplication.supabase.storage.from("pals_vlogs")
+                fallbackBucket.upload(fileName, bytes, upsert = true)
+                fallbackBucket.publicUrl(fileName)
+            }
             
-            return@withContext bucket.publicUrl(fileName)
+            return@withContext publicUrl
         } catch (e: Exception) {
             android.util.Log.e("VIDEO_STORAGE_ERR", "Video upload failed: ${e.localizedMessage}")
             null
@@ -1009,8 +1030,13 @@ class ZoomStateHolder(initialZoom: Float) {
     @Volatile var linearZoom: Float = initialZoom
 }
 
-fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.core.CameraEffect {
+object ZoomEffectExecutors {
     val effectExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    val glExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+}
+
+fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.core.CameraEffect {
+    val effectExecutor = ZoomEffectExecutors.effectExecutor
     val errorListener = androidx.core.util.Consumer<Throwable> { throwable ->
         throwable.printStackTrace()
     }
@@ -1018,7 +1044,7 @@ fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.co
         androidx.camera.core.CameraEffect.PREVIEW or androidx.camera.core.CameraEffect.VIDEO_CAPTURE,
         effectExecutor,
         object : androidx.camera.core.SurfaceProcessor {
-            private val glExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+            private val glExecutor = ZoomEffectExecutors.glExecutor
             private var eglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
             private var eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
             private var eglConfig: android.opengl.EGLConfig? = null
@@ -1058,9 +1084,35 @@ fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.co
 
                         surfaceRequest.provideSurface(surface, glExecutor) { result ->
                             glExecutor.execute {
-                                st.release()
-                                surface.release()
-                                android.opengl.GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+                                try {
+                                    st.release()
+                                    surface.release()
+                                    android.opengl.GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+                                    
+                                    // Properly clear GL program and EGL components to completely prevent graphics leaks
+                                    if (program != 0) {
+                                        android.opengl.GLES20.glDeleteProgram(program)
+                                        program = 0
+                                    }
+                                    outputs.values.forEach { output ->
+                                        android.opengl.EGL14.eglDestroySurface(eglDisplay, output.eglSurface)
+                                    }
+                                    outputs.clear()
+                                    if (eglDummySurface != android.opengl.EGL14.EGL_NO_SURFACE) {
+                                        android.opengl.EGL14.eglDestroySurface(eglDisplay, eglDummySurface)
+                                        eglDummySurface = android.opengl.EGL14.EGL_NO_SURFACE
+                                    }
+                                    if (eglContext != android.opengl.EGL14.EGL_NO_CONTEXT) {
+                                        android.opengl.EGL14.eglDestroyContext(eglDisplay, eglContext)
+                                        eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
+                                    }
+                                    if (eglDisplay != android.opengl.EGL14.EGL_NO_DISPLAY) {
+                                        android.opengl.EGL14.eglTerminate(eglDisplay)
+                                        eglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
                             }
                         }
                     } catch (e: Exception) {
@@ -1123,7 +1175,7 @@ fun createZoomCameraEffect(zoomStateHolder: ZoomStateHolder): androidx.camera.co
                         output.surfaceOutput.updateTransformMatrix(correctedMatrix, originalTexMatrix)
 
                         val finalMatrix = FloatArray(16)
-                        android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, correctedMatrix, 0)
+                        android.opengl.Matrix.multiplyMM(finalMatrix, 0, correctedMatrix, 0, scaleMatrix, 0)
 
                         drawTexture(textureId, finalMatrix)
                         android.opengl.EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
@@ -2889,17 +2941,7 @@ fun HomeScreen(
     }
 
     val todaySubmissionsMap = allPalsSubmissions.mapValues { (palCode, subs) ->
-        val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
-        val activeLocalDate = if (now.hour < 4) {
-            now.toLocalDate().minusDays(1)
-        } else {
-            now.toLocalDate()
-        }
-        if (palCode == "vlog") {
-            subs.filter { sub -> isSubmissionInActiveCycle(sub) }
-        } else {
-            subs.filter { sub -> getSubmissionLocalDate(sub) == activeLocalDate }
-        }
+        subs.filter { sub -> getSubmissionLocalDate(sub) == targetDate }
     }
 
     val todayVlogPaths = remember(capturedVlogsPaths, capturedVlogsTimes, capturedVlogsCaptions, capturedVlogsDurations, allPalsSubmissions.toMap()) {
@@ -5327,7 +5369,7 @@ fun CameraPreview(
     LaunchedEffect(linearZoom) {
         zoomStateHolder.linearZoom = linearZoom
     }
-    
+
     LaunchedEffect(isCameraFlipped, isCameraActive) {
         val cameraProvider = withContext(kotlinx.coroutines.Dispatchers.IO) {
             cameraProviderFuture.get()
@@ -5363,17 +5405,16 @@ fun CameraPreview(
         try {
             cameraProvider.unbindAll()
             
-            // 1. Create our GPU texture zoom effect using the zoomStateHolder reference
             val zoomEffect = createZoomCameraEffect(zoomStateHolder)
-
-            // 2. Group UseCases together with the processor effect
+            
+            // Group UseCases together with the processor effect
             val useCaseGroup = androidx.camera.core.UseCaseGroup.Builder()
                 .addUseCase(preview)
                 .addUseCase(videoCapture)
                 .addEffect(zoomEffect)
                 .build()
 
-            // 3. Bind the combined group directly
+            // Bind the combined group directly
             val camera = cameraProvider.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
@@ -6444,6 +6485,7 @@ fun GroupMembersSmileysRow(
     innerSize: Dp = 16.dp,
     unlitAlpha: Float = 0.25f,
     showOnlyLit: Boolean = false,
+    isHourlyOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val displayCount = members.size.coerceIn(1, 10)
@@ -6470,14 +6512,14 @@ fun GroupMembersSmileysRow(
             false
         } else {
             if (memberId != null && memberId != "legacy_id") {
-                submissions.any { it.userId == memberId && (it.palCode == "vlog" || isSubmissionInCurrentHourWindow(it)) }
+                submissions.any { it.userId == memberId && (if (isHourlyOnly) isSubmissionInCurrentHourWindow(it) else (it.palCode == "vlog" || isSubmissionInCurrentHourWindow(it))) }
             } else {
                 if (memberName == userFirstName || memberName.contains("(You)") || memberName == "only you") {
-                    submissions.any { it.userId == currentUserId && (it.palCode == "vlog" || isSubmissionInCurrentHourWindow(it)) }
+                    submissions.any { it.userId == currentUserId && (if (isHourlyOnly) isSubmissionInCurrentHourWindow(it) else (it.palCode == "vlog" || isSubmissionInCurrentHourWindow(it))) }
                 } else {
                     submissions.any { sub ->
                         val cleanSubName = parseUserDisplayName(sub.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                        cleanSubName.equals(memberName, ignoreCase = true) && (sub.palCode == "vlog" || isSubmissionInCurrentHourWindow(sub))
+                        cleanSubName.equals(memberName, ignoreCase = true) && (if (isHourlyOnly) isSubmissionInCurrentHourWindow(sub) else (sub.palCode == "vlog" || isSubmissionInCurrentHourWindow(sub)))
                     }
                 }
             }
@@ -6705,26 +6747,7 @@ fun CapturedPreviewScreen(
     val groupSubmissionsMap = createdPals.associate { pal ->
         val subs = allPalsSubmissions[pal.code] ?: emptyList()
         val todaySubs = subs.filter { sub ->
-            var subDate: java.time.LocalDate? = null
-            if (!sub.createdAt.isNullOrEmpty()) {
-                try {
-                    val instant = java.time.Instant.parse(sub.createdAt)
-                    subDate = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                } catch (e: Exception) {}
-            }
-            if (subDate == null) {
-                val parts = sub.imageUrl.split("|||")
-                val path = parts.getOrNull(0) ?: ""
-                val regex = Regex("\\d{13}")
-                val match = regex.find(path)
-                if (match != null) {
-                    try {
-                        val millis = match.value.toLong()
-                        subDate = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                    } catch (e: Exception) {}
-                }
-            }
-            subDate == java.time.LocalDate.now()
+            getSubmissionLocalDate(sub) == getActiveCycleLocalDate(java.time.Instant.now())
         }
         pal.code to todaySubs
     }
@@ -6854,10 +6877,23 @@ fun CapturedPreviewScreen(
             var stableCount = 0
             var retries = 0
             
-            // Poll for stable file size (not changing for 60ms) to ensure write completes
+            // Poll for stable file size (not changing for 60ms) and verify full readability
             while (retries < 25) {
                 val currentLength = if (fileTarget.exists()) fileTarget.length() else 0L
-                if (currentLength > 1024L && currentLength == lastLength) {
+                var isReadable = false
+                if (currentLength > 1024L) {
+                    try {
+                        java.io.FileInputStream(fileTarget).use { fis ->
+                            val temp = ByteArray(10)
+                            fis.read(temp)
+                        }
+                        isReadable = true
+                    } catch (e: Exception) {
+                        // File is still locked or being flushed by custom OS
+                    }
+                }
+                
+                if (currentLength > 1024L && currentLength == lastLength && isReadable) {
                     stableCount++
                     if (stableCount >= 2) {
                         break
@@ -7033,10 +7069,15 @@ fun CapturedPreviewScreen(
                             }
                             addOnLayoutChangeListener(layoutListener)
 
+                            var errorRetryCount = 0
+
                             exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                 override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                     super.onVideoSizeChanged(videoSize)
                                     applyVideoScale()
+                                    val textureView = getVideoSurfaceView() as? android.view.TextureView
+                                    textureView?.invalidate()
+                                    invalidate()
                                 }
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     super.onPlaybackStateChanged(playbackState)
@@ -7044,6 +7085,10 @@ fun CapturedPreviewScreen(
                                     if (playbackState == androidx.media3.common.Player.STATE_READY) {
                                         exoPlayer.play()
                                         onPlayerReady()
+                                        val textureView = getVideoSurfaceView() as? android.view.TextureView
+                                        textureView?.invalidate()
+                                        invalidate()
+                                        errorRetryCount = 0
                                     } else if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
                                         exoPlayer.seekTo(0, 0L)
                                         exoPlayer.play()
@@ -7051,8 +7096,25 @@ fun CapturedPreviewScreen(
                                 }
                                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                                     android.util.Log.e("PalPreview", "ExoPlayer error in preview: ${error.message}", error)
-                                    exoPlayer.prepare()
-                                    exoPlayer.play()
+                                    val currentItem = exoPlayer.currentMediaItem
+                                    if (currentItem != null && errorRetryCount < 3) {
+                                        errorRetryCount++
+                                        postDelayed({
+                                            try {
+                                                android.util.Log.d("PalPreview", "Retrying player prepare/play (attempt $errorRetryCount)")
+                                                exoPlayer.stop()
+                                                exoPlayer.clearMediaItems()
+                                                exoPlayer.setMediaItem(currentItem)
+                                                exoPlayer.prepare()
+                                                exoPlayer.play()
+                                            } catch (e: Exception) {
+                                                android.util.Log.e("PalPreview", "Failed to retry player: ${e.message}", e)
+                                            }
+                                        }, 200L * errorRetryCount)
+                                    } else {
+                                        exoPlayer.prepare()
+                                        exoPlayer.play()
+                                    }
                                 }
                             })
 
@@ -7069,6 +7131,11 @@ fun CapturedPreviewScreen(
                             exoPlayer.play()
                         }
                         (view.tag as? () -> Unit)?.invoke()
+                        if (exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+                            val textureView = view.getVideoSurfaceView() as? android.view.TextureView
+                            textureView?.invalidate()
+                            view.invalidate()
+                        }
                     }
                 )
             }
@@ -7354,7 +7421,7 @@ fun CapturedPreviewScreen(
                     }
                 }
                 
-                val lastHourSub = if (pal.isVlog) null else {
+                val lastHourSub = run {
                     val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
                     groupSubs.filter { it.userId == currentUserId }
                         .filter { sub ->
@@ -7367,7 +7434,7 @@ fun CapturedPreviewScreen(
                 }
                 val isHourlyRestricted = lastHourSub != null
                 
-                val latestTodaySub = if (pal.isVlog) null else {
+                val latestTodaySub = run {
                     val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
                     groupSubs.filter { it.userId == currentUserId }
                         .filter { sub ->
@@ -7401,18 +7468,11 @@ fun CapturedPreviewScreen(
                             } catch (e: Exception) {}
                         }
                     }
-                    if (subTime > 0L) {
-                        val diffMin = Math.max(0L, (System.currentTimeMillis() - subTime) / 60000L)
-                        val h = diffMin / 60
-                        val m = diffMin % 60
-                        if (h > 0) {
-                            "sent pal ${h}h ${m} min"
-                        } else {
-                            "sent pal ${m} min"
-                        }
-                    } else {
-                        "sent"
-                    }
+                    val timeToUse = if (subTime > 0L) subTime else System.currentTimeMillis()
+                    val instant = java.time.Instant.ofEpochMilli(timeToUse)
+                    val zdt = instant.atZone(java.time.ZoneId.systemDefault())
+                    val hourStr = String.format(java.util.Locale.US, "%02d:00", zdt.hour)
+                    "sent pal for $hourStr"
                 } else {
                     ""
                 }
@@ -7510,21 +7570,22 @@ fun CapturedPreviewScreen(
                         contentAlignment = Alignment.CenterEnd
                     ) {
                         if (pal.isVlog) {
-                            val vlogSubmissions = if (capturedVlogsPaths.isNotEmpty() || isSelected) {
-                                listOf(SubmissionDbItem(palCode = "vlog", userId = currentUserId, userDisplayName = currentDisplayName, imageUrl = "", createdAt = java.time.Instant.now().toString()))
-                            } else {
-                                emptyList()
+                            val groupSubs = groupSubmissionsMap["vlog"] ?: emptyList()
+                            val finalSubs = groupSubs.filter { sub ->
+                                val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                                path !in currentDeleted && sub.imageUrl !in currentDeleted
                             }
                             GroupMembersSmileysRow(
-                                members = listOf("only you"),
-                                submissions = vlogSubmissions,
+                                members = listOf("$currentUserId|||$currentDisplayName|||${customAvatarUriString ?: ""}"),
+                                submissions = finalSubs,
                                 isDark = isDark,
                                 accentColor = accentColor,
                                 palTextLogoColor = palTextLogoColor,
                                 currentUserId = currentUserId,
                                 userFirstName = userFirstName,
                                 smileySize = 24.dp,
-                                innerSize = 18.dp
+                                innerSize = 18.dp,
+                                isHourlyOnly = true
                             )
                         } else {
                             val groupMembersList = groupMembersMap[pal.code] ?: emptyList()
@@ -7542,7 +7603,10 @@ fun CapturedPreviewScreen(
                                 else -> 8.dp
                             }
                             val groupSubs = groupSubmissionsMap[pal.code] ?: emptyList()
-                            val finalSubs = groupSubs
+                            val finalSubs = groupSubs.filter { sub ->
+                                val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                                path !in currentDeleted && sub.imageUrl !in currentDeleted
+                            }
                             GroupMembersSmileysRow(
                                 members = groupMembersList,
                                 submissions = finalSubs,
@@ -7552,7 +7616,8 @@ fun CapturedPreviewScreen(
                                 currentUserId = currentUserId,
                                 userFirstName = userFirstName,
                                 smileySize = computedSmileySize,
-                                innerSize = computedInnerSize
+                                innerSize = computedInnerSize,
+                                isHourlyOnly = true
                             )
                         }
                     }
@@ -9065,13 +9130,15 @@ fun VlogScreenContent(
     val density = androidx.compose.ui.platform.LocalDensity.current
     var selectedMemberIndex by remember(pal.code) { mutableStateOf(0) }
     val activePalSubmissions = params.allPalsSubmissions[pal.code] ?: emptyList<SubmissionDbItem>()
-    val targetDate = remember(selectedDayOffset) {
+    val activeLocalDate = remember {
         val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
-        val activeLocalDate = if (now.hour < 4) {
+        if (now.hour < 4) {
             now.toLocalDate().minusDays(1)
         } else {
             now.toLocalDate()
         }
+    }
+    val targetDate = remember(selectedDayOffset, activeLocalDate) {
         activeLocalDate.minusDays(selectedDayOffset.toLong())
     }
     val daySubmissions = remember(activePalSubmissions, targetDate) {
@@ -10083,6 +10150,7 @@ fun VlogScreenContent(
                     selectedProfileColor = selectedProfileColor,
                     textColor = textColor,
                     mutedTextColor = mutedTextColor,
+                    palTextLogoColor = palTextLogoColor,
                     onDismiss = { showArchiveView = false }
                 )
             }
@@ -10094,7 +10162,7 @@ fun VlogScreenContent(
 
         // Dynamic font size calculation based on text length to fit exactly at center and not overlap
         val displayText = if (selectedDayOffset > 0) {
-            val targetDate = java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
+            val targetDate = activeLocalDate.minusDays(selectedDayOffset.toLong())
             targetDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.US)
         } else {
             if (showEdit && editName.isNotEmpty()) editName else pal.name
@@ -10176,7 +10244,7 @@ fun VlogScreenContent(
                 // For Vlog, show plain text in middle, else show capsule
                 if (pal.isVlog) {
                     val targetDate = remember(selectedDayOffset) {
-                        java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
+                        activeLocalDate.minusDays(selectedDayOffset.toLong())
                     }
                     val dayName = remember(targetDate) {
                         targetDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.US)
@@ -10267,7 +10335,7 @@ fun VlogScreenContent(
                     }
                 } else {
                     val targetDate = remember(selectedDayOffset) {
-                        java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
+                        activeLocalDate.minusDays(selectedDayOffset.toLong())
                     }
                     val dayName = remember(targetDate) {
                         targetDate.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.US)
@@ -14012,6 +14080,15 @@ fun PalChatOverlay(
 ) {
     if (!showChat) return
 
+    val activeLocalDate = remember {
+        val now = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault())
+        if (now.hour < 4) {
+            now.toLocalDate().minusDays(1)
+        } else {
+            now.toLocalDate()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -14381,7 +14458,7 @@ fun PalChatOverlay(
             val sortedItems = feedItems.sortedBy { it.rawInstant }
             val groups = LinkedHashMap<String, MutableList<FeedItem>>()
             sortedItems.forEach { item ->
-                val today = java.time.LocalDate.now()
+                val today = activeLocalDate
                 val dayLabel = when (item.localDate) {
                     today -> "Today"
                     today.minusDays(1) -> "Yesterday"
@@ -15003,7 +15080,7 @@ fun PalChatOverlay(
                                         feedItems.filter { it.localDate == feedItem.localDate }.lastOrNull()?.path == feedItem.path
                                     }
                                     if (isLastItemOfDay) {
-                                        val today = java.time.LocalDate.now()
+                                        val today = activeLocalDate
                                         val dayLabel = when (feedItem.localDate) {
                                             today -> "Today"
                                             today.minusDays(1) -> "Yesterday"
@@ -15130,7 +15207,7 @@ fun PalChatOverlay(
                 }
 
                 val headerTitleText = if (selectedDayOffset > 0) {
-                    val targetLocalDate = java.time.LocalDate.now().minusDays(selectedDayOffset.toLong())
+                    val targetLocalDate = activeLocalDate.minusDays(selectedDayOffset.toLong())
                     if (selectedDayOffset == 1) {
                         "Yesterday"
                     } else {
@@ -17355,6 +17432,7 @@ fun VlogArchiveCard(
     selectedProfileColor: Color,
     textColor: Color,
     mutedTextColor: Color,
+    palTextLogoColor: Color = Color(0xFFFFE600),
     onDismiss: () -> Unit
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -17530,16 +17608,24 @@ fun VlogArchiveCard(
                                         }
                                         Spacer(modifier = Modifier.height(2.dp))
                                         if (hasUserSub) {
-                                            Image(
-                                                painter = painterResource(id = R.drawable.smile_small),
-                                                contentDescription = null,
+                                            Box(
                                                 modifier = Modifier
-                                                    .size(10.dp)
-                                                    .rotate(180f),
-                                                colorFilter = ColorFilter.tint(accentColor)
-                                            )
+                                                    .size(16.dp)
+                                                    .clip(CircleShape)
+                                                    .background(accentColor),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Image(
+                                                    painter = painterResource(id = R.drawable.smile_small),
+                                                    contentDescription = null,
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .padding(1.dp)
+                                                        .rotate(0f)
+                                                )
+                                            }
                                         } else {
-                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Spacer(modifier = Modifier.height(16.dp))
                                         }
                                     }
                                 }

@@ -74,11 +74,15 @@ class PalNotificationReceiver : BroadcastReceiver() {
 
             PalAlarmScheduler.ACTION_PAL_ALARM, Intent.ACTION_BOOT_COMPLETED -> {
                 // Fallback alarm / System Boot
-                // 1. We NEVER send the first pal notification via background alarm (only on ACTION_USER_PRESENT).
-                // 2. We only send subsequent hourly/3-hourly notifications if the first pal has already occurred and it is NOT night time!
+                // 1. If the first pal notification of the day hasn't been sent yet and it is NOT night time, we send it.
+                // 2. We send subsequent hourly/3-hourly notifications if the first pal has already occurred and it is NOT night time!
                 if (intent.action == PalAlarmScheduler.ACTION_PAL_ALARM) {
                     val hasFirstPalOccurred = sharedPrefs.getBoolean(firstNotifiedKey, false) || hasLoggedAnyToday
-                    if (hasFirstPalOccurred && !isNightTime) {
+                    if (isFirstTimeToday && !isNightTime) {
+                        showNativeNotification(context, currentHour, isFirstPal = true)
+                        markAsNotifiedForHour(context, currentHour)
+                        sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                    } else if (hasFirstPalOccurred && !isNightTime) {
                         if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
                             showNativeNotification(context, hourToUse, isFirstPal = false)
                             markAsNotifiedForHour(context, hourToUse)

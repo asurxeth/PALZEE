@@ -40,11 +40,13 @@ class ActivePalRepositoryImpl @Inject constructor(
             val currentSystemHour = systemNow.hour
 
             // Resolve local 4am time to UTC instant based on the system's timezone offset
-            val localStart = java.time.LocalDate.parse(targetDay)
+            val localEnd = java.time.LocalDate.parse(targetDay)
+                .plusDays(1)
                 .atTime(4, 0)
                 .atZone(java.time.ZoneId.systemDefault())
+            val localStart = localEnd.minusDays(8)
             val startUtc = localStart.toInstant().toString()
-            val endUtc = localStart.plusDays(1).toInstant().toString()
+            val endUtc = localEnd.toInstant().toString()
 
             // 1. Fetch only submissions belonging strictly to this custom palCode group table row
             val dbSubmissions = supabaseClient.postgrest.from("submissions")
