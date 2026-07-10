@@ -5788,12 +5788,6 @@ fun CameraPreview(
     
     var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
     
-    // 💡 Use thread-safe AtomicReference to bridge Compose zoom states to the OpenGL rendering thread safely
-    val zoomAtomic = remember { java.util.concurrent.atomic.AtomicReference(linearZoom) }
-    LaunchedEffect(linearZoom) {
-        zoomAtomic.set(linearZoom)
-    }
-
     LaunchedEffect(isCameraFlipped, isCameraActive) {
         val cameraProvider = withContext(kotlinx.coroutines.Dispatchers.IO) {
             cameraProviderFuture.get()
@@ -5809,24 +5803,14 @@ fun CameraPreview(
             return@LaunchedEffect
         }
         
-        val resolutionSelector = androidx.camera.core.resolutionselector.ResolutionSelector.Builder()
-            .setResolutionStrategy(
-                androidx.camera.core.resolutionselector.ResolutionStrategy(
-                    android.util.Size(1920, 1080),
-                    androidx.camera.core.resolutionselector.ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
-                )
-            )
-            .build()
-
         val preview = Preview.Builder()
-            .setResolutionSelector(resolutionSelector)
             .build()
             .also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
 
         val recorder = Recorder.Builder()
-            .setQualitySelector(QualitySelector.fromOrderedList(listOf(Quality.FHD, Quality.HD)))
+            .setQualitySelector(QualitySelector.from(Quality.HD))
             .build()
         val videoCapture = VideoCapture.Builder(recorder)
             .build()
@@ -5841,21 +5825,12 @@ fun CameraPreview(
         try {
             cameraProvider.unbindAll()
             
-            // 1. Create our GPU texture zoom effect using a dynamic lambda provider
-            val zoomEffect = createZoomCameraEffect { zoomAtomic.get() }
-
-            // 2. Group UseCases together with the processor effect
-            val useCaseGroup = androidx.camera.core.UseCaseGroup.Builder()
-                .addUseCase(preview)
-                .addUseCase(videoCapture)
-                .addEffect(zoomEffect)
-                .build()
-
-            // 3. Bind the combined group directly
+            // 💡 Bind preview and videoCapture directly to bypass any OpenGL camera effect (matching the working July 8 APK)
             val camera = cameraProvider.bindToLifecycle(
                 lifecycleOwner,
                 cameraSelector,
-                useCaseGroup
+                preview,
+                videoCapture
             )
             activeCamera = camera
         } catch (exc: Exception) {
@@ -5875,25 +5850,41 @@ fun CameraPreview(
         }
     }
     
-    // 💡 Apply native hardware setLinearZoom to control camera sensor zoom smoothly without unbinding UseCases
+    // 💡 Apply rate-limited native setLinearZoom to prevent device viewfinder lag, matching the working July 8 APK
+    val lastZoomTime = remember { longArrayOf(0L) }
+    val lastBoundCamera = remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+
     LaunchedEffect(activeCamera, linearZoom) {
         val camera = activeCamera ?: return@LaunchedEffect
-        try {
-            camera.cameraControl.setLinearZoom(linearZoom)
-        } catch (exc: Exception) {
-            exc.printStackTrace()
+        val currentTime = System.currentTimeMillis()
+        val elapsed = currentTime - lastZoomTime[0]
+        
+        val isNewCameraSession = lastBoundCamera.value != camera
+
+        if (isNewCameraSession || elapsed >= 16) {
+            lastBoundCamera.value = camera
+            lastZoomTime[0] = currentTime
+            try {
+                camera.cameraControl.setLinearZoom(linearZoom)
+            } catch (exc: Exception) {
+                exc.printStackTrace()
+            }
+        } else {
+            kotlinx.coroutines.delay(16 - elapsed)
+            if (activeCamera == camera) {
+                lastZoomTime[0] = System.currentTimeMillis()
+                try {
+                    camera.cameraControl.setLinearZoom(linearZoom)
+                } catch (exc: Exception) {
+                    exc.printStackTrace()
+                }
+            }
         }
     }
     
-    val scaleFactor = 1.0f
     androidx.compose.ui.viewinterop.AndroidView(
         factory = { previewView },
         modifier = modifier
-            .clip(androidx.compose.ui.graphics.RectangleShape)
-            .graphicsLayer {
-                scaleX = scaleFactor
-                scaleY = scaleFactor
-            }
     )
 }
 
