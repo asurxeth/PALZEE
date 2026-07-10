@@ -5893,14 +5893,18 @@ fun CameraPreview(
     LaunchedEffect(activeCamera, isCameraActive) {
         val camera = activeCamera ?: return@LaunchedEffect
         if (!isCameraActive) return@LaunchedEffect
+        var lastSetZoom = -1f
         try {
             while (true) {
                 val targetZoom = currentZoomState.value
-                try {
-                    camera.cameraControl.setLinearZoom(targetZoom)
-                } catch (exc: Exception) {
-                    exc.printStackTrace()
-                    break
+                if (targetZoom != lastSetZoom) {
+                    try {
+                        camera.cameraControl.setLinearZoom(targetZoom)
+                        lastSetZoom = targetZoom
+                    } catch (exc: Exception) {
+                        exc.printStackTrace()
+                        break
+                    }
                 }
                 kotlinx.coroutines.delay(16L)
             }
@@ -6049,7 +6053,7 @@ fun CameraScreenContent(
                                 val fileExists = outputFile.exists() && outputFile.length() > 0
                                 if (fileExists && (!recordEvent.hasError() || recordEvent.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE)) {
                                     android.util.Log.d("ProductionCamera", "Video encoding success: ${outputFile.absolutePath}")
-                                    onCaptureSuccess(outputFile.absolutePath, durationMs, 1.0f + (linearZoom * 1.0f))
+                                    onCaptureSuccess(outputFile.absolutePath, durationMs, 1.0f + (linearZoom * 0.5f))
                                 } else {
                                     android.util.Log.e("ProductionCamera", "Encoder finalized with error: ${recordEvent.error}, fileExists: $fileExists")
                                     recordingStarted.completeExceptionally(java.lang.RuntimeException("Recording failed to start"))
@@ -7344,7 +7348,7 @@ fun CapturedPreviewScreen(
             var retries = 0
             
             // 💡 Poll for stable file size and verify header/metadata finalization using MediaMetadataRetriever
-            while (retries < 35) {
+            while (retries < 80) {
                 val currentLength = if (fileTarget.exists()) fileTarget.length() else 0L
                 var isFullyReady = false
                 if (currentLength > 1024L) {
