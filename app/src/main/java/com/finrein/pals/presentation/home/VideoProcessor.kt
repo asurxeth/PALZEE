@@ -635,6 +635,10 @@ class VideoProcessor {
 
                 for (vIndex in validInputs.indices) {
                     val (inputPath, _, _) = validInputs[vIndex]
+                    if (inputPath == "EMPTY_BOX") {
+                        audioPtsOffsetUs += 2000000L + 33000L
+                        continue
+                    }
                     val audioExtractor = MediaExtractor()
                     try {
                         audioExtractor.setDataSource(inputPath)
@@ -832,7 +836,7 @@ class VideoProcessor {
             val shadowColor = if (exportBackground == "white") Color.argb(32, 0, 0, 0) else Color.argb(128, 0, 0, 0)
 
             // Draw "vlog" watermark left-aligned inside video box
-            if (vlogText.isNotEmpty()) {
+            if (vlogText.isNotEmpty() && vlogText != "EMPTY_BOX_MISSED") {
                 val paint = Paint().apply {
                     color = overlayTextColor
                     textSize = 22f * scale
@@ -848,8 +852,44 @@ class VideoProcessor {
                 )
             }
 
-            // Draw capture time
-            if (timeText.isNotEmpty()) {
+            // Draw capture time or empty box missed text
+            if (vlogText == "EMPTY_BOX_MISSED") {
+                // Scheduled time text centered: Dela Gothic One
+                val timePaint = Paint().apply {
+                    color = overlayTextColor
+                    textSize = 15f * scale
+                    typeface = delaFont
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                    if (exportBackground != "white") {
+                        setShadowLayer(2f, 1f, 1f, shadowColor)
+                    }
+                }
+                canvas.drawText(
+                    timeText,
+                    width / 2f,
+                    centerY - (10f * scale),
+                    timePaint
+                )
+
+                // Missed text centered underneath: exportMissedText in blue (0xFF0F8CFF)
+                val missedPaint = Paint().apply {
+                    color = Color.parseColor("#0F8CFF")
+                    textSize = 22f * scale
+                    typeface = bricolageFont
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                    if (exportBackground != "white") {
+                        setShadowLayer(2f, 1f, 1f, shadowColor)
+                    }
+                }
+                canvas.drawText(
+                    captionText,
+                    width / 2f,
+                    centerY + (22f * scale),
+                    missedPaint
+                )
+            } else if (timeText.isNotEmpty()) {
                 if (vlogText.isEmpty()) {
                     // Preview screen centered layout style
                     val timePaint = Paint().apply {
