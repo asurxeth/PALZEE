@@ -29,7 +29,7 @@ val googleWebClientId = (localProperties.getProperty("google.web.client.id") ?: 
 
 android {
     namespace = "com.finrein.pals"
-    compileSdk = 34
+    compileSdk = 36
 
     signingConfigs {
         create("release") {
@@ -42,8 +42,8 @@ android {
 
     defaultConfig {
         applicationId = "com.finrein.pals"
-        minSdk = 26
-        targetSdk = 34
+        minSdk = 29
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -101,6 +101,7 @@ android {
             useLegacyPackaging = true
             pickFirsts.add("**/libsurface_util_jni.so")
             pickFirsts.add("**/libimage_processing_util_jni.so")
+            pickFirsts.add("**/libdatastore_shared_counter.so")
         }
     }
 }
@@ -160,7 +161,7 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // CameraX dependencies
-    val cameraVersion = "1.4.0"
+    val cameraVersion = "1.4.2"
     implementation("androidx.camera:camera-core:$cameraVersion")
     implementation("androidx.camera:camera-camera2:$cameraVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraVersion")
@@ -227,6 +228,17 @@ tasks.register("readLogcat") {
         } catch (e: Exception) {
             println("Error reading logcat: ${e.message}")
         }
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("androidx.camera:camera-core:1.4.2")
+        force("androidx.camera:camera-camera2:1.4.2")
+        force("androidx.camera:camera-lifecycle:1.4.2")
+        force("androidx.camera:camera-video:1.4.2")
+        force("androidx.camera:camera-view:1.4.2")
+        force("androidx.camera:camera-extensions:1.4.2")
     }
 }
 

@@ -7368,6 +7368,19 @@ fun CapturedPreviewScreen(
             }
         }
     }
+    val isFirstFrameRendered = remember { mutableStateOf(false) }
+    DisposableEffect(capturedVideoPath) {
+        isFirstFrameRendered.value = false
+        val listener = object : androidx.media3.common.Player.Listener {
+            override fun onRenderedFirstFrame() {
+                isFirstFrameRendered.value = true
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+        }
+    }
 
     val isPocoOrIqoo = remember {
         val manufacturer = android.os.Build.MANUFACTURER.lowercase(java.util.Locale.US)
