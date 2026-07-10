@@ -1324,10 +1324,17 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
                         inputSurface = surface
 
                         surfaceRequest.provideSurface(surface, sharedGlExecutor) { result ->
+                            // 💡 Release Surface and SurfaceTexture on the Main Looper to prevent native ConsumerBase::abandon SIGSEGV race crashes
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                try {
+                                    surface.release()
+                                    st.release()
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            }
                             sharedGlExecutor.execute {
                                 try {
-                                    st.release()
-                                    surface.release()
                                     android.opengl.GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
                                     
                                     // 💡 Explicitly destroy EGL resources to prevent memory/GPU context leaks
@@ -1341,6 +1348,15 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
                                             android.opengl.EGL14.EGL_NO_CONTEXT
                                         )
                                     }
+                                    
+                                    // 💡 Destroy all active output EGL surfaces to prevent gralloc buffer leaks
+                                    outputs.values.forEach { output ->
+                                        if (output.eglSurface != android.opengl.EGL14.EGL_NO_SURFACE) {
+                                            android.opengl.EGL14.eglDestroySurface(eglDisplay, output.eglSurface)
+                                        }
+                                    }
+                                    outputs.clear()
+
                                     if (program != 0) {
                                         android.opengl.GLES20.glDeleteProgram(program)
                                         program = 0
@@ -3161,8 +3177,18 @@ fun HomeScreen(
                     subPath.equals(path, ignoreCase = true) || 
                     subFilename.equals(pathFilename, ignoreCase = true)
                 }
+                val regex = Regex("\\d{13}")
+                val match = regex.find(path)
                 val createdAtStr = matchingSub?.createdAt ?: run {
-                    if (file.exists()) {
+                    val parsedInstant = if (match != null) {
+                        try {
+                            java.time.Instant.ofEpochMilli(match.value.toLong())
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } else null
+                    
+                    parsedInstant?.toString() ?: if (file.exists()) {
                         java.time.Instant.ofEpochMilli(file.lastModified()).toString()
                     } else {
                         try {
@@ -3225,10 +3251,22 @@ fun HomeScreen(
                 val subPath = sub.imageUrl.split("|||").firstOrNull() ?: ""
                 subPath == path || subPath.endsWith("/$filename") || (subPath.startsWith("http") && path.startsWith("http") && subPath == path)
             }
-            val createdAtStr = matchingSub?.createdAt ?: if (file.exists()) {
-                java.time.Instant.ofEpochMilli(file.lastModified()).toString()
-            } else {
-                java.time.Instant.now().toString()
+            val regex = Regex("\\d{13}")
+            val match = regex.find(path)
+            val createdAtStr = matchingSub?.createdAt ?: run {
+                val parsedInstant = if (match != null) {
+                    try {
+                        java.time.Instant.ofEpochMilli(match.value.toLong())
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else null
+                
+                parsedInstant?.toString() ?: if (file.exists()) {
+                    java.time.Instant.ofEpochMilli(file.lastModified()).toString()
+                } else {
+                    java.time.Instant.now().toString()
+                }
             }
             val sub = SubmissionDbItem(
                 id = matchingSub?.id,
@@ -5779,9 +5817,12 @@ fun CameraPreview(
     }
     
     var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
-    val currentLinearZoom by rememberUpdatedState(linearZoom)
-
-
+    
+    // 💡 Use thread-safe AtomicReference to bridge Compose zoom states to the OpenGL rendering thread safely
+    val zoomAtomic = remember { java.util.concurrent.atomic.AtomicReference(linearZoom) }
+    LaunchedEffect(linearZoom) {
+        zoomAtomic.set(linearZoom)
+    }
 
     LaunchedEffect(isCameraFlipped, isCameraActive) {
         val cameraProvider = withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -5831,7 +5872,7 @@ fun CameraPreview(
             cameraProvider.unbindAll()
             
             // 1. Create our GPU texture zoom effect using a dynamic lambda provider
-            val zoomEffect = createZoomCameraEffect { currentLinearZoom }
+            val zoomEffect = createZoomCameraEffect { zoomAtomic.get() }
 
             // 2. Group UseCases together with the processor effect
             val useCaseGroup = androidx.camera.core.UseCaseGroup.Builder()
@@ -7302,23 +7343,29 @@ fun CapturedPreviewScreen(
             var stableCount = 0
             var retries = 0
             
-            // Poll for stable file size (not changing for 60ms) and verify full readability
-            while (retries < 25) {
+            // 💡 Poll for stable file size and verify header/metadata finalization using MediaMetadataRetriever
+            while (retries < 35) {
                 val currentLength = if (fileTarget.exists()) fileTarget.length() else 0L
-                var isReadable = false
+                var isFullyReady = false
                 if (currentLength > 1024L) {
+                    val retriever = android.media.MediaMetadataRetriever()
                     try {
-                        java.io.FileInputStream(fileTarget).use { fis ->
-                            val temp = ByteArray(10)
-                            fis.read(temp)
+                        retriever.setDataSource(cleanPath)
+                        val duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        val width = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                        if (!duration.isNullOrEmpty() && !width.isNullOrEmpty()) {
+                            isFullyReady = true
                         }
-                        isReadable = true
                     } catch (e: Exception) {
-                        // File is still locked or being flushed by custom OS
+                        // Header metadata (e.g. moov atom) is not written/flushed yet
+                    } finally {
+                        try {
+                            retriever.release()
+                        } catch (e: Exception) {}
                     }
                 }
                 
-                if (currentLength > 1024L && currentLength == lastLength && isReadable) {
+                if (isFullyReady && currentLength == lastLength) {
                     stableCount++
                     if (stableCount >= 2) {
                         break
@@ -7327,7 +7374,7 @@ fun CapturedPreviewScreen(
                     stableCount = 0
                     lastLength = currentLength
                 }
-                delay(30L)
+                delay(40L)
                 fileTarget = java.io.File(cleanPath)
                 retries++
             }
@@ -9605,8 +9652,18 @@ fun VlogScreenContent(
                     subPath.equals(path, ignoreCase = true) || 
                     subFilename.equals(pathFilename, ignoreCase = true)
                 }
+                val regex = Regex("\\d{13}")
+                val match = regex.find(path)
                 val createdAtStr = matchingSub?.createdAt ?: run {
-                    if (file.exists()) {
+                    val parsedInstant = if (match != null) {
+                        try {
+                            java.time.Instant.ofEpochMilli(match.value.toLong())
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } else null
+                    
+                    parsedInstant?.toString() ?: if (file.exists()) {
                         java.time.Instant.ofEpochMilli(file.lastModified()).toString()
                     } else {
                         java.time.Instant.now().toString()
@@ -14910,12 +14967,24 @@ fun PalChatOverlay(
                             subPath.equals(path, ignoreCase = true) || 
                             subFilename.equals(pathFilename, ignoreCase = true)
                         }
-                        val instant = if (matchingSub?.createdAt != null) {
+                        val regex = Regex("\\d{13}")
+                        val match = regex.find(path)
+                        val parsedInstant = if (match != null) {
                             try {
-                                java.time.Instant.parse(matchingSub.createdAt)
+                                java.time.Instant.ofEpochMilli(match.value.toLong())
                             } catch (e: Exception) {
-                                if (file.exists()) java.time.Instant.ofEpochMilli(file.lastModified()) else java.time.Instant.now()
+                                null
                             }
+                        } else null
+
+                        val instant = matchingSub?.createdAt?.let {
+                            try {
+                                java.time.Instant.parse(it)
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } ?: parsedInstant ?: if (file.exists()) {
+                            java.time.Instant.ofEpochMilli(file.lastModified())
                         } else {
                             try {
                                 val timeStr = capturedVlogsTimes.getOrNull(idx) ?: "12:00"
@@ -14932,7 +15001,7 @@ fun PalChatOverlay(
                                 val zdt = targetLocalDate.atTime(hr, min).atZone(java.time.ZoneId.systemDefault())
                                 zdt.toInstant()
                             } catch (e: Exception) {
-                                if (file.exists()) java.time.Instant.ofEpochMilli(file.lastModified()) else java.time.Instant.now()
+                                java.time.Instant.now()
                             }
                         }
                         val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
