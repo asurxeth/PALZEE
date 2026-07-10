@@ -1119,12 +1119,17 @@ suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: 
     }
 }
 
-fun getVideoFileRotation(path: String?): Int {
+fun getVideoFileRotation(context: android.content.Context, path: String?): Int {
     if (path == null) return 0
     try {
+        val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+        val vlogPrefs = context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+        val localPath = palPrefs.getString("local_path_$path", null)
+            ?: vlogPrefs.getString("local_path_$path", null)
+        val resolvedPath = localPath ?: path
         val cleanPath = when {
-            path.startsWith("file://") -> path.substring(7)
-            else -> path
+            resolvedPath.startsWith("file://") -> resolvedPath.substring(7)
+            else -> resolvedPath
         }
         val file = java.io.File(cleanPath)
         if (file.exists() && file.length() > 0) {
@@ -5883,18 +5888,33 @@ fun CameraPreview(
     val lastZoomTime = remember { longArrayOf(0L) }
     val lastBoundCamera = remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
 
-    val currentZoomState = rememberUpdatedState(linearZoom)
+    val animatedZoom by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = linearZoom,
+        animationSpec = androidx.compose.animation.core.tween(
+            durationMillis = 200,
+            easing = androidx.compose.animation.core.FastOutSlowInEasing
+        ),
+        label = "HardwareZoom"
+    )
+    
+    val currentZoomState = rememberUpdatedState(animatedZoom)
 
-    LaunchedEffect(activeCamera) {
+    LaunchedEffect(activeCamera, isCameraActive) {
         val camera = activeCamera ?: return@LaunchedEffect
-        while (true) {
-            val targetZoom = currentZoomState.value
-            try {
-                camera.cameraControl.setLinearZoom(targetZoom)
-            } catch (exc: Exception) {
-                exc.printStackTrace()
+        if (!isCameraActive) return@LaunchedEffect
+        try {
+            while (true) {
+                val targetZoom = currentZoomState.value
+                try {
+                    camera.cameraControl.setLinearZoom(targetZoom)
+                } catch (exc: Exception) {
+                    exc.printStackTrace()
+                    break
+                }
+                kotlinx.coroutines.delay(48L)
             }
-            kotlinx.coroutines.delay(48L)
+        } catch (exc: Exception) {
+            exc.printStackTrace()
         }
     }
     
@@ -8204,42 +8224,7 @@ fun GroupMemberCard(
     }
     val isUser = if (memberId != null) memberId == currentUserId else (memberName != null && (memberName.contains("(You)") || memberName == userFirstName))
 
-    val memberReplies = remember(messages, memberId, memberName, isUser, currentUserId) {
-        messages.filter { msg ->
-            if (msg.content.startsWith("REPLY|||")) {
-                val parts = msg.content.split("|||")
-                val targetUserId = parts.getOrNull(1) ?: ""
-                val targetUserDisplayName = parts.getOrNull(2) ?: ""
-                if (memberId != null) {
-                    targetUserId == memberId
-                } else {
-                    if (isUser) {
-                        targetUserId == currentUserId
-                    } else {
-                        val cleanTargetName = targetUserDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                        cleanTargetName.equals(memberName, ignoreCase = true)
-                    }
-                }
-            } else {
-                false
-            }
-        }.map { msg ->
-            val senderMember = groupMembers.firstOrNull { it.startsWith("${msg.userId}|||") }
-            val (senderName, senderAvatar) = if (senderMember != null) {
-                val parts = senderMember.split("|||")
-                Pair(parts.getOrNull(1) ?: "Pal", parts.getOrNull(2))
-            } else {
-                if (msg.userId == currentUserId) {
-                    Pair(userFirstName, customAvatarUriString)
-                } else {
-                    Pair("Pal", null)
-                }
-            }
-            val parts = msg.content.split("|||")
-            val replyText = parts.getOrNull(4) ?: ""
-            Triple(senderAvatar, replyText, senderName)
-        }.distinctBy { it.second }
-    }
+
 
     val memberSubs = if (isActualMember) {
         filteredSubmissions.filter { sub ->
@@ -8305,6 +8290,33 @@ fun GroupMemberCard(
             }
         }
         val latestReaction = memberReactions.lastOrNull()
+
+        val memberReplies = remember(messages, videoPath) {
+            messages.filter { msg ->
+                if (msg.content.startsWith("REPLY|||")) {
+                    val parts = msg.content.split("|||")
+                    val msgVideoPath = parts.getOrNull(3) ?: ""
+                    msgVideoPath == videoPath
+                } else {
+                    false
+                }
+            }.map { msg ->
+                val senderMember = groupMembers.firstOrNull { it.startsWith("${msg.userId}|||") }
+                val (senderName, senderAvatar) = if (senderMember != null) {
+                    val parts = senderMember.split("|||")
+                    Pair(parts.getOrNull(1) ?: "Pal", parts.getOrNull(2))
+                } else {
+                    if (msg.userId == currentUserId) {
+                        Pair(userFirstName, customAvatarUriString)
+                    } else {
+                        Pair("Pal", null)
+                    }
+                }
+                val parts = msg.content.split("|||")
+                val replyText = parts.getOrNull(4) ?: ""
+                Triple(senderAvatar, replyText, senderName)
+            }.distinctBy { it.second }
+        }
 
         var currentReplyIndex by remember(memberReplies) { mutableStateOf(0) }
         LaunchedEffect(memberReplies) {
@@ -10029,7 +10041,7 @@ fun VlogScreenContent(
                                                     val videoSize = localPlayer.videoSize
                                                     val videoWidth = videoSize.width
                                                     val videoHeight = videoSize.height
-                                                    val videoRotation = getVideoFileRotation(path)
+                                                    val videoRotation = getVideoFileRotation(context, path)
                                                     val textureView = getVideoSurfaceView() as? android.view.TextureView
                                                     if (textureView == null) {
                                                         postDelayed({ applyVideoScale() }, 100)
@@ -11906,7 +11918,7 @@ fun VlogScreenContent(
                                                         val videoSize = localPlayer.videoSize
                                                         val videoWidth = videoSize.width
                                                         val videoHeight = videoSize.height
-                                                        val videoRotation = getVideoFileRotation(currentPath)
+                                                        val videoRotation = getVideoFileRotation(context, currentPath)
                                                         val textureView = getVideoSurfaceView() as? android.view.TextureView
                                                         if (textureView == null) {
                                                             postDelayed({ applyVideoScale() }, 100)
@@ -13511,8 +13523,8 @@ fun VideoPlayerItem(
                             val videoWidth = videoSize.width
                             val videoHeight = videoSize.height
                             val currentIdx = localPlayer.currentMediaItemIndex
-                            val rawPath = videoPaths.getOrNull(currentIdx)
-                            val videoRotation = getVideoFileRotation(rawPath)
+                            val localPath = resolvedPaths.getOrNull(currentIdx)
+                            val videoRotation = getVideoFileRotation(context, localPath)
                             val textureView = getVideoSurfaceView() as? android.view.TextureView
                             if (textureView == null) {
                                 postDelayed({ applyVideoScale() }, 100)
@@ -18724,6 +18736,7 @@ private fun GroupExportMemberSlot(
         contentAlignment = Alignment.Center
     ) {
         if (videoPaths.isNotEmpty()) {
+            var resolvedPathsState by remember(videoPaths) { mutableStateOf<List<String>>(emptyList()) }
             @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
             val localPlayer = remember(videoPaths) {
                 com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
@@ -18742,6 +18755,7 @@ private fun GroupExportMemberSlot(
                 val resolved = videoPaths.map { path ->
                     ensureVideoCached(context, path)
                 }
+                resolvedPathsState = resolved
                 resolved.forEach { resolvedPath ->
                     if (resolvedPath.startsWith("http")) {
                         localPlayer.addMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(resolvedPath)))
@@ -18777,8 +18791,8 @@ private fun GroupExportMemberSlot(
                             val videoWidth = videoSize.width
                             val videoHeight = videoSize.height
                             val currentIdx = localPlayer.currentMediaItemIndex
-                            val rawPath = videoPaths.getOrNull(currentIdx)
-                            val videoRotation = getVideoFileRotation(rawPath)
+                            val localPath = resolvedPathsState.getOrNull(currentIdx)
+                            val videoRotation = getVideoFileRotation(context, localPath)
                             val textureView = getVideoSurfaceView() as? android.view.TextureView
                             if (textureView == null) {
                                 postDelayed({ applyVideoScale() }, 100)
