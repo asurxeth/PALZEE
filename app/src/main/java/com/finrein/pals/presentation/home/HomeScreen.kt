@@ -168,6 +168,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import android.view.TextureView
+import androidx.media3.common.Player
+import androidx.media3.common.MediaItem
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.material.icons.filled.Search
 import java.time.LocalTime
 
@@ -4544,18 +4548,19 @@ fun HomeScreen(
                                 coroutineScope = coroutineScope,
                                 context = context
                             )
-                            val palCode = activeVlogPal?.code ?: "vlog"
-                            val currentSubs = allPalsSubmissions[palCode] ?: emptyList()
-                            val updatedSubs = currentSubs.map { sub ->
-                                if (sub.userId == currentUserId) {
-                                    val parts = sub.imageUrl.split("|||")
-                                    val duration = parts.getOrNull(2) ?: "2000"
-                                    sub.copy(imageUrl = "$path|||$newCaption|||$duration")
-                                } else {
-                                    sub
-                                }
-                            }
-                            allPalsSubmissions[palCode] = updatedSubs
+                             val palCode = activeVlogPal?.code ?: "vlog"
+                             val currentSubs = allPalsSubmissions[palCode] ?: emptyList()
+                             val updatedSubs = currentSubs.map { sub ->
+                                 val subPath = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                                 if (sub.userId == currentUserId && subPath == path) {
+                                     val parts = sub.imageUrl.split("|||")
+                                     val duration = parts.getOrNull(2) ?: "2000"
+                                     sub.copy(imageUrl = "$path|||$newCaption|||$duration")
+                                 } else {
+                                     sub
+                                 }
+                             }
+                             allPalsSubmissions[palCode] = updatedSubs
                             try {
                                 val jsonSubs = kotlinx.serialization.json.Json.encodeToString(allPalsSubmissions.toMap())
                                 getVlogPrefs(context).edit().putString("cached_all_pals_submissions", jsonSubs).apply()
@@ -5822,6 +5827,7 @@ fun CameraPreview(
     }
     
     var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+    var lastZoomUpdateTime by remember { mutableLongStateOf(0L) }
     
     LaunchedEffect(isCameraFlipped, isCameraActive) {
         val cameraProvider = withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -5867,6 +5873,11 @@ fun CameraPreview(
                 preview,
                 videoCapture
             )
+            try {
+                camera.cameraControl.setZoomRatio(1.0f)
+            } catch (exc: Exception) {
+                exc.printStackTrace()
+            }
             activeCamera = camera
         } catch (exc: Exception) {
             exc.printStackTrace()
@@ -5899,7 +5910,11 @@ fun CameraPreview(
                 val targetZoom = currentZoomState.value
                 if (targetZoom != lastSetZoom) {
                     try {
-                        camera.cameraControl.setLinearZoom(targetZoom)
+                        val zoomState = camera.cameraInfo.zoomState.value
+                        val minRatio = zoomState?.minZoomRatio ?: 1.0f
+                        val maxRatio = zoomState?.maxZoomRatio ?: 5.0f
+                        val targetZoomRatio = minRatio + (targetZoom * (maxRatio - minRatio))
+                        camera.cameraControl.setZoomRatio(targetZoomRatio)
                         lastSetZoom = targetZoom
                     } catch (exc: Exception) {
                         exc.printStackTrace()
@@ -5915,7 +5930,27 @@ fun CameraPreview(
     
     androidx.compose.ui.viewinterop.AndroidView(
         factory = { previewView },
-        modifier = modifier
+        modifier = modifier.pointerInput(activeCamera) {
+            val camera = activeCamera ?: return@pointerInput
+            detectTransformGestures { _, _, zoomChange, _ ->
+                if (zoomChange != 1.0f) {
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastZoomUpdateTime > 30L) {
+                        try {
+                            val zoomState = camera.cameraInfo.zoomState.value
+                            val currentRatio = zoomState?.zoomRatio ?: 1.0f
+                            val minRatio = zoomState?.minZoomRatio ?: 1.0f
+                            val maxRatio = zoomState?.maxZoomRatio ?: 5.0f
+                            val targetZoomRatio = (currentRatio * zoomChange).coerceIn(minRatio, maxRatio)
+                            camera.cameraControl.setZoomRatio(targetZoomRatio)
+                            lastZoomUpdateTime = currentTime
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            }
+        }
     )
 }
 
@@ -7220,20 +7255,28 @@ fun CapturedPreviewScreen(
 
     val coroutineScope = rememberCoroutineScope()
     var selectedPals by remember { mutableStateOf<Set<String>>(emptySet()) }
-    val groupMembersMap = remember(createdPals, allPalsMembers) {
-        val map = androidx.compose.runtime.mutableStateMapOf<String, List<String>>()
+    val groupMembersMap = remember { androidx.compose.runtime.mutableStateMapOf<String, List<String>>() }
+    LaunchedEffect(createdPals, allPalsMembers) {
         createdPals.forEach { pal ->
-            map[pal.code] = if (pal.isVlog) listOf("only you") else (allPalsMembers[pal.code] ?: emptyList())
+            if (pal.isVlog) {
+                groupMembersMap[pal.code] = listOf("only you")
+            } else {
+                val current = groupMembersMap[pal.code]
+                if (current.isNullOrEmpty()) {
+                    groupMembersMap[pal.code] = allPalsMembers[pal.code] ?: emptyList()
+                }
+            }
         }
-        map
     }
     
-    val groupSubmissionsMap = createdPals.associate { pal ->
-        val subs = allPalsSubmissions[pal.code] ?: emptyList()
-        val todaySubs = subs.filter { sub ->
-            getSubmissionLocalDate(sub) == getActiveCycleLocalDate(java.time.Instant.now())
+    val groupSubmissionsMap = remember(createdPals, allPalsSubmissions.toMap()) {
+        createdPals.associate { pal ->
+            val subs = allPalsSubmissions[pal.code] ?: emptyList()
+            val todaySubs = subs.filter { sub ->
+                getSubmissionLocalDate(sub) == getActiveCycleLocalDate(java.time.Instant.now())
+            }
+            pal.code to todaySubs
         }
-        pal.code to todaySubs
     }
     val userFirstName = remember(currentDisplayName) {
         currentDisplayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
@@ -7246,7 +7289,9 @@ fun CapturedPreviewScreen(
             if (pal.isVlog) {
                 groupMembersMap[pal.code] = listOf("only you")
             } else {
-                launch(kotlinx.coroutines.Dispatchers.IO) {
+                val existing = groupMembersMap[pal.code]
+                if (existing.isNullOrEmpty() || existing == allPalsMembers[pal.code]) {
+                    launch(kotlinx.coroutines.Dispatchers.IO) {
                     try {
                         val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
                             .select { filter { eq("pal_code", pal.code) } }
@@ -7307,6 +7352,22 @@ fun CapturedPreviewScreen(
         }
     }
 
+    val cleanPath = remember(capturedVideoPath) {
+        if (capturedVideoPath.isNullOrBlank()) {
+            ""
+        } else {
+            val rawCleanPath = when {
+                capturedVideoPath.startsWith("file://") -> capturedVideoPath.substring(7)
+                else -> capturedVideoPath
+            }
+            try {
+                android.net.Uri.decode(rawCleanPath)
+            } catch (e: Exception) {
+                rawCleanPath
+            }
+        }
+    }
+
     val isPocoOrIqoo = remember {
         val manufacturer = android.os.Build.MANUFACTURER.lowercase(java.util.Locale.US)
         val brand = android.os.Build.BRAND.lowercase(java.util.Locale.US)
@@ -7332,16 +7393,6 @@ fun CapturedPreviewScreen(
         }
 
         if (!capturedVideoPath.isNullOrBlank()) {
-            val rawCleanPath = when {
-                capturedVideoPath.startsWith("file://") -> capturedVideoPath.substring(7)
-                else -> capturedVideoPath
-            }
-            val cleanPath = try {
-                android.net.Uri.decode(rawCleanPath)
-            } catch (e: Exception) {
-                rawCleanPath
-            }
-            
             var fileTarget = java.io.File(cleanPath)
             var lastLength = -1L
             var stableCount = 0
@@ -7427,10 +7478,10 @@ fun CapturedPreviewScreen(
             try {
                 exoPlayer.apply {
                     stop()
-                    clearMediaItems()
-                    setMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
+                    repeatMode = Player.REPEAT_MODE_ALL
+                    setMediaItem(MediaItem.fromUri(targetUri))
                     prepare()
-                    repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                    seekTo(0L)
                     playWhenReady = true
                 }
             } catch (e: Exception) {
@@ -7482,132 +7533,159 @@ fun CapturedPreviewScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.ui.viewinterop.AndroidView(
-                    factory = { ctx ->
-                        val view = android.view.LayoutInflater.from(ctx)
-                            .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                        view.layoutParams = android.view.ViewGroup.LayoutParams(
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                        view.apply {
-                                        player = exoPlayer
-                            useController = false
-                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                            setBackgroundColor(android.graphics.Color.BLACK)
-                            
-                            val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                                (tag as? java.lang.Runnable)?.run()
-                            }
-                            addOnLayoutChangeListener(layoutListener)
-
-                            var errorRetryCount = 0
-
-                            exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                    super.onVideoSizeChanged(videoSize)
-                                    (tag as? java.lang.Runnable)?.run()
-                                    val textureView = getVideoSurfaceView() as? android.view.TextureView
-                                    textureView?.invalidate()
-                                    invalidate()
+                key(cleanPath) {
+                    androidx.compose.ui.viewinterop.AndroidView(
+                        factory = { context ->
+                            PlayerView(context).apply {
+                                // 1. Set surface type to TextureView via implementation mode
+                                this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
+                                this.useController = false
+                                this.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                
+                                // 2. Prevent Media3 from overriding custom layout matrices on subsequent loops
+                                val videoSurface = this.videoSurfaceView
+                                if (videoSurface is TextureView) {
+                                    // Forcefully isolate the surface view from internal layout updates
+                                    videoSurface.removeOnLayoutChangeListener(null) 
                                 }
-                                override fun onPlaybackStateChanged(playbackState: Int) {
-                                    super.onPlaybackStateChanged(playbackState)
+                                
+                                layoutParams = android.view.ViewGroup.LayoutParams(
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                player = exoPlayer
+                                this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
+                                setBackgroundColor(android.graphics.Color.BLACK)
+                                
+                                val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                                     (tag as? java.lang.Runnable)?.run()
-                                    if (playbackState == androidx.media3.common.Player.STATE_READY) {
-                                        exoPlayer.play()
-                                        onPlayerReady()
+                                }
+                                addOnLayoutChangeListener(layoutListener)
+
+                                var errorRetryCount = 0
+
+                                exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                        super.onVideoSizeChanged(videoSize)
+                                        (tag as? java.lang.Runnable)?.run()
                                         val textureView = getVideoSurfaceView() as? android.view.TextureView
                                         textureView?.invalidate()
                                         invalidate()
-                                        errorRetryCount = 0
-                                    } else if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
-                                        exoPlayer.seekTo(0, 0L)
-                                        exoPlayer.play()
                                     }
-                                }
-                                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                                    android.util.Log.e("PalPreview", "ExoPlayer error in preview: ${error.message}", error)
-                                    val currentItem = exoPlayer.currentMediaItem
-                                    if (currentItem != null && errorRetryCount < 3) {
-                                        errorRetryCount++
-                                        postDelayed({
-                                            try {
-                                                android.util.Log.d("PalPreview", "Retrying player prepare/play (attempt $errorRetryCount)")
-                                                exoPlayer.stop()
-                                                exoPlayer.clearMediaItems()
-                                                exoPlayer.setMediaItem(currentItem)
-                                                exoPlayer.prepare()
-                                                exoPlayer.play()
-                                            } catch (e: Exception) {
-                                                android.util.Log.e("PalPreview", "Failed to retry player: ${e.message}", e)
-                                            }
-                                        }, 200L * errorRetryCount)
+                                    override fun onPlaybackStateChanged(playbackState: Int) {
+                                        super.onPlaybackStateChanged(playbackState)
+                                        (tag as? java.lang.Runnable)?.run()
+                                        if (playbackState == androidx.media3.common.Player.STATE_READY) {
+                                            exoPlayer.play()
+                                            onPlayerReady()
+                                            val textureView = getVideoSurfaceView() as? android.view.TextureView
+                                            textureView?.invalidate()
+                                            invalidate()
+                                            errorRetryCount = 0
+                                        } else if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
+                                            exoPlayer.seekTo(0, 0L)
+                                            exoPlayer.play()
+                                        }
+                                    }
+                                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                                        android.util.Log.e("PalPreview", "ExoPlayer error in preview: ${error.message}", error)
+                                        val currentItem = exoPlayer.currentMediaItem
+                                        if (currentItem != null && errorRetryCount < 3) {
+                                            errorRetryCount++
+                                            postDelayed({
+                                                try {
+                                                    android.util.Log.d("PalPreview", "Retrying player prepare/play (attempt $errorRetryCount)")
+                                                    exoPlayer.stop()
+                                                    exoPlayer.clearMediaItems()
+                                                    exoPlayer.setMediaItem(currentItem)
+                                                    exoPlayer.prepare()
+                                                    exoPlayer.play()
+                                                } catch (e: Exception) {
+                                                    android.util.Log.e("PalPreview", "Failed to retry player: ${e.message}", e)
+                                                }
+                                            }, 200L * errorRetryCount)
+                                        } else {
+                                            exoPlayer.prepare()
+                                            exoPlayer.play()
+                                        }
+                                    }
+                                })
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        update = { view ->
+                            val triggerRotation = videoRotation
+                            val triggerZoom = zoomFactor
+                            if (view.player != exoPlayer) {
+                                view.player = exoPlayer
+                            }
+
+                            // Forced data feed fresh re-prepare loop when video path changes
+                            val targetUri = if (cleanPath.startsWith("content://")) {
+                                android.net.Uri.parse(cleanPath)
+                            } else {
+                                android.net.Uri.fromFile(java.io.File(cleanPath))
+                            }
+                            val currentMediaItem = exoPlayer.currentMediaItem
+                            if (currentMediaItem == null || currentMediaItem.localConfiguration?.uri != targetUri) {
+                                exoPlayer.stop()
+                                exoPlayer.repeatMode = Player.REPEAT_MODE_ALL
+                                exoPlayer.setMediaItem(MediaItem.fromUri(targetUri))
+                                exoPlayer.prepare()
+                                exoPlayer.seekTo(0L)
+                                exoPlayer.playWhenReady = true
+                            }
+                            
+                            // 💡 Dynamically recreate the Runnable on update to capture latest recomposition state values
+                            view.tag = java.lang.Runnable {
+                                val videoSize = exoPlayer.videoSize
+                                val videoWidth = videoSize.width
+                                val videoHeight = videoSize.height
+                                val textureView = view.getVideoSurfaceView() as? android.view.TextureView
+                                if (textureView != null && view.width > 0 && view.height > 0 && videoWidth > 0 && videoHeight > 0) {
+                                    val containerWidth = view.width.toFloat()
+                                    val containerHeight = view.height.toFloat()
+                                    val needsRotation = triggerRotation == 270 || triggerRotation == 90
+                                    
+                                    val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
+                                    val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
+                                    
+                                    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
+                                    
+                                    val calculatedScaleX: Float
+                                    val calculatedScaleY: Float
+                                    val calculatedRotation: Float
+                                    if (needsRotation) {
+                                        calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                        calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                        calculatedRotation = 270f
                                     } else {
-                                        exoPlayer.prepare()
-                                        exoPlayer.play()
+                                        calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                        calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                        calculatedRotation = 0f
                                     }
+                                    
+                                    textureView.pivotX = containerWidth / 2f
+                                    textureView.pivotY = containerHeight / 2f
+                                    textureView.scaleX = calculatedScaleX
+                                    textureView.scaleY = calculatedScaleY
+                                    textureView.rotation = calculatedRotation
                                 }
-                            })
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    update = { view ->
-                        val triggerRotation = videoRotation
-                        val triggerZoom = zoomFactor
-                        if (view.player != exoPlayer) {
-                            view.player = exoPlayer
-                        }
-                        
-                        // 💡 Dynamically recreate the Runnable on update to capture latest recomposition state values
-                        view.tag = java.lang.Runnable {
-                            val videoSize = exoPlayer.videoSize
-                            val videoWidth = videoSize.width
-                            val videoHeight = videoSize.height
-                            val textureView = view.getVideoSurfaceView() as? android.view.TextureView
-                            if (textureView != null && view.width > 0 && view.height > 0 && videoWidth > 0 && videoHeight > 0) {
-                                val containerWidth = view.width.toFloat()
-                                val containerHeight = view.height.toFloat()
-                                val needsRotation = triggerRotation == 270 || triggerRotation == 90
-                                
-                                val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
-                                val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
-                                
-                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                
-                                val calculatedScaleX: Float
-                                val calculatedScaleY: Float
-                                val calculatedRotation: Float
-                                if (needsRotation) {
-                                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                    calculatedRotation = 270f
-                                } else {
-                                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                    calculatedRotation = 0f
-                                }
-                                
-                                textureView.pivotX = containerWidth / 2f
-                                textureView.pivotY = containerHeight / 2f
-                                textureView.scaleX = calculatedScaleX
-                                textureView.scaleY = calculatedScaleY
-                                textureView.rotation = calculatedRotation
+                            }
+                            
+                            (view.tag as? java.lang.Runnable)?.run()
+                            
+                            if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+                                exoPlayer.play()
+                            }
+                            if (exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+                                val textureView = view.getVideoSurfaceView() as? android.view.TextureView
+                                textureView?.invalidate()
+                                view.invalidate()
                             }
                         }
-                        
-                        (view.tag as? java.lang.Runnable)?.run()
-                        
-                        if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
-                            exoPlayer.play()
-                        }
-                        if (exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
-                            val textureView = view.getVideoSurfaceView() as? android.view.TextureView
-                            textureView?.invalidate()
-                            view.invalidate()
-                        }
-                    }
-                )
+                    )
+                }
             }
 
             // Top Middle Vlog Title Header Text ("vlog >" or selected group name + " >")
@@ -8000,9 +8078,8 @@ fun CapturedPreviewScreen(
                     Column(
                         modifier = Modifier.weight(1f)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Text(
                                 text = if (pal.isVlog) "vlog" else groupName,
@@ -8011,8 +8088,7 @@ fun CapturedPreviewScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = if (isDark) Color.White else Color.Black,
                                 maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             if (isHourlyRestricted && hourlySentText.isNotEmpty()) {
                                 Text(
@@ -11719,6 +11795,110 @@ fun VlogScreenContent(
             var isExportSharingVideo by remember { mutableStateOf(false) }
             var isExportSaved by remember { mutableStateOf(false) }
             val localCoroutineScope = rememberCoroutineScope()
+
+            val buildExportLists = {
+                val pathsToProcess = mutableListOf<String>()
+                val timesToProcess = mutableListOf<String>()
+                val captionsToProcess = mutableListOf<String>()
+                val vlogsToProcess = mutableListOf<String>()
+
+                if (pal.isVlog) {
+                    pathsToProcess.addAll(capturedVlogsPaths.reversed())
+                    timesToProcess.addAll(capturedVlogsTimes.reversed())
+                    captionsToProcess.addAll(capturedVlogsCaptions.reversed())
+                    vlogsToProcess.addAll(List(capturedVlogsPaths.size) { "vlog" })
+                } else {
+                    // Group export: loop through all hours in dayHoursList, then all slots
+                    val totalSlots = maxOf(groupMembers.size, pal.size.toIntOrNull() ?: 4)
+                    for (activeHour in dayHoursList) {
+                        for (index in 0 until totalSlots) {
+                            val memberInfo = groupMembers.getOrNull(index)
+                            val memberParts = memberInfo?.split("|||")
+                            val (memberId, memberNameClean, _) = if (memberParts != null && memberParts.size >= 2) {
+                                Triple(memberParts[0], memberParts[1], memberParts.getOrNull(2))
+                            } else {
+                                Triple(null, memberInfo, null)
+                            }
+                            val memberName = if (memberNameClean != null) {
+                                if (memberNameClean.contains("(You)")) userFirstName else memberNameClean
+                            } else {
+                                null
+                            }
+                            val isUser = memberId != null && memberId == currentUserId || 
+                                         (memberNameClean != null && (memberNameClean.contains("(You)") || memberNameClean == userFirstName))
+                            
+                            val memberSubs = if (isUser) {
+                                daySubmissions.filter { it.userId == currentUserId && it.getHourBucket() == activeHour }
+                            } else if (memberId != null && memberId != "legacy_id") {
+                                daySubmissions.filter { it.userId == memberId && it.getHourBucket() == activeHour }
+                            } else if (memberName != null) {
+                                daySubmissions.filter { 
+                                    val cleanSubName = parseUserDisplayName(it.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                    cleanSubName == memberName && it.getHourBucket() == activeHour
+                                }
+                            } else {
+                                emptyList()
+                            }
+
+                            val sortedMemberSubs = memberSubs.mapNotNull { sub ->
+                                val parts = sub.imageUrl.split("|||")
+                                val path = parts.getOrNull(0) ?: ""
+                                if (path.isEmpty()) null else {
+                                    var hour = 12
+                                    if (!sub.createdAt.isNullOrEmpty()) {
+                                        try {
+                                            val instant = java.time.Instant.parse(sub.createdAt)
+                                            val localDateTime = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                                            val rawHour = localDateTime.hour
+                                            hour = (rawHour - 4 + 24) % 24
+                                        } catch (e: Exception) {}
+                                    }
+                                    val timestamp = if (!sub.createdAt.isNullOrEmpty()) {
+                                        try { java.time.Instant.parse(sub.createdAt).toEpochMilli() } catch (e: Exception) { 0L }
+                                    } else 0L
+                                    Triple(sub, hour, timestamp)
+                                }
+                            }
+                            .groupBy { it.second }
+                            .map { entry -> entry.value.maxByOrNull { it.third }!! }
+                            .sortedBy { it.third }
+                            .map { it.first }
+
+                            val firstSub = sortedMemberSubs.firstOrNull()
+                            val videoPath = firstSub?.imageUrl?.split("|||")?.firstOrNull() ?: ""
+                            
+                            val displayTimeText = String.format(java.util.Locale.US, "%02d:00", activeHour)
+                            
+                            if (videoPath.isNotEmpty()) {
+                                pathsToProcess.add(videoPath)
+                                val captureTime = if (!firstSub.createdAt.isNullOrEmpty()) {
+                                    try {
+                                        val instant = java.time.Instant.parse(firstSub.createdAt)
+                                        val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
+                                        val hr = zonedDateTime.hour
+                                        String.format(java.util.Locale.US, "%02d:00", hr)
+                                    } catch (e: Exception) {
+                                        displayTimeText
+                                    }
+                                } else {
+                                    displayTimeText
+                                }
+                                timesToProcess.add(captureTime)
+                                captionsToProcess.add(firstSub.imageUrl.split("|||").getOrNull(1) ?: "")
+                                vlogsToProcess.add(memberName ?: "pal")
+                            } else {
+                                // Empty / missed box
+                                pathsToProcess.add("EMPTY_BOX")
+                                timesToProcess.add(displayTimeText)
+                                captionsToProcess.add(exportMissedText)
+                                vlogsToProcess.add("EMPTY_BOX_MISSED")
+                            }
+                        }
+                    }
+                }
+                
+                Triple(pathsToProcess, timesToProcess, Triple(captionsToProcess, vlogsToProcess, Unit))
+            }
             
             var showEditExportSheet by remember { mutableStateOf(false) }
             var exportBackground by remember { mutableStateOf("black") }
@@ -12201,21 +12381,15 @@ if (needsRotation) {
                             isPrimary = false,
                             isDark = isDark,
                             onClick = {
-                                val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else filteredPaths.isNotEmpty()
+                                val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else dayHoursList.isNotEmpty()
                                 if (!isExportSavingVideo && !isExportSharingVideo && !isExportSaved && hasItemsToExport) {
                                     isExportSavingVideo = true
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_save_${System.currentTimeMillis()}.mp4")
-                                        val pathsToProcess = if (pal.isVlog) capturedVlogsPaths.reversed() else filteredPaths
+                                        val (pathsToProcess, timesToProcess, rest) = buildExportLists()
+                                        val (captionsToProcess, vlogsToProcess, _) = rest
                                         val resolvedPaths = pathsToProcess.map { path ->
-                                            ensureVideoCached(context, path)
-                                        }
-                                        val timesToProcess = if (pal.isVlog) capturedVlogsTimes.reversed() else filteredTimes
-                                        val captionsToProcess = if (pal.isVlog) capturedVlogsCaptions.reversed() else filteredCaptions
-                                        val vlogsToProcess = if (pal.isVlog) List(resolvedPaths.size) { "vlog" } else {
-                                            filteredSubmissions.map { sub ->
-                                                parseUserDisplayName(sub.userDisplayName).first
-                                            }
+                                            if (path == "EMPTY_BOX") "EMPTY_BOX" else ensureVideoCached(context, path)
                                         }
 
                                         VideoProcessor.processVideoList(
@@ -12265,21 +12439,15 @@ if (needsRotation) {
                             isPrimary = true,
                             isDark = isDark,
                             onClick = {
-                                val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else filteredPaths.isNotEmpty()
+                                val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else dayHoursList.isNotEmpty()
                                 if (!isExportSavingVideo && !isExportSharingVideo && hasItemsToExport) {
                                     isExportSharingVideo = true
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_share_${System.currentTimeMillis()}.mp4")
-                                        val pathsToProcess = if (pal.isVlog) capturedVlogsPaths.reversed() else filteredPaths
+                                        val (pathsToProcess, timesToProcess, rest) = buildExportLists()
+                                        val (captionsToProcess, vlogsToProcess, _) = rest
                                         val resolvedPaths = pathsToProcess.map { path ->
-                                            ensureVideoCached(context, path)
-                                        }
-                                        val timesToProcess = if (pal.isVlog) capturedVlogsTimes.reversed() else filteredTimes
-                                        val captionsToProcess = if (pal.isVlog) capturedVlogsCaptions.reversed() else filteredCaptions
-                                        val vlogsToProcess = if (pal.isVlog) List(resolvedPaths.size) { "vlog" } else {
-                                            filteredSubmissions.map { sub ->
-                                                parseUserDisplayName(sub.userDisplayName).first
-                                            }
+                                            if (path == "EMPTY_BOX") "EMPTY_BOX" else ensureVideoCached(context, path)
                                         }
 
                                         VideoProcessor.processVideoList(
@@ -15393,6 +15561,42 @@ fun PalChatOverlay(
                                                                     }
                                                             ) {
                                                                 VideoThumbnail(videoPath = feedItem.path, modifier = Modifier.fillMaxSize())
+                                                                Column(
+                                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                                    modifier = Modifier.align(Alignment.Center)
+                                                                ) {
+                                                                    Text(
+                                                                        text = feedItem.timeStr,
+                                                                        fontFamily = DelaGothicOneFontFamily,
+                                                                        fontSize = 12.5.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = Color.White,
+                                                                        style = TextStyle(
+                                                                            shadow = androidx.compose.ui.graphics.Shadow(
+                                                                                color = Color.Black.copy(alpha = 0.5f),
+                                                                                offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                                                                blurRadius = 3f
+                                                                            )
+                                                                        )
+                                                                    )
+                                                                    if (feedItem.caption.isNotEmpty()) {
+                                                                        Spacer(modifier = Modifier.height(3.dp))
+                                                                        Text(
+                                                                            text = feedItem.caption,
+                                                                            fontFamily = RobotoFontFamily,
+                                                                            fontSize = 11.sp,
+                                                                            fontWeight = FontWeight.Normal,
+                                                                            color = Color.White,
+                                                                            style = TextStyle(
+                                                                                shadow = androidx.compose.ui.graphics.Shadow(
+                                                                                    color = Color.Black.copy(alpha = 0.5f),
+                                                                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                                                                    blurRadius = 3f
+                                                                                )
+                                                                            )
+                                                                        )
+                                                                    }
+                                                                }
                                                             }
 
                                                             if (feedReactions.isNotEmpty()) {
@@ -15644,6 +15848,42 @@ fun PalChatOverlay(
                                                                     }
                                                             ) {
                                                                 VideoThumbnail(videoPath = feedItem.path, modifier = Modifier.fillMaxSize())
+                                                                Column(
+                                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                                    modifier = Modifier.align(Alignment.Center)
+                                                                ) {
+                                                                    Text(
+                                                                        text = feedItem.timeStr,
+                                                                        fontFamily = DelaGothicOneFontFamily,
+                                                                        fontSize = 12.5.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = Color.White,
+                                                                        style = TextStyle(
+                                                                            shadow = androidx.compose.ui.graphics.Shadow(
+                                                                                color = Color.Black.copy(alpha = 0.5f),
+                                                                                offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                                                                blurRadius = 3f
+                                                                            )
+                                                                        )
+                                                                    )
+                                                                    if (feedItem.caption.isNotEmpty()) {
+                                                                        Spacer(modifier = Modifier.height(3.dp))
+                                                                        Text(
+                                                                            text = feedItem.caption,
+                                                                            fontFamily = RobotoFontFamily,
+                                                                            fontSize = 11.sp,
+                                                                            fontWeight = FontWeight.Normal,
+                                                                            color = Color.White,
+                                                                            style = TextStyle(
+                                                                                shadow = androidx.compose.ui.graphics.Shadow(
+                                                                                    color = Color.Black.copy(alpha = 0.5f),
+                                                                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                                                                    blurRadius = 3f
+                                                                                )
+                                                                            )
+                                                                        )
+                                                                    }
+                                                                }
                                                             }
 
                                                             if (feedReactions.isNotEmpty()) {
@@ -16178,113 +16418,64 @@ fun PalChatOverlay(
                             )
                         }
 
-                        if (pal.isVlog) {
-                            // Overlay 2: vlog name (left center) and time text (right center), time text size to perfect 12.5sp
-                            Row(
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.Center)
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (pal.isVlog) "vlog" else pal.name,
+                                fontFamily = BricolageVariableFontFamily,
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                style = TextStyle(
+                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                        color = Color.Black.copy(alpha = 0.5f),
+                                        offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                        blurRadius = 3f
+                                    )
+                                )
+                            )
+
+                            Text(
+                                text = item.timeStr,
+                                fontFamily = RobotoFontFamily,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color.White,
+                                style = TextStyle(
+                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                        color = Color.Black.copy(alpha = 0.5f),
+                                        offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                        blurRadius = 3f
+                                    )
+                                )
+                            )
+                        }
+
+                        if (item.caption.isNotEmpty()) {
+                            Text(
+                                text = item.caption,
+                                fontFamily = RobotoFontFamily,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = Color.White,
                                 modifier = Modifier
-                                    .fillMaxWidth()
                                     .align(Alignment.Center)
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "vlog",
-                                    fontFamily = BricolageVariableFontFamily,
-                                    fontSize = 19.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    style = TextStyle(
-                                        shadow = androidx.compose.ui.graphics.Shadow(
-                                            color = Color.Black.copy(alpha = 0.5f),
-                                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                            blurRadius = 3f
-                                        )
+                                    .padding(horizontal = 48.dp),
+                                textAlign = TextAlign.Center,
+                                style = TextStyle(
+                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                        color = Color.Black.copy(alpha = 0.5f),
+                                        offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                        blurRadius = 3f
                                     )
                                 )
-
-                                Text(
-                                    text = item.timeStr,
-                                    fontFamily = RobotoFontFamily,
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = Color.White,
-                                    style = TextStyle(
-                                        shadow = androidx.compose.ui.graphics.Shadow(
-                                            color = Color.Black.copy(alpha = 0.5f),
-                                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                            blurRadius = 3f
-                                        )
-                                    )
-                                )
-                            }
-
-                            if (item.caption.isNotEmpty()) {
-                                Text(
-                                    text = item.caption,
-                                    fontFamily = RobotoFontFamily,
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.Normal,
-                                    color = Color.White,
-                                    modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .padding(horizontal = 48.dp),
-                                    textAlign = TextAlign.Center,
-                                    style = TextStyle(
-                                        shadow = androidx.compose.ui.graphics.Shadow(
-                                            color = Color.Black.copy(alpha = 0.5f),
-                                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                            blurRadius = 3f
-                                        )
-                                    )
-                                )
-                            }
-                        } else {
-                            // Center: Large bold hour-only time slot (e.g. 23:00)
-                            val captureHourOnlyText = try {
-                                val zonedDateTime = item.rawInstant.atZone(java.time.ZoneId.systemDefault())
-                                String.format(java.util.Locale.US, "%02d:00", zonedDateTime.hour)
-                            } catch (e: Exception) {
-                                item.timeStr
-                            }
-
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center,
-                                modifier = Modifier.align(Alignment.Center)
-                            ) {
-                                Text(
-                                    text = captureHourOnlyText,
-                                    fontFamily = DelaGothicOneFontFamily,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    style = TextStyle(
-                                        shadow = androidx.compose.ui.graphics.Shadow(
-                                            color = Color.Black.copy(alpha = 0.6f),
-                                            offset = androidx.compose.ui.geometry.Offset(2f, 2f),
-                                            blurRadius = 4f
-                                        )
-                                    )
-                                )
-                                if (item.caption.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(5.dp))
-                                    Text(
-                                        text = item.caption,
-                                        fontFamily = RobotoFontFamily,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Normal,
-                                        color = Color.White,
-                                        style = TextStyle(
-                                            shadow = androidx.compose.ui.graphics.Shadow(
-                                                color = Color.Black.copy(alpha = 0.6f),
-                                                offset = androidx.compose.ui.geometry.Offset(2f, 2f),
-                                                blurRadius = 4f
-                                            )
-                                        )
-                                    )
-                                }
-                            }
+                            )
                         }
                     }
                 }
@@ -19202,9 +19393,33 @@ fun HomeScreenOverlays(
     )
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+class PlayerView(context: android.content.Context) : androidx.media3.ui.PlayerView(
+    context,
+    getAttributeSet(context),
+    0
+) {
+    var implementationMode: Int = 0
 
+    companion object {
+        const val IMPLEMENTATION_MODE_COMPATIBLE = 2
+        const val SHOW_BUFFERING_NEVER = 0
 
-
-
-
-
+        private fun getAttributeSet(context: android.content.Context): android.util.AttributeSet? {
+            return try {
+                val parser = context.resources.getLayout(R.layout.player_view_texture)
+                var state = 0
+                while (state != android.content.res.XmlResourceParser.START_TAG && state != android.content.res.XmlResourceParser.END_DOCUMENT) {
+                    state = parser.next()
+                }
+                if (state == android.content.res.XmlResourceParser.START_TAG) {
+                    android.util.Xml.asAttributeSet(parser)
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+}

@@ -127,15 +127,19 @@ class VideoProcessor {
             // Filter valid inputs
             val validInputs = inputPaths.indices.mapNotNull { i ->
                 val path = inputPaths[i]
-                val cleanPath = when {
-                    path.startsWith("file://") -> path.substring(7)
-                    else -> path
-                }
-                val file = File(cleanPath)
-                if (file.exists() && file.length() > 0) {
-                    Triple(cleanPath, i, file)
+                if (path == "EMPTY_BOX") {
+                    Triple("EMPTY_BOX", i, File(""))
                 } else {
-                    null
+                    val cleanPath = when {
+                        path.startsWith("file://") -> path.substring(7)
+                        else -> path
+                    }
+                    val file = File(cleanPath)
+                    if (file.exists() && file.length() > 0) {
+                        Triple(cleanPath, i, file)
+                    } else {
+                        null
+                    }
                 }
             }
 
@@ -145,28 +149,29 @@ class VideoProcessor {
             }
 
             // Set up EGL/Encoder using the first video's format details
-            val firstInputPath = validInputs[0].first
-            val tempExtractor = MediaExtractor()
             var firstVideoFormat: MediaFormat? = null
-            try {
-                tempExtractor.setDataSource(firstInputPath)
-                for (i in 0 until tempExtractor.trackCount) {
-                    val format = tempExtractor.getTrackFormat(i)
-                    val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
-                    if (mime.startsWith("video/")) {
-                        firstVideoFormat = format
-                        break
+            val firstRealInput = validInputs.firstOrNull { it.first != "EMPTY_BOX" }
+            if (firstRealInput != null) {
+                val tempExtractor = MediaExtractor()
+                try {
+                    tempExtractor.setDataSource(firstRealInput.first)
+                    for (i in 0 until tempExtractor.trackCount) {
+                        val format = tempExtractor.getTrackFormat(i)
+                        val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
+                        if (mime.startsWith("video/")) {
+                            firstVideoFormat = format
+                            break
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error reading first video track format", e)
+                } finally {
+                    tempExtractor.release()
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error reading first video track format", e)
-            } finally {
-                tempExtractor.release()
             }
 
             if (firstVideoFormat == null) {
-                Log.e(TAG, "Failed to retrieve video track format from first input")
-                return false
+                firstVideoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 720, 1280)
             }
 
             // Fixed 9:16 target size (720x1280)
