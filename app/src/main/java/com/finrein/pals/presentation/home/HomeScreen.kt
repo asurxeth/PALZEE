@@ -1264,6 +1264,15 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
 private val sharedEffectExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 private val sharedGlExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
+private var staticEglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
+private var staticEglContext = android.opengl.EGL14.EGL_NO_CONTEXT
+private var staticEglConfig: android.opengl.EGLConfig? = null
+private var staticEglDummySurface = android.opengl.EGL14.EGL_NO_SURFACE
+private var staticProgram = 0
+private var staticTexMatrixLoc = 0
+private var staticVertexBuffer: java.nio.FloatBuffer? = null
+private var staticTexCoordBuffer: java.nio.FloatBuffer? = null
+
 class ZoomCameraEffect(
     targets: Int,
     executor: java.util.concurrent.Executor,
@@ -1286,12 +1295,6 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
         androidx.camera.core.CameraEffect.PREVIEW or androidx.camera.core.CameraEffect.VIDEO_CAPTURE,
         sharedEffectExecutor,
         object : androidx.camera.core.SurfaceProcessor {
-            private var eglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
-            private var eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
-            private var eglConfig: android.opengl.EGLConfig? = null
-            private var eglDummySurface = android.opengl.EGL14.EGL_NO_SURFACE
-            private var program = 0
-            private var texMatrixLoc = 0
             private var textureId = 0
             private var surfaceTexture: android.graphics.SurfaceTexture? = null
             private var inputSurface: android.view.Surface? = null
@@ -1337,38 +1340,13 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
                                 try {
                                     android.opengl.GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
                                     
-                                    // 💡 Explicitly destroy EGL resources to prevent memory/GPU context leaks
-                                    // 💡 DO NOT call eglTerminate or eglReleaseThread because EGLDisplay is process-wide
-                                    // 💡 Make context non-current to allow immediate physical GPU resource reclamation
-                                    if (eglDisplay != android.opengl.EGL14.EGL_NO_DISPLAY) {
-                                        android.opengl.EGL14.eglMakeCurrent(
-                                            eglDisplay,
-                                            android.opengl.EGL14.EGL_NO_SURFACE,
-                                            android.opengl.EGL14.EGL_NO_SURFACE,
-                                            android.opengl.EGL14.EGL_NO_CONTEXT
-                                        )
-                                    }
-                                    
                                     // 💡 Destroy all active output EGL surfaces to prevent gralloc buffer leaks
                                     outputs.values.forEach { output ->
                                         if (output.eglSurface != android.opengl.EGL14.EGL_NO_SURFACE) {
-                                            android.opengl.EGL14.eglDestroySurface(eglDisplay, output.eglSurface)
+                                            android.opengl.EGL14.eglDestroySurface(staticEglDisplay, output.eglSurface)
                                         }
                                     }
                                     outputs.clear()
-
-                                    if (program != 0) {
-                                        android.opengl.GLES20.glDeleteProgram(program)
-                                        program = 0
-                                    }
-                                    if (eglDummySurface != android.opengl.EGL14.EGL_NO_SURFACE) {
-                                        android.opengl.EGL14.eglDestroySurface(eglDisplay, eglDummySurface)
-                                        eglDummySurface = android.opengl.EGL14.EGL_NO_SURFACE
-                                    }
-                                    if (eglContext != android.opengl.EGL14.EGL_NO_CONTEXT) {
-                                        android.opengl.EGL14.eglDestroyContext(eglDisplay, eglContext)
-                                        eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
-                                    }
                                 } catch (e: Exception) {
                                     e.printStackTrace()
                                 }
@@ -1388,13 +1366,13 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
                             sharedGlExecutor.execute {
                                 val output = outputs.remove(surfaceOutput)
                                 if (output != null) {
-                                    android.opengl.EGL14.eglDestroySurface(eglDisplay, output.eglSurface)
+                                    android.opengl.EGL14.eglDestroySurface(staticEglDisplay, output.eglSurface)
                                 }
                             }
                         }
 
                         val surfaceAttribs = intArrayOf(android.opengl.EGL14.EGL_NONE)
-                        val eglSurface = android.opengl.EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, targetSurface, surfaceAttribs, 0)
+                        val eglSurface = android.opengl.EGL14.eglCreateWindowSurface(staticEglDisplay, staticEglConfig, targetSurface, surfaceAttribs, 0)
 
                         val output = EglOutput(
                             surfaceOutput = surfaceOutput,
@@ -1412,10 +1390,10 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
             private fun drawFrame() {
                 val st = surfaceTexture ?: return
                 try {
-                    if (eglDisplay == android.opengl.EGL14.EGL_NO_DISPLAY || eglContext == android.opengl.EGL14.EGL_NO_CONTEXT) {
+                    if (staticEglDisplay == android.opengl.EGL14.EGL_NO_DISPLAY || staticEglContext == android.opengl.EGL14.EGL_NO_CONTEXT) {
                         return
                     }
-                    if (!android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglDummySurface, eglDummySurface, eglContext)) {
+                    if (!android.opengl.EGL14.eglMakeCurrent(staticEglDisplay, staticEglDummySurface, staticEglDummySurface, staticEglContext)) {
                         android.opengl.EGL14.eglGetError() // Clear BAD_SURFACE error
                         return
                     }
@@ -1425,28 +1403,23 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
 
                     outputs.values.forEach { output ->
                         if (output.eglSurface != android.opengl.EGL14.EGL_NO_SURFACE) {
-                            val madeCurrent = android.opengl.EGL14.eglMakeCurrent(eglDisplay, output.eglSurface, output.eglSurface, eglContext)
+                            val madeCurrent = android.opengl.EGL14.eglMakeCurrent(staticEglDisplay, output.eglSurface, output.eglSurface, staticEglContext)
                             if (madeCurrent) {
                                 android.opengl.GLES20.glViewport(0, 0, output.width, output.height)
 
                                 val correctedMatrix = FloatArray(16)
                                 output.surfaceOutput.updateTransformMatrix(correctedMatrix, originalTexMatrix)
 
-                                // 💡 Read zoom dynamically via provider to prevent camera unbinds
-                                val currentZoom = zoomProvider()
-                                val scaleFactor = 1.0f + (currentZoom * 1.0f)
+                                // 💡 Pass-through matrix scaling (1.0x) because physical zoom is handled by CameraControl
                                 val scaleMatrix = FloatArray(16).apply {
                                     android.opengl.Matrix.setIdentityM(this, 0)
-                                    android.opengl.Matrix.translateM(this, 0, 0.5f, 0.5f, 0.0f)
-                                    android.opengl.Matrix.scaleM(this, 0, 1f / scaleFactor, 1f / scaleFactor, 1.0f)
-                                    android.opengl.Matrix.translateM(this, 0, -0.5f, -0.5f, 0.0f)
                                 }
 
                                 val finalMatrix = FloatArray(16)
                                 android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, correctedMatrix, 0)
 
                                 drawTexture(textureId, finalMatrix)
-                                android.opengl.EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
+                                android.opengl.EGL14.eglSwapBuffers(staticEglDisplay, output.eglSurface)
                             } else {
                                 android.opengl.EGL14.eglGetError() // Clear BAD_SURFACE error from destroyed output
                             }
@@ -1458,11 +1431,11 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
             }
 
             private fun initEglIfNeeded() {
-                if (eglDisplay != android.opengl.EGL14.EGL_NO_DISPLAY) return
+                if (staticEglDisplay != android.opengl.EGL14.EGL_NO_DISPLAY) return
 
-                eglDisplay = android.opengl.EGL14.eglGetDisplay(android.opengl.EGL14.EGL_DEFAULT_DISPLAY)
+                staticEglDisplay = android.opengl.EGL14.eglGetDisplay(android.opengl.EGL14.EGL_DEFAULT_DISPLAY)
                 val version = IntArray(2)
-                android.opengl.EGL14.eglInitialize(eglDisplay, version, 0, version, 1)
+                android.opengl.EGL14.eglInitialize(staticEglDisplay, version, 0, version, 1)
 
                 val attribList = intArrayOf(
                     android.opengl.EGL14.EGL_RED_SIZE, 8,
@@ -1473,31 +1446,31 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
                 )
                 val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
                 val numConfigs = IntArray(1)
-                android.opengl.EGL14.eglChooseConfig(eglDisplay, attribList, 0, configs, 0, configs.size, numConfigs, 0)
-                eglConfig = configs[0]
+                android.opengl.EGL14.eglChooseConfig(staticEglDisplay, attribList, 0, configs, 0, configs.size, numConfigs, 0)
+                staticEglConfig = configs[0]
 
                 val ctxAttribList = intArrayOf(
                     android.opengl.EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
                     android.opengl.EGL14.EGL_NONE
                 )
-                eglContext = android.opengl.EGL14.eglCreateContext(eglDisplay, eglConfig, android.opengl.EGL14.EGL_NO_CONTEXT, ctxAttribList, 0)
+                staticEglContext = android.opengl.EGL14.eglCreateContext(staticEglDisplay, staticEglConfig, android.opengl.EGL14.EGL_NO_CONTEXT, ctxAttribList, 0)
 
                 val pbufferAttribs = intArrayOf(
                     android.opengl.EGL14.EGL_WIDTH, 1,
                     android.opengl.EGL14.EGL_HEIGHT, 1,
                     android.opengl.EGL14.EGL_NONE
                 )
-                eglDummySurface = android.opengl.EGL14.eglCreatePbufferSurface(eglDisplay, eglConfig, pbufferAttribs, 0)
-                android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglDummySurface, eglDummySurface, eglContext)
+                staticEglDummySurface = android.opengl.EGL14.eglCreatePbufferSurface(staticEglDisplay, staticEglConfig, pbufferAttribs, 0)
+                android.opengl.EGL14.eglMakeCurrent(staticEglDisplay, staticEglDummySurface, staticEglDummySurface, staticEglContext)
 
                 val vertexShader = compileShader(android.opengl.GLES20.GL_VERTEX_SHADER, vertexShaderSource)
                 val fragmentShader = compileShader(android.opengl.GLES20.GL_FRAGMENT_SHADER, fragmentShaderSource)
-                program = android.opengl.GLES20.glCreateProgram().apply {
+                staticProgram = android.opengl.GLES20.glCreateProgram().apply {
                     android.opengl.GLES20.glAttachShader(this, vertexShader)
                     android.opengl.GLES20.glAttachShader(this, fragmentShader)
                     android.opengl.GLES20.glLinkProgram(this)
                 }
-                texMatrixLoc = android.opengl.GLES20.glGetUniformLocation(program, "uTexMatrix")
+                staticTexMatrixLoc = android.opengl.GLES20.glGetUniformLocation(staticProgram, "uTexMatrix")
                 initBuffers()
             }
 
@@ -1522,9 +1495,6 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
                 }
             """.trimIndent()
 
-            private var vertexBuffer: java.nio.FloatBuffer? = null
-            private var texCoordBuffer: java.nio.FloatBuffer? = null
-
             private fun initBuffers() {
                 val vertices = floatArrayOf(
                     -1.0f, -1.0f,
@@ -1532,7 +1502,7 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
                     -1.0f,  1.0f,
                      1.0f,  1.0f
                 )
-                vertexBuffer = java.nio.ByteBuffer.allocateDirect(vertices.size * 4)
+                staticVertexBuffer = java.nio.ByteBuffer.allocateDirect(vertices.size * 4)
                     .order(java.nio.ByteOrder.nativeOrder())
                     .asFloatBuffer()
                     .apply {
@@ -1546,7 +1516,7 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
                     0.0f, 1.0f,
                     1.0f, 1.0f
                 )
-                texCoordBuffer = java.nio.ByteBuffer.allocateDirect(texCoords.size * 4)
+                staticTexCoordBuffer = java.nio.ByteBuffer.allocateDirect(texCoords.size * 4)
                     .order(java.nio.ByteOrder.nativeOrder())
                     .asFloatBuffer()
                     .apply {
@@ -1556,17 +1526,17 @@ fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.Came
             }
 
             private fun drawTexture(textureId: Int, matrix: FloatArray) {
-                android.opengl.GLES20.glUseProgram(program)
+                android.opengl.GLES20.glUseProgram(staticProgram)
 
-                val posLoc = android.opengl.GLES20.glGetAttribLocation(program, "aPosition")
+                val posLoc = android.opengl.GLES20.glGetAttribLocation(staticProgram, "aPosition")
                 android.opengl.GLES20.glEnableVertexAttribArray(posLoc)
-                android.opengl.GLES20.glVertexAttribPointer(posLoc, 2, android.opengl.GLES20.GL_FLOAT, false, 0, vertexBuffer)
+                android.opengl.GLES20.glVertexAttribPointer(posLoc, 2, android.opengl.GLES20.GL_FLOAT, false, 0, staticVertexBuffer)
 
-                val texLoc = android.opengl.GLES20.glGetAttribLocation(program, "aTextureCoord")
+                val texLoc = android.opengl.GLES20.glGetAttribLocation(staticProgram, "aTextureCoord")
                 android.opengl.GLES20.glEnableVertexAttribArray(texLoc)
-                android.opengl.GLES20.glVertexAttribPointer(texLoc, 2, android.opengl.GLES20.GL_FLOAT, false, 0, texCoordBuffer)
+                android.opengl.GLES20.glVertexAttribPointer(texLoc, 2, android.opengl.GLES20.GL_FLOAT, false, 0, staticTexCoordBuffer)
 
-                android.opengl.GLES20.glUniformMatrix4fv(texMatrixLoc, 1, false, matrix, 0)
+                android.opengl.GLES20.glUniformMatrix4fv(staticTexMatrixLoc, 1, false, matrix, 0)
 
                 android.opengl.GLES20.glActiveTexture(android.opengl.GLES20.GL_TEXTURE0)
                 android.opengl.GLES20.glBindTexture(android.opengl.GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
@@ -5900,6 +5870,16 @@ fun CameraPreview(
             if (camera.cameraInfo.hasFlashUnit()) {
                 camera.cameraControl.enableTorch(isFlashOn)
             }
+        } catch (exc: Exception) {
+            exc.printStackTrace()
+        }
+    }
+    
+    // 💡 Apply native hardware setLinearZoom to control camera sensor zoom smoothly without unbinding UseCases
+    LaunchedEffect(activeCamera, linearZoom) {
+        val camera = activeCamera ?: return@LaunchedEffect
+        try {
+            camera.cameraControl.setLinearZoom(linearZoom)
         } catch (exc: Exception) {
             exc.printStackTrace()
         }
