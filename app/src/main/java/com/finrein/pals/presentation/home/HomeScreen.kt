@@ -1261,6 +1261,9 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
     }
 }
 
+private val sharedEffectExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+private val sharedGlExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+
 class ZoomCameraEffect(
     targets: Int,
     executor: java.util.concurrent.Executor,
@@ -1275,16 +1278,14 @@ class EglOutput(
     val height: Int
 )
 
-fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect {
-    val effectExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+fun createZoomCameraEffect(zoomProvider: () -> Float): androidx.camera.core.CameraEffect {
     val errorListener = androidx.core.util.Consumer<Throwable> { throwable ->
         throwable.printStackTrace()
     }
     return ZoomCameraEffect(
         androidx.camera.core.CameraEffect.PREVIEW or androidx.camera.core.CameraEffect.VIDEO_CAPTURE,
-        effectExecutor,
+        sharedEffectExecutor,
         object : androidx.camera.core.SurfaceProcessor {
-            private val glExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
             private var eglDisplay = android.opengl.EGL14.EGL_NO_DISPLAY
             private var eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
             private var eglConfig: android.opengl.EGLConfig? = null
@@ -1297,7 +1298,7 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
             private val outputs = java.util.concurrent.ConcurrentHashMap<androidx.camera.core.SurfaceOutput, EglOutput>()
 
             override fun onInputSurface(surfaceRequest: androidx.camera.core.SurfaceRequest) {
-                glExecutor.execute {
+                sharedGlExecutor.execute {
                     try {
                         initEglIfNeeded()
                         val textures = IntArray(1)
@@ -1313,7 +1314,7 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                         st.setDefaultBufferSize(surfaceRequest.resolution.width, surfaceRequest.resolution.height)
                         val handler = android.os.Handler(android.os.Looper.getMainLooper())
                         st.setOnFrameAvailableListener({
-                            glExecutor.execute {
+                            sharedGlExecutor.execute {
                                 drawFrame()
                             }
                         }, handler)
@@ -1322,11 +1323,39 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                         val surface = android.view.Surface(st)
                         inputSurface = surface
 
-                        surfaceRequest.provideSurface(surface, glExecutor) { result ->
-                            glExecutor.execute {
-                                st.release()
-                                surface.release()
-                                android.opengl.GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+                        surfaceRequest.provideSurface(surface, sharedGlExecutor) { result ->
+                            sharedGlExecutor.execute {
+                                try {
+                                    st.release()
+                                    surface.release()
+                                    android.opengl.GLES20.glDeleteTextures(1, intArrayOf(textureId), 0)
+                                    
+                                    // 💡 Explicitly destroy EGL resources to prevent memory/GPU context leaks
+                                    // 💡 DO NOT call eglTerminate or eglReleaseThread because EGLDisplay is process-wide
+                                    // 💡 Make context non-current to allow immediate physical GPU resource reclamation
+                                    if (eglDisplay != android.opengl.EGL14.EGL_NO_DISPLAY) {
+                                        android.opengl.EGL14.eglMakeCurrent(
+                                            eglDisplay,
+                                            android.opengl.EGL14.EGL_NO_SURFACE,
+                                            android.opengl.EGL14.EGL_NO_SURFACE,
+                                            android.opengl.EGL14.EGL_NO_CONTEXT
+                                        )
+                                    }
+                                    if (program != 0) {
+                                        android.opengl.GLES20.glDeleteProgram(program)
+                                        program = 0
+                                    }
+                                    if (eglDummySurface != android.opengl.EGL14.EGL_NO_SURFACE) {
+                                        android.opengl.EGL14.eglDestroySurface(eglDisplay, eglDummySurface)
+                                        eglDummySurface = android.opengl.EGL14.EGL_NO_SURFACE
+                                    }
+                                    if (eglContext != android.opengl.EGL14.EGL_NO_CONTEXT) {
+                                        android.opengl.EGL14.eglDestroyContext(eglDisplay, eglContext)
+                                        eglContext = android.opengl.EGL14.EGL_NO_CONTEXT
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
                             }
                         }
                     } catch (e: Exception) {
@@ -1336,11 +1365,11 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
             }
 
             override fun onOutputSurface(surfaceOutput: androidx.camera.core.SurfaceOutput) {
-                glExecutor.execute {
+                sharedGlExecutor.execute {
                     try {
                         initEglIfNeeded()
-                        val targetSurface = surfaceOutput.getSurface(glExecutor) { result ->
-                            glExecutor.execute {
+                        val targetSurface = surfaceOutput.getSurface(sharedGlExecutor) { result ->
+                            sharedGlExecutor.execute {
                                 val output = outputs.remove(surfaceOutput)
                                 if (output != null) {
                                     android.opengl.EGL14.eglDestroySurface(eglDisplay, output.eglSurface)
@@ -1367,32 +1396,45 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
             private fun drawFrame() {
                 val st = surfaceTexture ?: return
                 try {
-                    android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglDummySurface, eglDummySurface, eglContext)
+                    if (eglDisplay == android.opengl.EGL14.EGL_NO_DISPLAY || eglContext == android.opengl.EGL14.EGL_NO_CONTEXT) {
+                        return
+                    }
+                    if (!android.opengl.EGL14.eglMakeCurrent(eglDisplay, eglDummySurface, eglDummySurface, eglContext)) {
+                        android.opengl.EGL14.eglGetError() // Clear BAD_SURFACE error
+                        return
+                    }
                     st.updateTexImage()
                     val originalTexMatrix = FloatArray(16)
                     st.getTransformMatrix(originalTexMatrix)
 
                     outputs.values.forEach { output ->
-                        android.opengl.EGL14.eglMakeCurrent(eglDisplay, output.eglSurface, output.eglSurface, eglContext)
-                        android.opengl.GLES20.glViewport(0, 0, output.width, output.height)
+                        if (output.eglSurface != android.opengl.EGL14.EGL_NO_SURFACE) {
+                            val madeCurrent = android.opengl.EGL14.eglMakeCurrent(eglDisplay, output.eglSurface, output.eglSurface, eglContext)
+                            if (madeCurrent) {
+                                android.opengl.GLES20.glViewport(0, 0, output.width, output.height)
 
-                        val correctedMatrix = FloatArray(16)
-                        output.surfaceOutput.updateTransformMatrix(correctedMatrix, originalTexMatrix)
+                                val correctedMatrix = FloatArray(16)
+                                output.surfaceOutput.updateTransformMatrix(correctedMatrix, originalTexMatrix)
 
-                        // 💡 linearZoom is 0.0 to 1.0. Mapping it to 1.0x to 2.0x absolute zoom factor
-                        val scaleFactor = 1.0f + (linearZoom * 1.0f)
-                        val scaleMatrix = FloatArray(16).apply {
-                            android.opengl.Matrix.setIdentityM(this, 0)
-                            android.opengl.Matrix.translateM(this, 0, 0.5f, 0.5f, 0.0f)
-                            android.opengl.Matrix.scaleM(this, 0, 1f / scaleFactor, 1f / scaleFactor, 1.0f)
-                            android.opengl.Matrix.translateM(this, 0, -0.5f, -0.5f, 0.0f)
+                                // 💡 Read zoom dynamically via provider to prevent camera unbinds
+                                val currentZoom = zoomProvider()
+                                val scaleFactor = 1.0f + (currentZoom * 1.0f)
+                                val scaleMatrix = FloatArray(16).apply {
+                                    android.opengl.Matrix.setIdentityM(this, 0)
+                                    android.opengl.Matrix.translateM(this, 0, 0.5f, 0.5f, 0.0f)
+                                    android.opengl.Matrix.scaleM(this, 0, 1f / scaleFactor, 1f / scaleFactor, 1.0f)
+                                    android.opengl.Matrix.translateM(this, 0, -0.5f, -0.5f, 0.0f)
+                                }
+
+                                val finalMatrix = FloatArray(16)
+                                android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, correctedMatrix, 0)
+
+                                drawTexture(textureId, finalMatrix)
+                                android.opengl.EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
+                            } else {
+                                android.opengl.EGL14.eglGetError() // Clear BAD_SURFACE error from destroyed output
+                            }
                         }
-
-                        val finalMatrix = FloatArray(16)
-                        android.opengl.Matrix.multiplyMM(finalMatrix, 0, scaleMatrix, 0, correctedMatrix, 0)
-
-                        drawTexture(textureId, finalMatrix)
-                        android.opengl.EGL14.eglSwapBuffers(eglDisplay, output.eglSurface)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -1410,9 +1452,7 @@ fun createZoomCameraEffect(linearZoom: Float): androidx.camera.core.CameraEffect
                     android.opengl.EGL14.EGL_RED_SIZE, 8,
                     android.opengl.EGL14.EGL_GREEN_SIZE, 8,
                     android.opengl.EGL14.EGL_BLUE_SIZE, 8,
-                    android.opengl.EGL14.EGL_ALPHA_SIZE, 8,
                     android.opengl.EGL14.EGL_RENDERABLE_TYPE, android.opengl.EGL14.EGL_OPENGL_ES2_BIT,
-                    android.opengl.EGL14.EGL_SURFACE_TYPE, android.opengl.EGL14.EGL_WINDOW_BIT or android.opengl.EGL14.EGL_PBUFFER_BIT,
                     android.opengl.EGL14.EGL_NONE
                 )
                 val configs = arrayOfNulls<android.opengl.EGLConfig>(1)
@@ -5739,6 +5779,7 @@ fun CameraPreview(
     }
     
     var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+    val currentLinearZoom by rememberUpdatedState(linearZoom)
 
 
 
@@ -5789,8 +5830,8 @@ fun CameraPreview(
         try {
             cameraProvider.unbindAll()
             
-            // 1. Create our GPU texture zoom effect using the current composable state value
-            val zoomEffect = createZoomCameraEffect(linearZoom)
+            // 1. Create our GPU texture zoom effect using a dynamic lambda provider
+            val zoomEffect = createZoomCameraEffect { currentLinearZoom }
 
             // 2. Group UseCases together with the processor effect
             val useCaseGroup = androidx.camera.core.UseCaseGroup.Builder()
@@ -7404,52 +7445,8 @@ fun CapturedPreviewScreen(
                             resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                             setBackgroundColor(android.graphics.Color.BLACK)
                             
-                            fun applyVideoScale() {
-                                val videoSize = exoPlayer.videoSize
-                                val videoWidth = videoSize.width
-                                val videoHeight = videoSize.height
-                                val textureView = getVideoSurfaceView() as? android.view.TextureView
-                                if (textureView == null) {
-                                    postDelayed({ applyVideoScale() }, 100)
-                                    return
-                                }
-                                val containerWidth = width.toFloat()
-                                val containerHeight = height.toFloat()
-                                if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                     val needsRotation = videoRotation == 270 || videoRotation == 90
-                                     
-                                     val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
-                                     val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
-                                     
-                                     val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                     
-                                     val calculatedScaleX: Float
-                                     val calculatedScaleY: Float
-                                     val calculatedRotation: Float
-                                     if (needsRotation) {
-                                         calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                         calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                         calculatedRotation = 270f
-                                     } else {
-                                         calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                         calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                         calculatedRotation = 0f
-                                     }
-                                     
-                                     android.util.Log.d("PalVideoScale", "Reverted scale for exoPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}, videoRotation=${videoRotation}")
-                                     
-                                     textureView.pivotX = containerWidth / 2f
-                                     textureView.pivotY = containerHeight / 2f
-                                     textureView.scaleX = calculatedScaleX
-                                     textureView.scaleY = calculatedScaleY
-                                     textureView.rotation = calculatedRotation
-                                 } else {
-                                    postDelayed({ applyVideoScale() }, 100)
-                                }
-                            }
-
                             val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                                applyVideoScale()
+                                (tag as? java.lang.Runnable)?.run()
                             }
                             addOnLayoutChangeListener(layoutListener)
 
@@ -7458,14 +7455,14 @@ fun CapturedPreviewScreen(
                             exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
                                 override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                                     super.onVideoSizeChanged(videoSize)
-                                    applyVideoScale()
+                                    (tag as? java.lang.Runnable)?.run()
                                     val textureView = getVideoSurfaceView() as? android.view.TextureView
                                     textureView?.invalidate()
                                     invalidate()
                                 }
                                 override fun onPlaybackStateChanged(playbackState: Int) {
                                     super.onPlaybackStateChanged(playbackState)
-                                    applyVideoScale()
+                                    (tag as? java.lang.Runnable)?.run()
                                     if (playbackState == androidx.media3.common.Player.STATE_READY) {
                                         exoPlayer.play()
                                         onPlayerReady()
@@ -7501,9 +7498,6 @@ fun CapturedPreviewScreen(
                                     }
                                 }
                             })
-
-                            tag = java.lang.Runnable { applyVideoScale() }
-                            applyVideoScale()
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -7513,10 +7507,49 @@ fun CapturedPreviewScreen(
                         if (view.player != exoPlayer) {
                             view.player = exoPlayer
                         }
+                        
+                        // 💡 Dynamically recreate the Runnable on update to capture latest recomposition state values
+                        view.tag = java.lang.Runnable {
+                            val videoSize = exoPlayer.videoSize
+                            val videoWidth = videoSize.width
+                            val videoHeight = videoSize.height
+                            val textureView = view.getVideoSurfaceView() as? android.view.TextureView
+                            if (textureView != null && view.width > 0 && view.height > 0 && videoWidth > 0 && videoHeight > 0) {
+                                val containerWidth = view.width.toFloat()
+                                val containerHeight = view.height.toFloat()
+                                val needsRotation = triggerRotation == 270 || triggerRotation == 90
+                                
+                                val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
+                                val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
+                                
+                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
+                                
+                                val calculatedScaleX: Float
+                                val calculatedScaleY: Float
+                                val calculatedRotation: Float
+                                if (needsRotation) {
+                                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                    calculatedRotation = 270f
+                                } else {
+                                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                    calculatedRotation = 0f
+                                }
+                                
+                                textureView.pivotX = containerWidth / 2f
+                                textureView.pivotY = containerHeight / 2f
+                                textureView.scaleX = calculatedScaleX
+                                textureView.scaleY = calculatedScaleY
+                                textureView.rotation = calculatedRotation
+                            }
+                        }
+                        
+                        (view.tag as? java.lang.Runnable)?.run()
+                        
                         if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
                             exoPlayer.play()
                         }
-                        (view.tag as? java.lang.Runnable)?.run()
                         if (exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
                             val textureView = view.getVideoSurfaceView() as? android.view.TextureView
                             textureView?.invalidate()
