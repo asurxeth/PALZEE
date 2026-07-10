@@ -94,6 +94,11 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            useLegacyPackaging = true
+            pickFirsts.add("**/libsurface_util_jni.so")
+            pickFirsts.add("**/libimage_processing_util_jni.so")
+        }
     }
 }
 
@@ -158,11 +163,13 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$cameraVersion")
     implementation("androidx.camera:camera-video:$cameraVersion")
     implementation("androidx.camera:camera-view:$cameraVersion")
+    implementation("androidx.camera:camera-extensions:$cameraVersion")
 
     // Media3 ExoPlayer dependencies for loop playback in preview
-    val media3Version = "1.3.1"
+    val media3Version = "1.4.0"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
+    implementation("androidx.media3:media3-common:$media3Version")
     implementation("androidx.media3:media3-transformer:$media3Version")
     implementation("androidx.media3:media3-effect:$media3Version")
 

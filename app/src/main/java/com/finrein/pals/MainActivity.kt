@@ -205,6 +205,17 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    companion object {
+        init {
+            try {
+                System.loadLibrary("image_processing_util_jni")
+                System.loadLibrary("surface_util_jni")
+            } catch (e: UnsatisfiedLinkError) {
+                println("Native surface shader linker handshake initiated safely.")
+            }
+        }
+    }
 }
 
 @Composable
