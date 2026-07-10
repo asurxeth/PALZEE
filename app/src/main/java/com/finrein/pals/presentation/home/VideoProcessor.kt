@@ -280,6 +280,92 @@ class VideoProcessor {
                 val timeText = timeTexts.getOrNull(originalIndex) ?: ""
                 val captionText = captionTexts.getOrNull(originalIndex) ?: ""
 
+                if (inputPath == "EMPTY_BOX") {
+                    try {
+                        val overlayBitmap = generateOverlayBitmap(context, outputWidth, outputHeight, vlogText, timeText, captionText, exportBackground)
+                        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, overlayTextureId)
+                        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, overlayBitmap, 0)
+                        overlayBitmap.recycle()
+
+                        val frameDurationUs = 33333L // 30 fps
+                        val numFrames = 60 // 2 seconds
+                        val currentVideoPtsOffsetUs = videoPtsOffsetUs
+                        var fileMaxVideoPtsUs = 0L
+
+                        for (f in 0 until numFrames) {
+                            val ptsUs = f * frameDurationUs
+                            val renderPtsUs = currentVideoPtsOffsetUs + ptsUs
+                            fileMaxVideoPtsUs = maxOf(fileMaxVideoPtsUs, ptsUs)
+
+                            if (exportBackground == "white") {
+                                GLES20.glClearColor(1.0f, 1.0f, 1.0f, 1.0f)
+                            } else {
+                                GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f)
+                            }
+                            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+
+                            GLES20.glViewport(0, 0, 720, 1280)
+                            GLES20.glUseProgram(overlayProgram)
+                            val moPositionHandle = GLES20.glGetAttribLocation(overlayProgram, "aPosition")
+                            val moTextureHandle = GLES20.glGetAttribLocation(overlayProgram, "aTextureCoord")
+
+                            val overlayVertices = getVerticesData(0)
+                            val overlayVerticesBuffer = ByteBuffer.allocateDirect(overlayVertices.size * 4)
+                                .order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
+                                    put(overlayVertices).position(0)
+                                }
+
+                            overlayVerticesBuffer.position(0)
+                            GLES20.glVertexAttribPointer(moPositionHandle, 3, GLES20.GL_FLOAT, false, 20, overlayVerticesBuffer)
+                            GLES20.glEnableVertexAttribArray(moPositionHandle)
+
+                            overlayVerticesBuffer.position(3)
+                            GLES20.glVertexAttribPointer(moTextureHandle, 2, GLES20.GL_FLOAT, false, 20, overlayVerticesBuffer)
+                            GLES20.glEnableVertexAttribArray(moTextureHandle)
+
+                            GLES20.glActiveTexture(GLES20.GL_TEXTURE1)
+                            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, overlayTextureId)
+                            GLES20.glUniform1i(GLES20.glGetUniformLocation(overlayProgram, "sTexture"), 1)
+
+                            GLES20.glEnable(GLES20.GL_BLEND)
+                            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
+
+                            GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+                            GLES20.glDisable(GLES20.GL_BLEND)
+
+                            EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, renderPtsUs * 1000)
+                            EGL14.eglSwapBuffers(eglDisplay, eglSurface)
+
+                            var outEncoderIndex = videoEncoder.dequeueOutputBuffer(videoBufferInfo, 0)
+                            while (outEncoderIndex >= 0) {
+                                val encodedData = videoEncoder.getOutputBuffer(outEncoderIndex)
+                                if (encodedData != null) {
+                                    if ((videoBufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                                        videoBufferInfo.size = 0
+                                    }
+                                    if (videoBufferInfo.size != 0) {
+                                        if (!muxerStarted) {
+                                            videoOutputTrack = muxer.addTrack(videoEncoder.outputFormat)
+                                            muxer.start()
+                                            muxerStarted = true
+                                        }
+                                        encodedData.position(videoBufferInfo.offset)
+                                        encodedData.limit(videoBufferInfo.offset + videoBufferInfo.size)
+                                        muxer.writeSampleData(videoOutputTrack, encodedData, videoBufferInfo)
+                                    }
+                                }
+                                videoEncoder.releaseOutputBuffer(outEncoderIndex, false)
+                                outEncoderIndex = videoEncoder.dequeueOutputBuffer(videoBufferInfo, 0)
+                            }
+                        }
+
+                        videoPtsOffsetUs += fileMaxVideoPtsUs + 33000L
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error generating empty box segment", e)
+                    }
+                    continue
+                }
+
                 var videoExtractor: MediaExtractor? = null
                 var videoDecoder: MediaCodec? = null
 
