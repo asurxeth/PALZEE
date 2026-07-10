@@ -7538,79 +7538,17 @@ fun CapturedPreviewScreen(
                     androidx.compose.ui.viewinterop.AndroidView(
                         factory = { context ->
                             PlayerView(context).apply {
-                                // 1. Set surface type to TextureView via implementation mode
                                 this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
                                 this.useController = false
                                 this.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                                
-                                // 2. Prevent Media3 from overriding custom layout matrices on subsequent loops
-                                val videoSurface = this.videoSurfaceView
-                                if (videoSurface is TextureView) {
-                                    // Forcefully isolate the surface view from internal layout updates
-                                    videoSurface.removeOnLayoutChangeListener(null) 
-                                }
+                                this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT)
                                 
                                 layoutParams = android.view.ViewGroup.LayoutParams(
                                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                                     android.view.ViewGroup.LayoutParams.MATCH_PARENT
                                 )
                                 player = exoPlayer
-                                this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
                                 setBackgroundColor(android.graphics.Color.BLACK)
-                                
-                                val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                                    (tag as? java.lang.Runnable)?.run()
-                                }
-                                addOnLayoutChangeListener(layoutListener)
-
-                                var errorRetryCount = 0
-
-                                exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                        super.onVideoSizeChanged(videoSize)
-                                        (tag as? java.lang.Runnable)?.run()
-                                        val textureView = getVideoSurfaceView() as? android.view.TextureView
-                                        textureView?.invalidate()
-                                        invalidate()
-                                    }
-                                    override fun onPlaybackStateChanged(playbackState: Int) {
-                                        super.onPlaybackStateChanged(playbackState)
-                                        (tag as? java.lang.Runnable)?.run()
-                                        if (playbackState == androidx.media3.common.Player.STATE_READY) {
-                                            exoPlayer.play()
-                                            onPlayerReady()
-                                            val textureView = getVideoSurfaceView() as? android.view.TextureView
-                                            textureView?.invalidate()
-                                            invalidate()
-                                            errorRetryCount = 0
-                                        } else if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
-                                            exoPlayer.seekTo(0, 0L)
-                                            exoPlayer.play()
-                                        }
-                                    }
-                                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                                        android.util.Log.e("PalPreview", "ExoPlayer error in preview: ${error.message}", error)
-                                        val currentItem = exoPlayer.currentMediaItem
-                                        if (currentItem != null && errorRetryCount < 3) {
-                                            errorRetryCount++
-                                            postDelayed({
-                                                try {
-                                                    android.util.Log.d("PalPreview", "Retrying player prepare/play (attempt $errorRetryCount)")
-                                                    exoPlayer.stop()
-                                                    exoPlayer.clearMediaItems()
-                                                    exoPlayer.setMediaItem(currentItem)
-                                                    exoPlayer.prepare()
-                                                    exoPlayer.play()
-                                                } catch (e: Exception) {
-                                                    android.util.Log.e("PalPreview", "Failed to retry player: ${e.message}", e)
-                                                }
-                                            }, 200L * errorRetryCount)
-                                        } else {
-                                            exoPlayer.prepare()
-                                            exoPlayer.play()
-                                        }
-                                    }
-                                })
                             }
                         },
                         modifier = Modifier.fillMaxSize(),
@@ -7621,60 +7559,68 @@ fun CapturedPreviewScreen(
                                 view.player = exoPlayer
                             }
 
-                            // Forced data feed fresh re-prepare loop when video path changes
                             val targetUri = if (cleanPath.startsWith("content://")) {
                                 android.net.Uri.parse(cleanPath)
                             } else {
                                 android.net.Uri.fromFile(java.io.File(cleanPath))
                             }
                             val currentMediaItem = exoPlayer.currentMediaItem
-                            if (currentMediaItem == null || currentMediaItem.localConfiguration?.uri != targetUri) {
+                            if (currentMediaItem == null || view.tag != targetUri.toString()) {
                                 exoPlayer.stop()
                                 exoPlayer.repeatMode = Player.REPEAT_MODE_ALL
                                 exoPlayer.setMediaItem(MediaItem.fromUri(targetUri))
                                 exoPlayer.prepare()
                                 exoPlayer.seekTo(0L)
                                 exoPlayer.playWhenReady = true
+                                view.tag = targetUri.toString()
                             }
                             
-                            // 💡 Dynamically recreate the Runnable on update to capture latest recomposition state values
-                            view.tag = java.lang.Runnable {
-                                val videoSize = exoPlayer.videoSize
-                                val videoWidth = videoSize.width
-                                val videoHeight = videoSize.height
-                                val textureView = view.getVideoSurfaceView() as? android.view.TextureView
-                                if (textureView != null && view.width > 0 && view.height > 0 && videoWidth > 0 && videoHeight > 0) {
-                                    val containerWidth = view.width.toFloat()
-                                    val containerHeight = view.height.toFloat()
-                                    val needsRotation = triggerRotation == 270 || triggerRotation == 90
-                                    
-                                    val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
-                                    val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
-                                    
-                                    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                    
-                                    val calculatedScaleX: Float
-                                    val calculatedScaleY: Float
-                                    val calculatedRotation: Float
-                                    if (needsRotation) {
-                                        calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                        calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                        calculatedRotation = 270f
-                                    } else {
-                                        calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                        calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                        calculatedRotation = 0f
+                            val surfaceView = view.videoSurfaceView
+                            if (surfaceView is TextureView) {
+                                surfaceView.post {
+                                    try {
+                                        surfaceView.removeOnLayoutChangeListener(null)
+                                        view.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
+                                        
+                                        val videoSize = exoPlayer.videoSize
+                                        val videoWidth = videoSize.width
+                                        val videoHeight = videoSize.height
+                                        if (view.width > 0 && view.height > 0 && videoWidth > 0 && videoHeight > 0) {
+                                            val containerWidth = view.width.toFloat()
+                                            val containerHeight = view.height.toFloat()
+                                            val needsRotation = triggerRotation == 270 || triggerRotation == 90
+                                            
+                                            val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
+                                            val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
+                                            
+                                            val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
+                                            
+                                            val calculatedScaleX: Float
+                                            val calculatedScaleY: Float
+                                            val calculatedRotation: Float
+                                            if (needsRotation) {
+                                                calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                                calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                                calculatedRotation = 270f
+                                            } else {
+                                                calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                                calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                                calculatedRotation = 0f
+                                            }
+                                            
+                                            surfaceView.pivotX = containerWidth / 2f
+                                            surfaceView.pivotY = containerHeight / 2f
+                                            surfaceView.scaleX = calculatedScaleX
+                                            surfaceView.scaleY = calculatedScaleY
+                                            surfaceView.rotation = calculatedRotation
+                                            surfaceView.invalidate()
+                                            view.invalidate()
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
                                     }
-                                    
-                                    textureView.pivotX = containerWidth / 2f
-                                    textureView.pivotY = containerHeight / 2f
-                                    textureView.scaleX = calculatedScaleX
-                                    textureView.scaleY = calculatedScaleY
-                                    textureView.rotation = calculatedRotation
                                 }
                             }
-                            
-                            (view.tag as? java.lang.Runnable)?.run()
                             
                             if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
                                 exoPlayer.play()
@@ -7684,6 +7630,10 @@ fun CapturedPreviewScreen(
                                 textureView?.invalidate()
                                 view.invalidate()
                             }
+                        },
+                        onRelease = { view ->
+                            view.player = null
+                            view.removeAllViews()
                         }
                     )
                 }
