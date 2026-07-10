@@ -5888,16 +5888,7 @@ fun CameraPreview(
     val lastZoomTime = remember { longArrayOf(0L) }
     val lastBoundCamera = remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
 
-    val animatedZoom by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = linearZoom,
-        animationSpec = androidx.compose.animation.core.tween(
-            durationMillis = 200,
-            easing = androidx.compose.animation.core.FastOutSlowInEasing
-        ),
-        label = "HardwareZoom"
-    )
-    
-    val currentZoomState = rememberUpdatedState(animatedZoom)
+    val currentZoomState = rememberUpdatedState(linearZoom)
 
     LaunchedEffect(activeCamera, isCameraActive) {
         val camera = activeCamera ?: return@LaunchedEffect
@@ -5911,7 +5902,7 @@ fun CameraPreview(
                     exc.printStackTrace()
                     break
                 }
-                kotlinx.coroutines.delay(48L)
+                kotlinx.coroutines.delay(32L)
             }
         } catch (exc: Exception) {
             exc.printStackTrace()
