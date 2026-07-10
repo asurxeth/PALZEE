@@ -7338,6 +7338,7 @@ fun CapturedPreviewScreen(
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
+                    }
                 }
             }
         }
@@ -11796,6 +11797,11 @@ fun VlogScreenContent(
             var isExportSaved by remember { mutableStateOf(false) }
             val localCoroutineScope = rememberCoroutineScope()
 
+            var showEditExportSheet by remember { mutableStateOf(false) }
+            var exportBackground by remember { mutableStateOf("black") }
+            var exportMissedText by remember { mutableStateOf("💤") }
+            var exportHourIndex by remember { mutableStateOf(0) }
+
             val buildExportLists = {
                 val pathsToProcess = mutableListOf<String>()
                 val timesToProcess = mutableListOf<String>()
@@ -11871,9 +11877,9 @@ fun VlogScreenContent(
                             
                             if (videoPath.isNotEmpty()) {
                                 pathsToProcess.add(videoPath)
-                                val captureTime = if (!firstSub.createdAt.isNullOrEmpty()) {
+                                val captureTime = if (!firstSub!!.createdAt.isNullOrEmpty()) {
                                     try {
-                                        val instant = java.time.Instant.parse(firstSub.createdAt)
+                                        val instant = java.time.Instant.parse(firstSub!!.createdAt)
                                         val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
                                         val hr = zonedDateTime.hour
                                         String.format(java.util.Locale.US, "%02d:00", hr)
@@ -11884,7 +11890,7 @@ fun VlogScreenContent(
                                     displayTimeText
                                 }
                                 timesToProcess.add(captureTime)
-                                captionsToProcess.add(firstSub.imageUrl.split("|||").getOrNull(1) ?: "")
+                                captionsToProcess.add(firstSub!!.imageUrl.split("|||").getOrNull(1) ?: "")
                                 vlogsToProcess.add(memberName ?: "pal")
                             } else {
                                 // Empty / missed box
@@ -11900,10 +11906,7 @@ fun VlogScreenContent(
                 Triple(pathsToProcess, timesToProcess, Triple(captionsToProcess, vlogsToProcess, Unit))
             }
             
-            var showEditExportSheet by remember { mutableStateOf(false) }
-            var exportBackground by remember { mutableStateOf("black") }
-            var exportMissedText by remember { mutableStateOf("💤") }
-            var exportHourIndex by remember { mutableStateOf(0) }
+            
             val advanceExportHour = {
                 if (dayHoursList.isNotEmpty()) {
                     exportHourIndex = (exportHourIndex + 1) % dayHoursList.size
