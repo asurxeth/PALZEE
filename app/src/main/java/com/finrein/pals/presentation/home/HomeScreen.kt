@@ -1119,6 +1119,35 @@ suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: 
     }
 }
 
+fun getVideoFileRotation(path: String?): Int {
+    if (path == null) return 0
+    try {
+        val cleanPath = when {
+            path.startsWith("file://") -> path.substring(7)
+            else -> path
+        }
+        val file = java.io.File(cleanPath)
+        if (file.exists() && file.length() > 0) {
+            val retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(cleanPath)
+            val rotationStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+            val rawRot = rotationStr?.toIntOrNull() ?: 0
+            
+            val widthStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+            val heightStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+            val videoWidth = widthStr?.toIntOrNull() ?: 0
+            val videoHeight = heightStr?.toIntOrNull() ?: 0
+            
+            val isPortrait = (rawRot == 90 || rawRot == 270) || (videoWidth < videoHeight)
+            retriever.release()
+            return if (isPortrait) 270 else 0
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return 0
+}
+
 fun getPathZoomFactor(path: String?): Float {
     if (path == null) return 1.0f
     val parts = path.split("|||")
@@ -2459,6 +2488,7 @@ fun HomeScreen(
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     val previewView = remember {
         PreviewView(context).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -5850,35 +5880,21 @@ fun CameraPreview(
         }
     }
     
-    // 💡 Apply rate-limited native setLinearZoom to prevent device viewfinder lag, matching the working July 8 APK
     val lastZoomTime = remember { longArrayOf(0L) }
     val lastBoundCamera = remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
 
-    LaunchedEffect(activeCamera, linearZoom) {
-        val camera = activeCamera ?: return@LaunchedEffect
-        val currentTime = System.currentTimeMillis()
-        val elapsed = currentTime - lastZoomTime[0]
-        
-        val isNewCameraSession = lastBoundCamera.value != camera
+    val currentZoomState = rememberUpdatedState(linearZoom)
 
-        if (isNewCameraSession || elapsed >= 16) {
-            lastBoundCamera.value = camera
-            lastZoomTime[0] = currentTime
+    LaunchedEffect(activeCamera) {
+        val camera = activeCamera ?: return@LaunchedEffect
+        while (true) {
+            val targetZoom = currentZoomState.value
             try {
-                camera.cameraControl.setLinearZoom(linearZoom)
+                camera.cameraControl.setLinearZoom(targetZoom)
             } catch (exc: Exception) {
                 exc.printStackTrace()
             }
-        } else {
-            kotlinx.coroutines.delay(16 - elapsed)
-            if (activeCamera == camera) {
-                lastZoomTime[0] = System.currentTimeMillis()
-                try {
-                    camera.cameraControl.setLinearZoom(linearZoom)
-                } catch (exc: Exception) {
-                    exc.printStackTrace()
-                }
-            }
+            kotlinx.coroutines.delay(48L)
         }
     }
     
@@ -6750,7 +6766,9 @@ fun VideoLoopPlayer(
 ) {
     androidx.compose.ui.viewinterop.AndroidView(
         factory = { ctx ->
-            androidx.media3.ui.PlayerView(ctx).apply {
+            val view = android.view.LayoutInflater.from(ctx)
+                .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+            view.apply {
                 player = exoPlayer
                 useController = false
                 this.resizeMode = resizeMode
@@ -7458,7 +7476,7 @@ fun CapturedPreviewScreen(
                             android.view.ViewGroup.LayoutParams.MATCH_PARENT
                         )
                         view.apply {
-                            player = exoPlayer
+                                        player = exoPlayer
                             useController = false
                             resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                             setBackgroundColor(android.graphics.Color.BLACK)
@@ -10002,7 +10020,7 @@ fun VlogScreenContent(
                                                 android.view.ViewGroup.LayoutParams.MATCH_PARENT
                                             )
                                             view.apply {
-                                                player = localPlayer
+                                                            player = localPlayer
                                                 useController = false
                                                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                                                 setBackgroundColor(android.graphics.Color.BLACK)
@@ -10011,7 +10029,7 @@ fun VlogScreenContent(
                                                     val videoSize = localPlayer.videoSize
                                                     val videoWidth = videoSize.width
                                                     val videoHeight = videoSize.height
-                                                    val videoRotation = videoSize.unappliedRotationDegrees
+                                                    val videoRotation = getVideoFileRotation(path)
                                                     val textureView = getVideoSurfaceView() as? android.view.TextureView
                                                     if (textureView == null) {
                                                         postDelayed({ applyVideoScale() }, 100)
@@ -10021,24 +10039,24 @@ fun VlogScreenContent(
                                                     val containerHeight = height.toFloat()
                                                     if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
                                                         val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, path), getPathZoomFactor(path))
-                                                         val isPortrait = videoHeight > videoWidth
-                                                         val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
-                                                         val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
-                                                         
-                                                         val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                                         
-                                                         val calculatedScaleX: Float
-                                                         val calculatedScaleY: Float
-                                                         val calculatedRotation: Float
-                                                         if (isPortrait) {
-                                                             calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                                             calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                                             calculatedRotation = 270f
-                                                         } else {
-                                                             calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                                             calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                                             calculatedRotation = 0f
-                                                         }
+                                                        val needsRotation = videoRotation == 90 || videoRotation == 270
+                                                        val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
+                                                        val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
+                                                        
+                                                        val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
+                                                        
+                                                        val calculatedScaleX: Float
+                                                        val calculatedScaleY: Float
+                                                        val calculatedRotation: Float
+                                                        if (needsRotation) {
+                                                            calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                                            calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                                            calculatedRotation = 270f
+                                                        } else {
+                                                            calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                                            calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                                            calculatedRotation = 0f
+                                                        }
                                                          
                                                          android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
                                                          
@@ -11876,17 +11894,19 @@ fun VlogScreenContent(
                                                     android.view.ViewGroup.LayoutParams.MATCH_PARENT
                                                 )
                                                 view.apply {
-                                                    val localPlayer = exportLocalPlayer
+                                                                val localPlayer = exportLocalPlayer
                                                     player = localPlayer
                                                     useController = false
                                                     resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                                                     setBackgroundColor(android.graphics.Color.BLACK)
                                                     
                                                     fun applyVideoScale() {
+                                                        val reversedPaths = capturedVlogsPaths.reversed()
+                                                        val currentPath = reversedPaths.getOrNull(exportActiveIndex)
                                                         val videoSize = localPlayer.videoSize
                                                         val videoWidth = videoSize.width
                                                         val videoHeight = videoSize.height
-                                                        val videoRotation = videoSize.unappliedRotationDegrees
+                                                        val videoRotation = getVideoFileRotation(currentPath)
                                                         val textureView = getVideoSurfaceView() as? android.view.TextureView
                                                         if (textureView == null) {
                                                             postDelayed({ applyVideoScale() }, 100)
@@ -11898,24 +11918,24 @@ fun VlogScreenContent(
                                                             val reversedPaths = capturedVlogsPaths.reversed()
                                                             val currentPath = reversedPaths.getOrNull(exportActiveIndex)
                                                             val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, currentPath), getPathZoomFactor(currentPath))
-                                                             val isPortrait = videoHeight > videoWidth
-                                                             val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
-                                                             val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
-                                                             
-                                                             val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                                             
-                                                             val calculatedScaleX: Float
-                                                             val calculatedScaleY: Float
-                                                             val calculatedRotation: Float
-                                                             if (isPortrait) {
-                                                                 calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                                                 calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                                                 calculatedRotation = 270f
-                                                             } else {
-                                                                 calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                                                 calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                                                 calculatedRotation = 0f
-                                                             }
+val needsRotation = videoRotation == 90 || videoRotation == 270
+val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
+val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
+
+val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
+
+val calculatedScaleX: Float
+val calculatedScaleY: Float
+val calculatedRotation: Float
+if (needsRotation) {
+    calculatedScaleX = (rotatedHeight * scale) / containerWidth
+    calculatedScaleY = (rotatedWidth * scale) / containerHeight
+    calculatedRotation = 270f
+} else {
+    calculatedScaleX = (rotatedWidth * scale) / containerWidth
+    calculatedScaleY = (rotatedHeight * scale) / containerHeight
+    calculatedRotation = 0f
+}
                                                              
                                                              android.util.Log.d("PalVideoScale", "Reverted scale for exportLocalPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
                                                              
@@ -13482,7 +13502,7 @@ fun VideoPlayerItem(
                     val view = android.view.LayoutInflater.from(ctx)
                         .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
                     view.apply {
-                        player = localPlayer
+                                    player = localPlayer
                         useController = false
                         resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
 
@@ -13490,7 +13510,9 @@ fun VideoPlayerItem(
                             val videoSize = localPlayer.videoSize
                             val videoWidth = videoSize.width
                             val videoHeight = videoSize.height
-                            val videoRotation = videoSize.unappliedRotationDegrees
+                            val currentIdx = localPlayer.currentMediaItemIndex
+                            val rawPath = videoPaths.getOrNull(currentIdx)
+                            val videoRotation = getVideoFileRotation(rawPath)
                             val textureView = getVideoSurfaceView() as? android.view.TextureView
                             if (textureView == null) {
                                 postDelayed({ applyVideoScale() }, 100)
@@ -13499,27 +13521,27 @@ fun VideoPlayerItem(
                             val containerWidth = width.toFloat()
                             val containerHeight = height.toFloat()
                             if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                val isPortrait = videoHeight > videoWidth
-                                val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
-                                val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
-                                
-                                val currentIdx = localPlayer.currentMediaItemIndex
-                                val rawPath = videoPaths.getOrNull(currentIdx)
-                                val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, rawPath), getPathZoomFactor(rawPath))
-                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                
-                                val calculatedScaleX: Float
-                                val calculatedScaleY: Float
-                                val calculatedRotation: Float
-                                if (isPortrait) {
-                                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                    calculatedRotation = 270f
-                                } else {
-                                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                    calculatedRotation = 0f
-                                }
+                                val needsRotation = videoRotation == 90 || videoRotation == 270
+val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
+val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
+
+val currentIdx = localPlayer.currentMediaItemIndex
+val rawPath = videoPaths.getOrNull(currentIdx)
+val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, rawPath), getPathZoomFactor(rawPath))
+val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
+
+val calculatedScaleX: Float
+val calculatedScaleY: Float
+val calculatedRotation: Float
+if (needsRotation) {
+    calculatedScaleX = (rotatedHeight * scale) / containerWidth
+    calculatedScaleY = (rotatedWidth * scale) / containerHeight
+    calculatedRotation = 270f
+} else {
+    calculatedScaleX = (rotatedWidth * scale) / containerWidth
+    calculatedScaleY = (rotatedHeight * scale) / containerHeight
+    calculatedRotation = 0f
+}
                                 
                                 android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
                                 
@@ -18745,7 +18767,7 @@ private fun GroupExportMemberSlot(
                     val view = android.view.LayoutInflater.from(ctx)
                         .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
                     view.apply {
-                        player = localPlayer
+                                    player = localPlayer
                         useController = false
                         resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                         setBackgroundColor(android.graphics.Color.BLACK)
@@ -18754,7 +18776,9 @@ private fun GroupExportMemberSlot(
                             val videoSize = localPlayer.videoSize
                             val videoWidth = videoSize.width
                             val videoHeight = videoSize.height
-                            val videoRotation = videoSize.unappliedRotationDegrees
+                            val currentIdx = localPlayer.currentMediaItemIndex
+                            val rawPath = videoPaths.getOrNull(currentIdx)
+                            val videoRotation = getVideoFileRotation(rawPath)
                             val textureView = getVideoSurfaceView() as? android.view.TextureView
                             if (textureView == null) {
                                 postDelayed({ applyVideoScale() }, 100)
@@ -18763,27 +18787,27 @@ private fun GroupExportMemberSlot(
                             val containerWidth = width.toFloat()
                             val containerHeight = height.toFloat()
                             if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                val isPortrait = videoHeight > videoWidth
-                                val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
-                                val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
-                                
-                                val currentIdx = localPlayer.currentMediaItemIndex
-                                val rawPath = videoPaths.getOrNull(currentIdx)
-                                val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, rawPath), getPathZoomFactor(rawPath))
-                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                
-                                val calculatedScaleX: Float
-                                val calculatedScaleY: Float
-                                val calculatedRotation: Float
-                                if (isPortrait) {
-                                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                    calculatedRotation = 270f
-                                } else {
-                                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                    calculatedRotation = 0f
-                                }
+                                val needsRotation = videoRotation == 90 || videoRotation == 270
+val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
+val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
+
+val currentIdx = localPlayer.currentMediaItemIndex
+val rawPath = videoPaths.getOrNull(currentIdx)
+val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, rawPath), getPathZoomFactor(rawPath))
+val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
+
+val calculatedScaleX: Float
+val calculatedScaleY: Float
+val calculatedRotation: Float
+if (needsRotation) {
+    calculatedScaleX = (rotatedHeight * scale) / containerWidth
+    calculatedScaleY = (rotatedWidth * scale) / containerHeight
+    calculatedRotation = 270f
+} else {
+    calculatedScaleX = (rotatedWidth * scale) / containerWidth
+    calculatedScaleY = (rotatedHeight * scale) / containerHeight
+    calculatedRotation = 0f
+}
                                 
                                 android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
                                 

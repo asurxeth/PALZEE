@@ -61,6 +61,7 @@ object DualEnginePlayerFactory {
         val renderersFactory = DefaultRenderersFactory(context.applicationContext).apply {
             setMediaCodecSelector(MediaCodecSelector.DEFAULT)
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            setEnableDecoderFallback(true)
         }
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
