@@ -5902,7 +5902,7 @@ fun CameraPreview(
                     exc.printStackTrace()
                     break
                 }
-                kotlinx.coroutines.delay(32L)
+                kotlinx.coroutines.delay(16L)
             }
         } catch (exc: Exception) {
             exc.printStackTrace()
