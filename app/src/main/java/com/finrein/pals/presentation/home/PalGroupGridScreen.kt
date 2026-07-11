@@ -147,7 +147,7 @@ fun PalGroupGridScreen(
                                 .clickable { onProfileClick() },
                             contentAlignment = Alignment.Center
                         ) {
-                            if (customAvatarUriString != null) {
+                            if (!customAvatarUriString.isNullOrEmpty()) {
                                 UriImage(
                                     uriString = customAvatarUriString,
                                     modifier = Modifier.fillMaxSize()
@@ -231,12 +231,10 @@ fun PalGroupGridScreen(
                             ) {
                                 androidx.compose.ui.viewinterop.AndroidView(
                                     factory = { ctx ->
-                                        val view = android.view.LayoutInflater.from(ctx)
-                                            .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                        view.apply {
-                                            player = vlogExoPlayer
+                                        PlayerView(ctx).apply {
                                             useController = false
-                                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                            this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
+                                            this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
                                         }
                                     },
                                     modifier = Modifier.fillMaxSize(),
@@ -244,9 +242,16 @@ fun PalGroupGridScreen(
                                         if (view.player != vlogExoPlayer) {
                                             view.player = vlogExoPlayer
                                         }
+                                        setupVideoScaleRotation(view.context, view, vlogExoPlayer) {
+                                            capturedVlogsPaths.getOrNull(vlogExoPlayer.currentMediaItemIndex)
+                                        }
                                         if (!vlogExoPlayer.isPlaying && vlogExoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
                                             vlogExoPlayer.play()
                                         }
+                                    },
+                                    onRelease = { view ->
+                                        view.player = null
+                                        setupVideoScaleRotation(view.context, view, null)
                                     }
                                 )
 
@@ -259,7 +264,7 @@ fun PalGroupGridScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    if (customAvatarUriString != null) {
+                                    if (!customAvatarUriString.isNullOrEmpty()) {
                                         UriImage(
                                             uriString = customAvatarUriString,
                                             modifier = Modifier
@@ -862,7 +867,7 @@ fun PalGroupCard(
             ) {
                 val groupSubs = allPalsSubmissions[pal.code] ?: emptyList()
                 val memberUserIds = groupMembersUserIds[pal.code] ?: emptyList()
-                val hasUserSubmitted = groupSubs.any { it.userId == currentUserId }
+                val hasUserSubmitted = groupSubs.any { it.userId == currentUserId && isSubmissionInCurrentHourWindow(it) }
 
                 val groupMembersList = allPalsMembers[pal.code] ?: emptyList()
                 val memberCount = groupMembersList.size

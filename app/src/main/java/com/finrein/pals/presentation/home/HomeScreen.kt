@@ -321,6 +321,16 @@ fun handleDeleteVlog(
         val deletedPath = filteredPaths[indexToDelete]
         val palCode = activeVlogPal?.code ?: "vlog"
         
+        // Save initial state in case of rollback
+        val originalLocallyDeletedSubmissions = HashMap(locallyDeletedSubmissions)
+        val originalAllPalsSubmissionsForCode = allPalsSubmissions[palCode]
+        
+        val originalPaths = ArrayList(capturedVlogsPaths)
+        val originalTimes = ArrayList(capturedVlogsTimes)
+        val originalCaptions = ArrayList(capturedVlogsCaptions)
+        val originalDurations = ArrayList(capturedVlogsDurations)
+        val originalZoomed = ArrayList(capturedVlogsZoomed)
+
         if (indexToDelete in filteredTimes.indices) {
             try {
                 val timeStr = filteredTimes[indexToDelete]
@@ -383,6 +393,21 @@ fun handleDeleteVlog(
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
+                    // Rollback on failure
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        locallyDeletedSubmissions.clear()
+                        locallyDeletedSubmissions.putAll(originalLocallyDeletedSubmissions)
+                        if (originalAllPalsSubmissionsForCode != null) {
+                            allPalsSubmissions[palCode] = originalAllPalsSubmissionsForCode
+                            try {
+                                val jsonSubs = kotlinx.serialization.json.Json.encodeToString(allPalsSubmissions.toMap())
+                                context.getSharedPreferences("vlog_prefs", android.content.Context.MODE_PRIVATE)
+                                    .edit().putString("cached_all_pals_submissions", jsonSubs).apply()
+                            } catch (ex: Exception) {}
+                        }
+                        refreshActivePalDetails(palCode)
+                        android.widget.Toast.makeText(context, "Failed to delete pal from server", android.widget.Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         } else {
@@ -430,6 +455,21 @@ fun handleDeleteVlog(
                         deleteVlogPostPermanently(context, currentUserId, deletedPath, palCode)
                     } catch (e: Exception) {
                         e.printStackTrace()
+                        // Rollback on failure
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            locallyDeletedSubmissions.clear()
+                            locallyDeletedSubmissions.putAll(originalLocallyDeletedSubmissions)
+                            getVlogPrefs(context).edit().apply {
+                                putString("vlog_paths", originalPaths.joinToString(";;;"))
+                                putString("vlog_times", originalTimes.joinToString(";;;"))
+                                putString("vlog_captions", originalCaptions.joinToString(";;;"))
+                                putString("vlog_durations", originalDurations.joinToString(";;;"))
+                                putString("vlog_zoomed", originalZoomed.map { it.toString() }.joinToString(";;;"))
+                                apply()
+                            }
+                            onUpdateVlogLists(originalPaths, originalTimes, originalCaptions, originalDurations, originalZoomed)
+                            android.widget.Toast.makeText(context, "Failed to delete vlog from server", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
@@ -972,7 +1012,7 @@ object VlogPlayerManager {
         }
 
         return playerCache.getOrPut(videoUrl) {
-            com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context.applicationContext).apply {
+            com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context.applicationContext).apply {
                 setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUrl))
                 repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                 volume = 0f // Muted feed
@@ -986,8 +1026,7 @@ object VlogPlayerManager {
         lruKeys.remove(videoUrl)
         playerCache.remove(videoUrl)?.apply {
             try {
-                stop()
-                release()
+                com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(this)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -1204,23 +1243,207 @@ fun applyCustomVideoScale(
     val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
     val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
     
-    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
+    val targetZoom = zoomFactor
+    val currentZoomTagKey = 1082938472
+    val animatorTagKey = 1082938473
     
-    val calculatedScaleX: Float
-    val calculatedScaleY: Float
-    if (needsRotation) {
-        calculatedScaleX = (rotatedHeight * scale) / containerWidth
-        calculatedScaleY = (rotatedWidth * scale) / containerHeight
-    } else {
-        calculatedScaleX = (rotatedWidth * scale) / containerWidth
-        calculatedScaleY = (rotatedHeight * scale) / containerHeight
-    }
+    val currentAnim = textureView.getTag(animatorTagKey) as? android.animation.ValueAnimator
+    currentAnim?.cancel()
+    
+    val startZoom = (textureView.getTag(currentZoomTagKey) as? Float) ?: 1.0f
     
     textureView.pivotX = containerWidth / 2f
     textureView.pivotY = containerHeight / 2f
-    textureView.scaleX = calculatedScaleX
-    textureView.scaleY = calculatedScaleY
     textureView.rotation = videoRotation.toFloat()
+    
+    if (Math.abs(startZoom - targetZoom) > 0.01f) {
+        val animator = android.animation.ValueAnimator.ofFloat(startZoom, targetZoom).apply {
+            duration = 350L
+            interpolator = android.view.animation.DecelerateInterpolator(1.8f)
+            addUpdateListener { animation ->
+                val animatedZoom = animation.animatedValue as Float
+                textureView.setTag(currentZoomTagKey, animatedZoom)
+                
+                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * animatedZoom
+                val calculatedScaleX: Float
+                val calculatedScaleY: Float
+                if (needsRotation) {
+                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                } else {
+                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                }
+                textureView.scaleX = calculatedScaleX
+                textureView.scaleY = calculatedScaleY
+            }
+        }
+        textureView.setTag(animatorTagKey, animator)
+        animator.start()
+    } else {
+        textureView.setTag(currentZoomTagKey, targetZoom)
+        val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * targetZoom
+        val calculatedScaleX: Float
+        val calculatedScaleY: Float
+        if (needsRotation) {
+            calculatedScaleX = (rotatedHeight * scale) / containerWidth
+            calculatedScaleY = (rotatedWidth * scale) / containerHeight
+        } else {
+            calculatedScaleX = (rotatedWidth * scale) / containerWidth
+            calculatedScaleY = (rotatedHeight * scale) / containerHeight
+        }
+        textureView.scaleX = calculatedScaleX
+        textureView.scaleY = calculatedScaleY
+    }
+}
+
+private val PLAYER_ROTATION_TAG_KEY = 1071293847
+
+private class RotationScaleListenerState(
+    var player: androidx.media3.common.Player,
+    val listener: androidx.media3.common.Player.Listener,
+    val layoutListener: android.view.View.OnLayoutChangeListener,
+    var getPath: () -> String?,
+    var overrideZoomFactor: Float?
+)
+
+fun setupVideoScaleRotation(
+    context: android.content.Context,
+    playerView: androidx.media3.ui.PlayerView,
+    player: androidx.media3.common.Player?,
+    overrideZoomFactor: Float? = null,
+    getPath: () -> String? = { null }
+) {
+    if (player == null) {
+        val oldState = playerView.getTag(PLAYER_ROTATION_TAG_KEY) as? RotationScaleListenerState
+        if (oldState != null) {
+            try { oldState.player.removeListener(oldState.listener) } catch(e: Exception) {}
+            try { playerView.removeOnLayoutChangeListener(oldState.layoutListener) } catch(e: Exception) {}
+            playerView.setTag(PLAYER_ROTATION_TAG_KEY, null)
+        }
+        val textureView = playerView.getVideoSurfaceView() as? android.view.TextureView
+        if (textureView != null) {
+            val animatorTagKey = 1082938473
+            (textureView.getTag(animatorTagKey) as? android.animation.ValueAnimator)?.cancel()
+            textureView.setTag(animatorTagKey, null)
+        }
+        return
+    }
+
+    val existingState = playerView.getTag(PLAYER_ROTATION_TAG_KEY) as? RotationScaleListenerState
+    if (existingState != null) {
+        existingState.getPath = getPath
+        existingState.overrideZoomFactor = overrideZoomFactor
+
+        if (existingState.player === player) {
+            val path = getPath()
+            val videoSize = player.videoSize
+            val videoWidth = videoSize.width
+            val videoHeight = videoSize.height
+            val videoRotation = getVideoFileRotation(context, path)
+            val textureView = playerView.getVideoSurfaceView() as? android.view.TextureView
+            if (textureView != null) {
+                val containerWidth = playerView.width.toFloat()
+                val containerHeight = playerView.height.toFloat()
+                if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                    val zoomFactor = overrideZoomFactor ?: java.lang.Math.max(getLocalVlogZoomFactor(context, path), getPathZoomFactor(path))
+                    applyCustomVideoScale(textureView, videoWidth, videoHeight, videoRotation, containerWidth, containerHeight, zoomFactor)
+                }
+            }
+            return
+        } else {
+            try { existingState.player.removeListener(existingState.listener) } catch(e: Exception) {}
+            existingState.player = player
+            player.addListener(existingState.listener)
+            
+            val path = getPath()
+            val videoSize = player.videoSize
+            val videoWidth = videoSize.width
+            val videoHeight = videoSize.height
+            val videoRotation = getVideoFileRotation(context, path)
+            val textureView = playerView.getVideoSurfaceView() as? android.view.TextureView
+            if (textureView != null) {
+                val containerWidth = playerView.width.toFloat()
+                val containerHeight = playerView.height.toFloat()
+                if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+                    val zoomFactor = overrideZoomFactor ?: java.lang.Math.max(getLocalVlogZoomFactor(context, path), getPathZoomFactor(path))
+                    applyCustomVideoScale(textureView, videoWidth, videoHeight, videoRotation, containerWidth, containerHeight, zoomFactor)
+                }
+            }
+            return
+        }
+    }
+
+    fun applyScale() {
+        val currentState = playerView.getTag(PLAYER_ROTATION_TAG_KEY) as? RotationScaleListenerState ?: return
+        val currentPath = currentState.getPath()
+        val currentPlayer = currentState.player
+        val videoSize = currentPlayer.videoSize
+        val videoWidth = videoSize.width
+        val videoHeight = videoSize.height
+        val videoRotation = getVideoFileRotation(context, currentPath)
+        val textureView = playerView.getVideoSurfaceView() as? android.view.TextureView
+        if (textureView == null) {
+            playerView.postDelayed({ applyScale() }, 100)
+            return
+        }
+        val containerWidth = playerView.width.toFloat()
+        val containerHeight = playerView.height.toFloat()
+        if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
+            val zoomFactor = currentState.overrideZoomFactor ?: java.lang.Math.max(getLocalVlogZoomFactor(context, currentPath), getPathZoomFactor(currentPath))
+            applyCustomVideoScale(
+                textureView = textureView,
+                videoWidth = videoWidth,
+                videoHeight = videoHeight,
+                videoRotation = videoRotation,
+                containerWidth = containerWidth,
+                containerHeight = containerHeight,
+                zoomFactor = zoomFactor
+            )
+        } else {
+            playerView.postDelayed({ applyScale() }, 100)
+        }
+    }
+
+    val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+        applyScale()
+    }
+    playerView.addOnLayoutChangeListener(layoutListener)
+
+    val playerListener = object : androidx.media3.common.Player.Listener {
+        override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+            super.onVideoSizeChanged(videoSize)
+            applyScale()
+        }
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            super.onPlaybackStateChanged(playbackState)
+            applyScale()
+        }
+    }
+    player.addListener(playerListener)
+
+    val state = RotationScaleListenerState(player, playerListener, layoutListener, getPath, overrideZoomFactor)
+    playerView.setTag(PLAYER_ROTATION_TAG_KEY, state)
+
+    playerView.addOnAttachStateChangeListener(object : android.view.View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(v: android.view.View) {}
+        override fun onViewDetachedFromWindow(v: android.view.View) {
+            val currentState = playerView.getTag(PLAYER_ROTATION_TAG_KEY) as? RotationScaleListenerState
+            if (currentState != null) {
+                try { currentState.player.removeListener(currentState.listener) } catch(e: Exception) {}
+                try { playerView.removeOnLayoutChangeListener(currentState.layoutListener) } catch(e: Exception) {}
+                playerView.setTag(PLAYER_ROTATION_TAG_KEY, null)
+            }
+            val textureView = playerView.getVideoSurfaceView() as? android.view.TextureView
+            if (textureView != null) {
+                val animatorTagKey = 1082938473
+                (textureView.getTag(animatorTagKey) as? android.animation.ValueAnimator)?.cancel()
+                textureView.setTag(animatorTagKey, null)
+            }
+        }
+    })
+
+    applyScale()
 }
 
 private val cacheMutexes = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
@@ -2491,6 +2714,7 @@ fun HomeScreen(
     val supabase = com.finrein.pals.PalApplication.supabase
     val isDark by rememberUpdatedState(isSystemInDarkTheme())
     val context = LocalContext.current
+    var refreshPalsAction: (() -> Unit)? = null
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
 
     val currentUserId = remember(user) { user?.id ?: "" }
@@ -2542,26 +2766,31 @@ fun HomeScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
         if (uri != null) {
-            sessionManager.saveAvatarUri(uri.toString())
+            // 1. First UI: Update immediately so UI reflects it without lag
             customAvatarUriString = uri.toString()
-            @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                val uploadedUrl = uploadFileToSupabase(context, uri.toString(), "AVATARS")
-                if (uploadedUrl.startsWith("http")) {
-                    withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        sessionManager.saveAvatarUri(uploadedUrl)
-                        customAvatarUriString = uploadedUrl
-                    }
-                    try {
+            sessionManager.saveAvatarUri(uri.toString())
+            
+            // 2. Then Database
+            avatarScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val uploadedUrl = uploadFileToSupabase(context, uri.toString(), "AVATARS")
+                    if (uploadedUrl.startsWith("http")) {
                         supabase.postgrest.from("user_pals")
                             .update(mapOf("user_avatar_url" to uploadedUrl)) {
                                 filter {
                                     eq("user_id", currentUserId)
                                 }
                             }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+                        
+                        // 3. User State, Caching, and Invalidation
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            customAvatarUriString = uploadedUrl
+                            sessionManager.saveAvatarUri(uploadedUrl)
+                            refreshPalsAction?.invoke()
+                        }
                     }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
         }
@@ -2716,15 +2945,25 @@ fun HomeScreen(
                 if (mappings.isNotEmpty() || dbSubmissions.isNotEmpty() || isReturningUserByAge) {
                     var restoredName = ""
                     var restoredAvatar: String? = null
+                    var hasMapping = false
                     
-                    dbSubmissions.forEach { sub ->
-                        if (sub.userDisplayName.isNotEmpty()) {
-                            val parsed = parseUserDisplayName(sub.userDisplayName)
-                            if (parsed.first.isNotEmpty()) {
-                                restoredName = parsed.first
-                            }
-                            if (!parsed.second.isNullOrEmpty()) {
-                                restoredAvatar = parsed.second
+                    val mappingProfile = mappings.firstOrNull { !it.userDisplayName.isNullOrEmpty() || !it.userAvatarUrl.isNullOrEmpty() }
+                    if (mappingProfile != null) {
+                        hasMapping = true
+                        restoredName = mappingProfile.userDisplayName ?: ""
+                        restoredAvatar = mappingProfile.userAvatarUrl ?: ""
+                    }
+                    
+                    if (!hasMapping) {
+                        dbSubmissions.forEach { sub ->
+                            if (sub.userDisplayName.isNotEmpty()) {
+                                val parsed = parseUserDisplayName(sub.userDisplayName)
+                                if (parsed.first.isNotEmpty()) {
+                                    restoredName = parsed.first
+                                }
+                                if (!parsed.second.isNullOrEmpty()) {
+                                    restoredAvatar = parsed.second
+                                }
                             }
                         }
                     }
@@ -2739,9 +2978,7 @@ fun HomeScreen(
                     user?.let {
                         sessionManager.saveUser(it.copy(displayName = restoredName))
                     }
-                    if (!restoredAvatar.isNullOrEmpty()) {
-                        sessionManager.saveAvatarUri(restoredAvatar)
-                    }
+                    sessionManager.saveAvatarUri(restoredAvatar ?: "")
                     
                     sessionManager.setHasLoggedInBefore(true)
                     sessionManager.setFirstLogin(false)
@@ -3244,7 +3481,12 @@ fun HomeScreen(
     }
 
     val todaySubmissionsMap = allPalsSubmissions.mapValues { (palCode, subs) ->
-        subs.filter { sub -> getSubmissionLocalDate(sub) == targetDate }
+        subs.filter { sub -> 
+            val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
+            getSubmissionLocalDate(sub) == targetDate &&
+            !locallyDeletedSubmissions.containsKey(path) &&
+            (sub.id == null || !locallyDeletedSubmissions.containsKey(sub.id.toString()))
+        }
     }
 
     val todayVlogPaths = remember(capturedVlogsPaths, capturedVlogsTimes, capturedVlogsCaptions, capturedVlogsDurations, allPalsSubmissions.toMap()) {
@@ -3319,7 +3561,7 @@ fun HomeScreen(
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     val vlogExoPlayer = remember {
-        com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+        com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context).apply {
             repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
             volume = 0f
             playWhenReady = false
@@ -3407,7 +3649,7 @@ fun HomeScreen(
 
     DisposableEffect(vlogExoPlayer) {
         onDispose {
-            vlogExoPlayer.release()
+            com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(vlogExoPlayer)
         }
     }
 
@@ -3501,6 +3743,7 @@ fun HomeScreen(
             }
         }
     }
+    refreshPalsAction = ::refreshPals
 
     fun refreshVlogs() {
         if (currentUserId.isEmpty()) return
@@ -3925,6 +4168,7 @@ fun HomeScreen(
 
     LaunchedEffect(currentUserId) {
         if (currentUserId.isNotEmpty()) {
+            var hasDbProfile = false
             try {
                 val dbUserPals = withContext(kotlinx.coroutines.Dispatchers.IO) {
                     supabase.postgrest.from("user_pals")
@@ -3937,16 +4181,15 @@ fun HomeScreen(
                 }
                 val dbProfile = dbUserPals.firstOrNull { !it.userDisplayName.isNullOrEmpty() || !it.userAvatarUrl.isNullOrEmpty() }
                 if (dbProfile != null) {
+                    hasDbProfile = true
                     val savedName = dbProfile.userDisplayName ?: ""
                     val savedAvatar = dbProfile.userAvatarUrl ?: ""
                     if (savedName.isNotEmpty()) {
                         currentDisplayName = savedName
                         sessionManager.updateDisplayName(savedName)
                     }
-                    if (savedAvatar.isNotEmpty()) {
-                        customAvatarUriString = savedAvatar
-                        sessionManager.saveAvatarUri(savedAvatar)
-                    }
+                    customAvatarUriString = savedAvatar
+                    sessionManager.saveAvatarUri(savedAvatar)
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -3964,7 +4207,7 @@ fun HomeScreen(
                         }
                         .decodeSingleOrNull<SubmissionDbItem>()
                 }
-                if (recentSub != null) {
+                if (recentSub != null && !hasDbProfile) {
                     val parts = recentSub.userDisplayName.split("|||")
                     val name = parts.getOrNull(0) ?: ""
                     val avatar = parts.getOrNull(1) ?: ""
@@ -4699,7 +4942,13 @@ fun HomeScreen(
                         },
                         currentUserId = currentUserId,
                         currentDisplayName = currentDisplayName,
-                        allPalsSubmissions = allPalsSubmissions,
+                        allPalsSubmissions = allPalsSubmissions.mapValues { (_, subs) ->
+                            subs.filter { sub ->
+                                val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
+                                !locallyDeletedSubmissions.containsKey(path) &&
+                                (sub.id == null || !locallyDeletedSubmissions.containsKey(sub.id.toString()))
+                            }
+                        },
                         customAvatarUriString = customAvatarUriString,
                         allPalsMembers = allPalsMembers
                     )
@@ -5813,6 +6062,7 @@ fun CameraPreview(
     isCameraFlipped: Boolean = false,
     isFlashOn: Boolean = false,
     linearZoom: Float = 0f,
+    onLinearZoomChange: (Float) -> Unit = {},
     scaleType: PreviewView.ScaleType = PreviewView.ScaleType.FILL_CENTER,
     isCameraActive: Boolean = true,
     cameraProviderFuture: com.google.common.util.concurrent.ListenableFuture<ProcessCameraProvider>,
@@ -5909,28 +6159,15 @@ fun CameraPreview(
 
     val currentZoomState = rememberUpdatedState(linearZoom)
 
-    LaunchedEffect(activeCamera, isCameraActive) {
+    LaunchedEffect(activeCamera, linearZoom, isCameraActive) {
         val camera = activeCamera ?: return@LaunchedEffect
         if (!isCameraActive) return@LaunchedEffect
-        var lastSetZoom = -1f
         try {
-            while (true) {
-                val targetZoom = currentZoomState.value
-                if (targetZoom != lastSetZoom) {
-                    try {
-                        val zoomState = camera.cameraInfo.zoomState.value
-                        val minRatio = zoomState?.minZoomRatio ?: 1.0f
-                        val maxRatio = zoomState?.maxZoomRatio ?: 5.0f
-                        val targetZoomRatio = minRatio + (targetZoom * (maxRatio - minRatio))
-                        camera.cameraControl.setZoomRatio(targetZoomRatio)
-                        lastSetZoom = targetZoom
-                    } catch (exc: Exception) {
-                        exc.printStackTrace()
-                        break
-                    }
-                }
-                kotlinx.coroutines.delay(16L)
-            }
+            val zoomState = camera.cameraInfo.zoomState.value
+            val minRatio = zoomState?.minZoomRatio ?: 1.0f
+            val maxRatio = zoomState?.maxZoomRatio ?: 5.0f
+            val targetZoomRatio = minRatio + (linearZoom * (maxRatio - minRatio))
+            camera.cameraControl.setZoomRatio(targetZoomRatio)
         } catch (exc: Exception) {
             exc.printStackTrace()
         }
@@ -5942,19 +6179,18 @@ fun CameraPreview(
             val camera = activeCamera ?: return@pointerInput
             detectTransformGestures { _, _, zoomChange, _ ->
                 if (zoomChange != 1.0f) {
-                    val currentTime = System.currentTimeMillis()
-                    if (currentTime - lastZoomUpdateTime > 30L) {
-                        try {
-                            val zoomState = camera.cameraInfo.zoomState.value
-                            val currentRatio = zoomState?.zoomRatio ?: 1.0f
-                            val minRatio = zoomState?.minZoomRatio ?: 1.0f
-                            val maxRatio = zoomState?.maxZoomRatio ?: 5.0f
-                            val targetZoomRatio = (currentRatio * zoomChange).coerceIn(minRatio, maxRatio)
-                            camera.cameraControl.setZoomRatio(targetZoomRatio)
-                            lastZoomUpdateTime = currentTime
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                    try {
+                        val zoomState = camera.cameraInfo.zoomState.value
+                        val currentRatio = zoomState?.zoomRatio ?: 1.0f
+                        val minRatio = zoomState?.minZoomRatio ?: 1.0f
+                        val maxRatio = zoomState?.maxZoomRatio ?: 5.0f
+                        val targetZoomRatio = (currentRatio * zoomChange).coerceIn(minRatio, maxRatio)
+                        camera.cameraControl.setZoomRatio(targetZoomRatio)
+                        
+                        val newLinear = (targetZoomRatio - minRatio) / (maxRatio - minRatio)
+                        onLinearZoomChange(newLinear)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
             }
@@ -6072,7 +6308,13 @@ fun CameraScreenContent(
                 context.cacheDir,
                 "Pal_REC_${System.currentTimeMillis()}.mp4"
             )
-            val fileOutputOptions = FileOutputOptions.Builder(outputFile).build()
+            val pfd = android.os.ParcelFileDescriptor.open(
+                outputFile,
+                android.os.ParcelFileDescriptor.MODE_WRITE_ONLY or
+                android.os.ParcelFileDescriptor.MODE_CREATE or
+                android.os.ParcelFileDescriptor.MODE_TRUNCATE
+            )
+            val fileOutputOptions = androidx.camera.video.FileDescriptorOutputOptions.Builder(pfd).build()
 
             val mainExecutor = ContextCompat.getMainExecutor(context)
             var session: Recording? = null
@@ -6093,6 +6335,12 @@ fun CameraScreenContent(
                                 recordingStarted.complete(Unit)
                             }
                             is VideoRecordEvent.Finalize -> {
+                                try {
+                                    pfd.fileDescriptor.sync()
+                                } catch (e: Exception) {}
+                                try {
+                                    pfd.close()
+                                } catch (e: Exception) {}
                                 val fileExists = outputFile.exists() && outputFile.length() > 0
                                 if (fileExists && (!recordEvent.hasError() || recordEvent.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE)) {
                                     android.util.Log.d("ProductionCamera", "Video encoding success: ${outputFile.absolutePath}")
@@ -6107,6 +6355,7 @@ fun CameraScreenContent(
                     }
                 activeRecordingSession = session
             } catch (e: Exception) {
+                try { pfd.close() } catch (ex: Exception) {}
                 android.util.Log.e("ProductionCamera", "Error starting recording", e)
                 onCaptureSuccess("", 0L, 1.0f)
                 onRecordingChange(false)
@@ -6226,6 +6475,7 @@ fun CameraScreenContent(
                          isCameraFlipped = isCameraFlipped,
                          isFlashOn = (flashMode == "on") || (flashMode == "auto" && isRecording),
                          linearZoom = linearZoom,
+                         onLinearZoomChange = { linearZoom = it },
                          isCameraActive = isCameraActive,
                          cameraProviderFuture = cameraProviderFuture,
                          previewView = previewView,
@@ -6824,17 +7074,19 @@ fun VideoLoopPlayer(
 ) {
     androidx.compose.ui.viewinterop.AndroidView(
         factory = { ctx ->
-            val view = android.view.LayoutInflater.from(ctx)
-                .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-            view.apply {
+            PlayerView(ctx).apply {
                 player = exoPlayer
                 useController = false
-                this.resizeMode = resizeMode
+                this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
+                this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
                 val videoSurfaceView = getVideoSurfaceView()
                 videoSurfaceView?.rotation = 0f
             }
         },
-        modifier = modifier
+        modifier = modifier,
+        onRelease = { view ->
+            view.player = null
+        }
     )
 }
 
@@ -7353,7 +7605,7 @@ fun CapturedPreviewScreen(
     }
 
     val exoPlayer = remember {
-        com.finrein.pals.presentation.home.DualEnginePlayerFactory.createStandardPreviewPlayer(context).apply {
+        com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context).apply {
             playbackParameters = androidx.media3.common.PlaybackParameters(1.0f)
             repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL // Force looping natively at the hardware level
             setHandleAudioBecomingNoisy(true) // Disable audio surface switching delays during loops
@@ -7522,8 +7774,8 @@ fun CapturedPreviewScreen(
                 stop()
                 clearMediaItems()
                 seekTo(0, 0L)
-                release()
             }
+            com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(exoPlayer)
             System.runFinalization()
             Runtime.getRuntime().gc()
         }
@@ -7565,18 +7817,16 @@ fun CapturedPreviewScreen(
                     ) {
                         androidx.compose.ui.viewinterop.AndroidView(
                             factory = { context ->
-                                val view = android.view.LayoutInflater.from(context)
-                                    .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                view.apply {
+                                PlayerView(context).apply {
                                     this.useController = false
-                                    this.setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
-                                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
+                                    this.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                    this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
+                                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
                                     
                                     layoutParams = android.view.ViewGroup.LayoutParams(
                                         android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                                         android.view.ViewGroup.LayoutParams.MATCH_PARENT
                                     )
-                                    player = exoPlayer
                                     setBackgroundColor(android.graphics.Color.BLACK)
                                 }
                             },
@@ -7585,23 +7835,7 @@ fun CapturedPreviewScreen(
                                 if (view.player != exoPlayer) {
                                     view.player = exoPlayer
                                 }
-
-                                val targetUri = if (cleanPath.startsWith("content://")) {
-                                    android.net.Uri.parse(cleanPath)
-                                } else {
-                                    android.net.Uri.fromFile(java.io.File(cleanPath))
-                                }
-                                val currentMediaItem = exoPlayer.currentMediaItem
-                                if (currentMediaItem == null || view.tag != targetUri.toString()) {
-                                    exoPlayer.stop()
-                                    exoPlayer.repeatMode = Player.REPEAT_MODE_ALL
-                                    exoPlayer.setMediaItem(MediaItem.fromUri(targetUri))
-                                    exoPlayer.prepare()
-                                    exoPlayer.seekTo(0L)
-                                    exoPlayer.playWhenReady = true
-                                    view.tag = targetUri.toString()
-                                }
-                                
+                                setupVideoScaleRotation(context, view, exoPlayer, overrideZoomFactor = zoomFactor) { cleanPath }
                                 if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
                                     exoPlayer.play()
                                 }
@@ -7613,6 +7847,7 @@ fun CapturedPreviewScreen(
                             },
                             onRelease = { view ->
                                 view.player = null
+                                setupVideoScaleRotation(context, view, null)
                                 view.removeAllViews()
                             }
                         )
@@ -8183,13 +8418,12 @@ fun UnifiedPalPlayerBox(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     
-    // Force a clean initialization cycle per videoUri instance assignment
+    // Exact instance management used by the perfectly working Member/User boxes
     val player = remember(videoUri) {
-        DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+        DualEnginePlayerFactory.getPooledInstance(context).apply {
             this.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
-            this.volume = 0f
+            this.volume = 0f // Muted loop execution for zero-latency grid loads
             
-            // Directly pass media item configurations cleanly
             this.setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUri))
             this.prepare()
             this.playWhenReady = true
@@ -8198,9 +8432,7 @@ fun UnifiedPalPlayerBox(
 
     DisposableEffect(videoUri) {
         onDispose {
-            player.stop()
-            player.clearMediaItems()
-            player.release()
+            DualEnginePlayerFactory.releaseIntoPool(player)
         }
     }
 
@@ -8212,37 +8444,22 @@ fun UnifiedPalPlayerBox(
     ) {
         androidx.compose.ui.viewinterop.AndroidView(
             factory = { ctx ->
-                val view = android.view.LayoutInflater.from(ctx)
-                    .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                view.apply {
+                PlayerView(ctx).apply {
                     this.useController = false
-                    this.setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
-                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
+                    this.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                    this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
+                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
                 }
             },
             update = { playerView ->
                 if (playerView.player != player) {
                     playerView.player = player
                 }
-
-                // TRUE ROTATION MATRIX BALANCING PASS:
-                player.addListener(object : androidx.media3.common.Player.Listener {
-                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                        val surfaceView = playerView.getVideoSurfaceView()
-                        if (surfaceView is android.view.TextureView) {
-                            surfaceView.post {
-                                // CORRECT ALIGNMENT: Portrait captures (90 or 270 degrees) MUST be kept 
-                                // vertically aligned inside the view plane via RESIZE_MODE_FIT.
-                                // Horizontal captures scale cleanly to fill layout parameters without transformations.
-                                if (videoSize.unappliedRotationDegrees == 90 || videoSize.unappliedRotationDegrees == 270) {
-                                    playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT)
-                                } else {
-                                    playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
-                                }
-                            }
-                        }
-                    }
-                })
+                setupVideoScaleRotation(context, playerView, player) { videoUri.toString() }
+            },
+            onRelease = { playerView ->
+                playerView.player = null
+                setupVideoScaleRotation(context, playerView, null)
             },
             modifier = Modifier.fillMaxSize()
         )
@@ -10046,7 +10263,7 @@ fun VlogScreenContent(
                                 // Separate local ExoPlayer for each page to allow rendering adjacent videos during transitions (no black screens)
                                 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
                                 val localPlayer = remember(path) {
-                                    com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+                                    com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context).apply {
                                         repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                                         volume = 0f
                                         val localPath = getVlogPrefs(context).getString("local_path_$path", null)
@@ -10073,7 +10290,7 @@ fun VlogScreenContent(
 
                                 DisposableEffect(localPlayer) {
                                     onDispose {
-                                        localPlayer.release()
+                                        com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(localPlayer)
                                     }
                                 }
 
@@ -10087,12 +10304,11 @@ fun VlogScreenContent(
                                 ) {
                                     androidx.compose.ui.viewinterop.AndroidView(
                                         factory = { ctx ->
-                                            val view = android.view.LayoutInflater.from(ctx)
-                                                .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                            view.apply {
-                                                player = localPlayer
+                                            PlayerView(ctx).apply {
                                                 useController = false
-                                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                                implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
+                                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                                             }
                                         },
                                         modifier = Modifier.fillMaxSize(),
@@ -10100,9 +10316,14 @@ fun VlogScreenContent(
                                             if (view.player != localPlayer) {
                                                 view.player = localPlayer
                                             }
+                                            setupVideoScaleRotation(context, view, localPlayer) { path }
                                             if (!localPlayer.isPlaying && localPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
                                                 localPlayer.play()
                                             }
+                                        },
+                                        onRelease = { view ->
+                                            view.player = null
+                                            setupVideoScaleRotation(context, view, null)
                                         }
                                     )
 
@@ -10148,7 +10369,7 @@ fun VlogScreenContent(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    if (customAvatarUriString != null) {
+                                    if (!customAvatarUriString.isNullOrEmpty()) {
                                         UriImage(
                                             uriString = customAvatarUriString,
                                             modifier = Modifier
@@ -10469,7 +10690,7 @@ fun VlogScreenContent(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                if (customAvatarUriString != null) {
+                                if (!customAvatarUriString.isNullOrEmpty()) {
                                     UriImage(
                                         uriString = customAvatarUriString,
                                         modifier = Modifier
@@ -11929,7 +12150,7 @@ fun VlogScreenContent(
                                     )
                                 } else {
                                     val exportLocalPlayer = remember(capturedVlogsPaths) {
-                                        com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+                                        com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context).apply {
                                             repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                                             volume = 0f
                                         }
@@ -11937,7 +12158,7 @@ fun VlogScreenContent(
 
                                     DisposableEffect(exportLocalPlayer) {
                                         onDispose {
-                                            exportLocalPlayer.release()
+                                            com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(exportLocalPlayer)
                                         }
                                     }
 
@@ -11987,7 +12208,7 @@ fun VlogScreenContent(
                                         })
                                     }
 
-                                    Box(
+                            Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .aspectRatio(16f / 9f)
@@ -11996,85 +12217,16 @@ fun VlogScreenContent(
                                     ) {
                                         androidx.compose.ui.viewinterop.AndroidView(
                                             factory = { ctx ->
-                                                val view = android.view.LayoutInflater.from(ctx)
-                                                    .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                                view.layoutParams = android.view.ViewGroup.LayoutParams(
-                                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                                )
-                                                view.apply {
-                                                                val localPlayer = exportLocalPlayer
-                                                    player = localPlayer
+                                                PlayerView(ctx).apply {
+                                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                                    )
                                                     useController = false
+                                                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                                    implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
                                                     resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
                                                     setBackgroundColor(android.graphics.Color.BLACK)
-                                                    
-                                                    fun applyVideoScale() {
-                                                        val reversedPaths = capturedVlogsPaths.reversed()
-                                                        val currentPath = reversedPaths.getOrNull(exportActiveIndex)
-                                                        val videoSize = localPlayer.videoSize
-                                                        val videoWidth = videoSize.width
-                                                        val videoHeight = videoSize.height
-                                                        val videoRotation = getVideoFileRotation(context, currentPath)
-                                                        val textureView = getVideoSurfaceView() as? android.view.TextureView
-                                                        if (textureView == null) {
-                                                            postDelayed({ applyVideoScale() }, 100)
-                                                            return
-                                                        }
-                                                        val containerWidth = width.toFloat()
-                                                        val containerHeight = height.toFloat()
-                                                        if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                                            val reversedPaths = capturedVlogsPaths.reversed()
-                                                            val currentPath = reversedPaths.getOrNull(exportActiveIndex)
-                                                            val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, currentPath), getPathZoomFactor(currentPath))
-val needsRotation = videoRotation == 90 || videoRotation == 270
-val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
-val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
-
-val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-
-val calculatedScaleX: Float
-val calculatedScaleY: Float
-val calculatedRotation: Float
-if (needsRotation) {
-    calculatedScaleX = (rotatedHeight * scale) / containerWidth
-    calculatedScaleY = (rotatedWidth * scale) / containerHeight
-    calculatedRotation = 270f
-} else {
-    calculatedScaleX = (rotatedWidth * scale) / containerWidth
-    calculatedScaleY = (rotatedHeight * scale) / containerHeight
-    calculatedRotation = 0f
-}
-                                                             
-                                                             android.util.Log.d("PalVideoScale", "Reverted scale for exportLocalPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
-                                                             
-                                                             textureView.pivotX = containerWidth / 2f
-                                                             textureView.pivotY = containerHeight / 2f
-                                                             textureView.scaleX = calculatedScaleX
-                                                             textureView.scaleY = calculatedScaleY
-                                                             textureView.rotation = calculatedRotation
-                                                         } else {
-                                                            postDelayed({ applyVideoScale() }, 100)
-                                                        }
-                                                    }
-
-                                                    val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                                                        applyVideoScale()
-                                                    }
-                                                    addOnLayoutChangeListener(layoutListener)
-
-                                                    exportLocalPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                                                        override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                                            super.onVideoSizeChanged(videoSize)
-                                                            applyVideoScale()
-                                                        }
-                                                        override fun onPlaybackStateChanged(playbackState: Int) {
-                                                            super.onPlaybackStateChanged(playbackState)
-                                                            applyVideoScale()
-                                                        }
-                                                    })
-
-                                                    applyVideoScale()
                                                 }
                                             },
                                             modifier = Modifier.fillMaxSize(),
@@ -12082,6 +12234,14 @@ if (needsRotation) {
                                                 if (view.player != exportLocalPlayer) {
                                                     view.player = exportLocalPlayer
                                                 }
+                                                setupVideoScaleRotation(context, view, exportLocalPlayer) {
+                                                    val reversedPaths = capturedVlogsPaths.reversed()
+                                                    reversedPaths.getOrNull(exportActiveIndex)
+                                                }
+                                            },
+                                            onRelease = { view ->
+                                                view.player = null
+                                                setupVideoScaleRotation(context, view, null)
                                             }
                                         )
                                         
@@ -13499,7 +13659,7 @@ fun VideoPlayerItem(
 
     DisposableEffect(localPlayer) {
         onDispose {
-            localPlayer.release()
+            com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(localPlayer)
         }
     }
 
@@ -13596,18 +13756,23 @@ fun VideoPlayerItem(
         if (resolvedPaths.isNotEmpty()) {
             androidx.compose.ui.viewinterop.AndroidView(
                 factory = { ctx ->
-                    val view = android.view.LayoutInflater.from(ctx)
-                        .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                    view.apply {
-                        player = localPlayer
+                    PlayerView(ctx).apply {
                         useController = false
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
+                        this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
                     }
                 },
                 update = { view ->
                     if (view.player != localPlayer) {
                         view.player = localPlayer
                     }
+                    setupVideoScaleRotation(context, view, localPlayer) {
+                        resolvedPaths.getOrNull(localPlayer.currentMediaItemIndex)
+                    }
+                },
+                onRelease = { view ->
+                    view.player = null
+                    setupVideoScaleRotation(context, view, null)
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -17601,7 +17766,7 @@ fun TripleDotMenuOverlay(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                if (customAvatarUriString != null) {
+                                if (!customAvatarUriString.isNullOrEmpty()) {
                                     Box(
                                         modifier = Modifier
                                             .size(44.dp)
@@ -18530,7 +18695,7 @@ fun VlogEmptyStateContent(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (customAvatarUriString != null) {
+                    if (!customAvatarUriString.isNullOrEmpty()) {
                         UriImage(
                             uriString = customAvatarUriString,
                             modifier = Modifier
@@ -18780,14 +18945,14 @@ private fun GroupExportMemberSlot(
             var resolvedPathsState by remember(videoPaths) { mutableStateOf<List<String>>(emptyList()) }
             @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
             val localPlayer = remember(videoPaths) {
-                com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+                com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context).apply {
                     repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
                     volume = 0f
                 }
             }
             DisposableEffect(localPlayer) {
                 onDispose {
-                    localPlayer.release()
+                    com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(localPlayer)
                 }
             }
             LaunchedEffect(videoPaths, localPlayer) {
@@ -18819,12 +18984,10 @@ private fun GroupExportMemberSlot(
             }
             androidx.compose.ui.viewinterop.AndroidView(
                 factory = { ctx ->
-                    val view = android.view.LayoutInflater.from(ctx)
-                        .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                    view.apply {
-                        player = localPlayer
+                    PlayerView(ctx).apply {
                         useController = false
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
+                        this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
@@ -18832,9 +18995,16 @@ private fun GroupExportMemberSlot(
                     if (view.player != localPlayer) {
                         view.player = localPlayer
                     }
+                    setupVideoScaleRotation(context, view, localPlayer) {
+                        resolvedPathsState.getOrNull(localPlayer.currentMediaItemIndex)
+                    }
                     if (!localPlayer.isPlaying && localPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
                         localPlayer.play()
                     }
+                },
+                onRelease = { view ->
+                    view.player = null
+                    setupVideoScaleRotation(context, view, null)
                 }
             )
             
@@ -18960,6 +19130,9 @@ fun VideoVlogBoxItem(
                     if (!cachedPlayer.isPlaying) {
                         cachedPlayer.play()
                     }
+                },
+                onRelease = { view ->
+                    view.player = null
                 }
             )
         }
@@ -19090,8 +19263,26 @@ fun HomeScreenOverlays(
         },
         onDeletePhotoClick = {
             onShowTripleDotMenuChange(false)
-            sessionManager.saveAvatarUri(null)
-            onCustomAvatarUriStringChange(null)
+            // 1. First UI: Update immediately so UI reflects it without lag
+            onCustomAvatarUriStringChange("")
+            // 2. Then Database, User State, Caching, and Invalidation
+            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    supabaseClient.postgrest.from("user_pals")
+                        .update(mapOf("user_avatar_url" to null)) {
+                            filter {
+                                eq("user_id", currentUserId)
+                            }
+                        }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        // 3. User State / Caching & Clearing
+                        sessionManager.saveAvatarUri("")
+                        refreshPals()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
         },
         onShowEditNameDialogChange = onShowEditNameDialogChange,
         onSignOut = { VlogPlayerManager.clearAll(); onSignOut() },
