@@ -84,6 +84,17 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            DisposableEffect(Unit) {
+                onDispose {
+                    try {
+                        context.cacheDir.deleteRecursively()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+
             var selectedThemeColor by remember { 
                 mutableStateOf(sessionManager.getThemeColor()) 
             }

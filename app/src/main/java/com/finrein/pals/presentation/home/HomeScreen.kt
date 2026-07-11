@@ -7368,12 +7368,12 @@ fun CapturedPreviewScreen(
             }
         }
     }
-    val isFirstFrameRendered = remember { mutableStateOf(false) }
+    var isVideoReady by remember { mutableStateOf(false) }
     DisposableEffect(capturedVideoPath) {
-        isFirstFrameRendered.value = false
+        isVideoReady = false
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onRenderedFirstFrame() {
-                isFirstFrameRendered.value = true
+                isVideoReady = true
             }
         }
         exoPlayer.addListener(listener)
@@ -7516,6 +7516,8 @@ fun CapturedPreviewScreen(
                 seekTo(0, 0L)
                 release()
             }
+            System.runFinalization()
+            Runtime.getRuntime().gc()
         }
     }
 
@@ -7548,107 +7550,126 @@ fun CapturedPreviewScreen(
                 contentAlignment = Alignment.Center
             ) {
                 key(cleanPath) {
-                    androidx.compose.ui.viewinterop.AndroidView(
-                        factory = { context ->
-                            PlayerView(context).apply {
-                                this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
-                                this.useController = false
-                                this.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                                this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT)
-                                
-                                layoutParams = android.view.ViewGroup.LayoutParams(
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                )
-                                player = exoPlayer
-                                setBackgroundColor(android.graphics.Color.BLACK)
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                        update = { view ->
-                            val triggerRotation = videoRotation
-                            val triggerZoom = zoomFactor
-                            if (view.player != exoPlayer) {
-                                view.player = exoPlayer
-                            }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(alpha = if (isVideoReady) 1f else 0f)
+                    ) {
+                        androidx.compose.ui.viewinterop.AndroidView(
+                            factory = { context ->
+                                val view = android.view.LayoutInflater.from(context)
+                                    .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                                view.apply {
+                                    this.useController = false
+                                    this.setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
+                                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
 
-                            val targetUri = if (cleanPath.startsWith("content://")) {
-                                android.net.Uri.parse(cleanPath)
-                            } else {
-                                android.net.Uri.fromFile(java.io.File(cleanPath))
-                            }
-                            val currentMediaItem = exoPlayer.currentMediaItem
-                            if (currentMediaItem == null || view.tag != targetUri.toString()) {
-                                exoPlayer.stop()
-                                exoPlayer.repeatMode = Player.REPEAT_MODE_ALL
-                                exoPlayer.setMediaItem(MediaItem.fromUri(targetUri))
-                                exoPlayer.prepare()
-                                exoPlayer.seekTo(0L)
-                                exoPlayer.playWhenReady = true
-                                view.tag = targetUri.toString()
-                            }
-                            
-                            val surfaceView = view.videoSurfaceView
-                            if (surfaceView is TextureView) {
-                                surfaceView.post {
                                     try {
-                                        surfaceView.removeOnLayoutChangeListener(null)
-                                        view.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
-                                        
-                                        val videoSize = exoPlayer.videoSize
-                                        val videoWidth = videoSize.width
-                                        val videoHeight = videoSize.height
-                                        if (view.width > 0 && view.height > 0 && videoWidth > 0 && videoHeight > 0) {
-                                            val containerWidth = view.width.toFloat()
-                                            val containerHeight = view.height.toFloat()
-                                            val needsRotation = triggerRotation == 270 || triggerRotation == 90
-                                            
-                                            val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
-                                            val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
-                                            
-                                            val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                            
-                                            val calculatedScaleX: Float
-                                            val calculatedScaleY: Float
-                                            val calculatedRotation: Float
-                                            if (needsRotation) {
-                                                calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                                calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                                calculatedRotation = 270f
-                                            } else {
-                                                calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                                calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                                calculatedRotation = 0f
-                                            }
-                                            
-                                            surfaceView.pivotX = containerWidth / 2f
-                                            surfaceView.pivotY = containerHeight / 2f
-                                            surfaceView.scaleX = calculatedScaleX
-                                            surfaceView.scaleY = calculatedScaleY
-                                            surfaceView.rotation = calculatedRotation
-                                            surfaceView.invalidate()
-                                            view.invalidate()
-                                        }
+                                        val surfaceField = androidx.media3.ui.PlayerView::class.java.getDeclaredField("b0")
+                                        surfaceField.isAccessible = true
+                                        val glSurfaceClass = Class.forName("defpackage.v93") 
+                                        val glSurfaceView = glSurfaceClass.getConstructor(android.content.Context::class.java).newInstance(context) as android.view.View
+                                        surfaceField.set(this, glSurfaceView)
+                                        val contentFrame = this.findViewById<androidx.media3.ui.AspectRatioFrameLayout>(androidx.media3.ui.R.id.exo_content_frame)
+                                        contentFrame?.addView(glSurfaceView, 0)
                                     } catch (e: Exception) {
-                                        e.printStackTrace()
+                                        // Fallback safely to compatible texture layer already set up by layout inflation
+                                    }
+                                    
+                                    layoutParams = android.view.ViewGroup.LayoutParams(
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                    )
+                                    player = exoPlayer
+                                    setBackgroundColor(android.graphics.Color.BLACK)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                            update = { view ->
+                                val triggerRotation = videoRotation
+                                val triggerZoom = zoomFactor
+                                if (view.player != exoPlayer) {
+                                    view.player = exoPlayer
+                                }
+
+                                val targetUri = if (cleanPath.startsWith("content://")) {
+                                    android.net.Uri.parse(cleanPath)
+                                } else {
+                                    android.net.Uri.fromFile(java.io.File(cleanPath))
+                                }
+                                val currentMediaItem = exoPlayer.currentMediaItem
+                                if (currentMediaItem == null || view.tag != targetUri.toString()) {
+                                    exoPlayer.stop()
+                                    exoPlayer.repeatMode = Player.REPEAT_MODE_ALL
+                                    exoPlayer.setMediaItem(MediaItem.fromUri(targetUri))
+                                    exoPlayer.prepare()
+                                    exoPlayer.seekTo(0L)
+                                    exoPlayer.playWhenReady = true
+                                    view.tag = targetUri.toString()
+                                }
+                                
+                                val surfaceView = view.videoSurfaceView
+                                if (surfaceView is TextureView) {
+                                    surfaceView.post {
+                                        try {
+                                            surfaceView.removeOnLayoutChangeListener(null)
+                                            view.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
+                                            
+                                            val videoSize = exoPlayer.videoSize
+                                            val videoWidth = videoSize.width
+                                            val videoHeight = videoSize.height
+                                            if (view.width > 0 && view.height > 0 && videoWidth > 0 && videoHeight > 0) {
+                                                val containerWidth = view.width.toFloat()
+                                                val containerHeight = view.height.toFloat()
+                                                val needsRotation = triggerRotation == 270 || triggerRotation == 90
+                                                
+                                                val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
+                                                val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
+                                                
+                                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
+                                                
+                                                val calculatedScaleX: Float
+                                                val calculatedScaleY: Float
+                                                val calculatedRotation: Float
+                                                if (needsRotation) {
+                                                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
+                                                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
+                                                    calculatedRotation = 270f
+                                                } else {
+                                                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
+                                                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
+                                                    calculatedRotation = 0f
+                                                }
+                                                
+                                                surfaceView.pivotX = containerWidth / 2f
+                                                surfaceView.pivotY = containerHeight / 2f
+                                                surfaceView.scaleX = calculatedScaleX
+                                                surfaceView.scaleY = calculatedScaleY
+                                                surfaceView.rotation = calculatedRotation
+                                                surfaceView.invalidate()
+                                                view.invalidate()
+                                            }
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
                                     }
                                 }
+                                
+                                if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+                                    exoPlayer.play()
+                                }
+                                if (exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
+                                    val textureView = view.getVideoSurfaceView() as? android.view.TextureView
+                                    textureView?.invalidate()
+                                    view.invalidate()
+                                }
+                            },
+                            onRelease = { view ->
+                                view.player = null
+                                view.removeAllViews()
                             }
-                            
-                            if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
-                                exoPlayer.play()
-                            }
-                            if (exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
-                                val textureView = view.getVideoSurfaceView() as? android.view.TextureView
-                                textureView?.invalidate()
-                                view.invalidate()
-                            }
-                        },
-                        onRelease = { view ->
-                            view.player = null
-                            view.removeAllViews()
-                        }
-                    )
+                        )
+                    }
                 }
             }
 
@@ -8209,6 +8230,72 @@ data class VlogScreenContentParams(
 )
 
 @Composable
+fun SimultaneousPalThumbnail(
+    videoUri: android.net.Uri,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val cellPlayer = remember(videoUri) {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+            this.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+            this.volume = 0f
+            val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context)
+            val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(androidx.media3.common.MediaItem.fromUri(videoUri))
+            this.setMediaSource(mediaSource)
+            this.prepare()
+            this.playWhenReady = true
+        }
+    }
+
+    DisposableEffect(videoUri) {
+        onDispose {
+            cellPlayer.stop()
+            cellPlayer.release()
+            try {
+                context.cacheDir.deleteRecursively()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier.clickable { onClick() }
+    ) {
+        androidx.compose.ui.viewinterop.AndroidView(
+            factory = { ctx ->
+                val view = android.view.LayoutInflater.from(ctx)
+                    .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                view.apply {
+                    this.useController = false
+                    this.setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
+                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
+                }
+            },
+            update = { playerView ->
+                if (playerView.player != cellPlayer) {
+                    playerView.player = cellPlayer
+                }
+                val surfaceView = playerView.videoSurfaceView
+                if (surfaceView is android.view.TextureView) {
+                    surfaceView.post {
+                        try {
+                            surfaceView.removeOnLayoutChangeListener(null)
+                            playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
 fun GroupMemberCard(
     index: Int,
     isGrid: Boolean,
@@ -8304,455 +8391,30 @@ fun GroupMemberCard(
     var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }
 
     if (hasSubmission) {
-        // ACTIVE VIDEO CARD PLAYER FOR ANY MEMBER WITH SUBMISSION
         val firstSub = sortedMemberSubs.first()
-        val videoPaths = remember(sortedMemberSubs) { sortedMemberSubs.map { it.imageUrl.split("|||").firstOrNull() ?: "" }.filter { it.isNotEmpty() } }
-        val videoPath = videoPaths.firstOrNull() ?: ""
-        val caption = firstSub.imageUrl.split("|||").getOrNull(1) ?: ""
-
-        val memberReactions = remember(messages, videoPath) {
-            if (videoPath.isEmpty()) emptyList() else {
-                val userReactions = LinkedHashMap<String, String>()
-                messages.filter { msg ->
-                    msg.content.startsWith("REACTION|||") && msg.content.split("|||").getOrNull(3) == videoPath
-                }.forEach { msg ->
-                    val emoji = msg.content.split("|||").getOrNull(4) ?: ""
-                    if (emoji.isNotEmpty()) {
-                        userReactions[msg.userId] = emoji
-                    }
+        val videoPath = remember(sortedMemberSubs) { sortedMemberSubs.map { it.imageUrl.split("|||").firstOrNull() ?: "" }.firstOrNull { it.isNotEmpty() } ?: "" }
+        val videoUri = remember(videoPath) {
+            if (videoPath.startsWith("content://") || videoPath.startsWith("http")) {
+                android.net.Uri.parse(videoPath)
+            } else {
+                val cleanPath = when {
+                    videoPath.startsWith("file://") -> videoPath.substring(7)
+                    else -> videoPath
                 }
-                userReactions.values.toList()
+                android.net.Uri.fromFile(java.io.File(cleanPath))
             }
         }
-        val latestReaction = memberReactions.lastOrNull()
-
-        val memberReplies = remember(messages, videoPath) {
-            messages.filter { msg ->
-                if (msg.content.startsWith("REPLY|||")) {
-                    val parts = msg.content.split("|||")
-                    val msgVideoPath = parts.getOrNull(3) ?: ""
-                    msgVideoPath == videoPath
-                } else {
-                    false
-                }
-            }.map { msg ->
-                val senderMember = groupMembers.firstOrNull { it.startsWith("${msg.userId}|||") }
-                val (senderName, senderAvatar) = if (senderMember != null) {
-                    val parts = senderMember.split("|||")
-                    Pair(parts.getOrNull(1) ?: "Pal", parts.getOrNull(2))
-                } else {
-                    if (msg.userId == currentUserId) {
-                        Pair(userFirstName, customAvatarUriString)
-                    } else {
-                        Pair("Pal", null)
-                    }
-                }
-                val parts = msg.content.split("|||")
-                val replyText = parts.getOrNull(4) ?: ""
-                Triple(senderAvatar, replyText, senderName)
-            }.distinctBy { it.second }
-        }
-
-        var currentReplyIndex by remember(memberReplies) { mutableStateOf(0) }
-        LaunchedEffect(memberReplies) {
-            if (memberReplies.size > 1) {
-                while (true) {
-                    kotlinx.coroutines.delay(1000)
-                    currentReplyIndex = (currentReplyIndex + 1) % memberReplies.size
-                }
-            }
-        }
-        if (isUser) {
-            LaunchedEffect(isEditingCaption) {
-                if (isEditingCaption) {
-                    onEditCaptionTextChange(
-                        androidx.compose.ui.text.input.TextFieldValue(
-                            text = caption,
-                            selection = androidx.compose.ui.text.TextRange(caption.length)
-                        )
-                    )
-                }
-            }
-        }
-        val timeText = if (!firstSub.createdAt.isNullOrEmpty()) {
-            try {
-                val instant = java.time.Instant.parse(firstSub.createdAt)
-                val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
-                val hr = zonedDateTime.hour
-                String.format(java.util.Locale.US, "%02d:00", hr)
-            } catch (e: Exception) {
-                "12:00"
-            }
-        } else {
-            "12:00"
-        }
-
-        Box(
+        
+        SimultaneousPalThumbnail(
+            videoUri = videoUri,
+            onClick = {
+                onSelectedMemberIndexChange(index)
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(cardHeightDp)
                 .clip(cardShape)
-                .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE5E5EA))
-        ) {
-            VideoPlayerItem(
-                videoPaths = videoPaths,
-                modifier = Modifier.fillMaxSize(),
-                shape = cardShape
-            )
-
-            // Overlay 1: Avatar and Name (Top Left)
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val userAvatar = if (isUser) customAvatarUriString else memberAvatar
-                if (!userAvatar.isNullOrEmpty()) {
-                    UriImage(
-                        uriString = userAvatar,
-                        modifier = Modifier
-                            .size(if (isGrid) 18.dp else 24.dp)
-                            .clip(CircleShape)
-                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(if (isGrid) 18.dp else 24.dp)
-                            .clip(CircleShape)
-                            .background(accentColor),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.smile_medium),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .rotate(180f)
-                        )
-                    }
-                }
-
-                Text(
-                    text = if (isUser) userFirstName else (memberName ?: ""),
-                    fontFamily = FontFamily.SansSerif,
-                    fontSize = if (isGrid) 12.sp else 15.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color.White
-                )
-            }
-
-
-
-            // Overlays 2 & 3: Inline edit layout or Centered caption/time layouts
-            if (isUser && isEditingCaption) {
-                val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-                LaunchedEffect(Unit) {
-                    focusRequester.requestFocus()
-                }
-
-                androidx.compose.foundation.text.BasicTextField(
-                    value = editCaptionText,
-                    onValueChange = onEditCaptionTextChange,
-                    textStyle = TextStyle(
-                        fontFamily = RobotoFontFamily,
-                        fontSize = if (isGrid) 12.sp else 16.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = Color.White,
-                        textAlign = TextAlign.Center,
-                        shadow = androidx.compose.ui.graphics.Shadow(
-                            color = Color.Black.copy(alpha = 0.5f),
-                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                            blurRadius = 3f
-                        )
-                    ),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(accentColor),
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = if (isGrid) 8.dp else 16.dp)
-                        .focusRequester(focusRequester),
-                    decorationBox = { innerTextField ->
-                        Box(contentAlignment = Alignment.Center) {
-                            if (editCaptionText.text.isEmpty()) {
-                                Text(
-                                    text = "write caption...",
-                                    fontFamily = RobotoFontFamily,
-                                    fontSize = if (isGrid) 12.sp else 16.sp,
-                                    color = Color.White.copy(alpha = 0.5f),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                            innerTextField()
-                        }
-                    }
-                )
-
-                // Overlay 5: Top Right Checkmark Save button (only visible during caption editing mode)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = if (isGrid) 4.dp else 8.dp, end = if (isGrid) 6.dp else 12.dp)
-                        .size(if (isGrid) 24.dp else 36.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .clickable {
-                            val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
-                            if (userSub != null) {
-                                val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
-                                if (userPath.isNotEmpty()) {
-                                    onUpdateVlogCaption(userPath, editCaptionText.text.trim())
-                                }
-                            }
-                            onIsEditingCaptionChange(false)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Save Caption",
-                        tint = Color.White,
-                        modifier = Modifier.size(if (isGrid) 14.dp else 20.dp)
-                    )
-                }
-            } else {
-                // Both user (when not editing) and other members show timeText and caption 5dp below it
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.align(Alignment.Center)
-                ) {
-                    Text(
-                        text = timeText,
-                        fontFamily = DelaGothicOneFontFamily,
-                        fontSize = if (isGrid) 12.5.sp else 18.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    if (caption.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(5.dp))
-                        Text(
-                            text = caption,
-                            fontFamily = RobotoFontFamily,
-                            fontSize = if (isGrid) 11.sp else 14.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = Color.White,
-                            style = TextStyle(
-                                shadow = androidx.compose.ui.graphics.Shadow(
-                                    color = Color.Black.copy(alpha = 0.5f),
-                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
-                                    blurRadius = 3f
-                                )
-                            )
-                        )
-                    }
-                }
-            }
-
-            // Overlay 4/5: Actions for User vs Other Members
-            if (isUser) {
-                if (!isEditingCaption) {
-                    // Triple dots at bottom right for User
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
-                            .clickable { showDropdownMenu = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "•••",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-
-                        DropdownMenu(
-                            expanded = showDropdownMenu,
-                            onDismissRequest = { showDropdownMenu = false },
-                            modifier = Modifier
-                                .background(if (isDark) Color(0xFF1E1D22) else Color(0xFFF5F3EB), RoundedCornerShape(8.dp))
-                                .border(
-                                    width = 1.dp,
-                                    color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("edit caption", color = if (isDark) Color.White else Color.Black) },
-                                onClick = {
-                                    showDropdownMenu = false
-                                    onEditCaptionClick(index)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("delete", color = if (isDark) Color.White else Color.Black) },
-                                onClick = {
-                                    showDropdownMenu = false
-                                    onDeleteClick(index)
-                                }
-                            )
-                        }
-                    }
-                }
-            } else {
-                // 1. Reply Arrow exactly at the center of the right side
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = if (isGrid) 10.dp else 16.dp)
-                        .clickable { onReplyClick(videoPath) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Reply,
-                        contentDescription = "Reply",
-                        tint = Color.White,
-                        modifier = Modifier.size(if (isGrid) 18.dp else 25.dp)
-                    )
-                }
-
-                // 2. Love Icon or Reacted Emoji in the bottom right corner
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
-                        .clickable { showEmojiOverlay = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (latestReaction != null) {
-                        Text(
-                            text = latestReaction,
-                            fontSize = if (isGrid) 16.sp else 24.sp
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Filled.FavoriteBorder,
-                            contentDescription = "Love",
-                            tint = Color.White,
-                            modifier = Modifier.size(if (isGrid) 18.dp else 25.dp)
-                        )
-                    }
-                }
-
-                // 3. Replies slideshow shown at Bottom Left corner
-                if (memberReplies.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(bottom = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        androidx.compose.animation.AnimatedContent(
-                            targetState = currentReplyIndex,
-                            transitionSpec = {
-                                (androidx.compose.animation.slideInVertically { height -> height } + androidx.compose.animation.fadeIn()) togetherWith 
-                                (androidx.compose.animation.slideOutVertically { height -> -height } + androidx.compose.animation.fadeOut())
-                            }
-                        ) { index ->
-                            val reply = memberReplies.getOrNull(index)
-                            if (reply != null) {
-                                val (avatar, text, name) = reply
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    if (!avatar.isNullOrEmpty()) {
-                                        UriImage(
-                                            uriString = avatar,
-                                            modifier = Modifier
-                                                .size(if (isGrid) 16.dp else 20.dp)
-                                                .clip(CircleShape)
-                                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(if (isGrid) 16.dp else 20.dp)
-                                                .clip(CircleShape)
-                                                .background(accentColor),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Image(
-                                                painter = painterResource(id = R.drawable.smile_medium),
-                                                contentDescription = null,
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .rotate(180f)
-                                            )
-                                        }
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .background(Color.White, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(
-                                            text = text,
-                                            color = Color.Black,
-                                            fontSize = if (isGrid) 9.sp else 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.SansSerif
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Transparent Emoji Selector Overlay in the exact middle of the card
-            if (showEmojiOverlay) {
-                // Dimmed dismiss overlay background
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.4f))
-                        .clickable { showEmojiOverlay = false }
-                )
-
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.5.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    currentEmojis.forEach { emoji ->
-                        Text(
-                            text = emoji,
-                            fontSize = if (isGrid) 12.sp else 24.sp,
-                            modifier = Modifier
-                                .clickable {
-                                    onEmojiReacted(videoPath, emoji)
-                                    showEmojiOverlay = false
-                                }
-                        )
-                    }
-
-                    // Refresh/Smiley indicator as outline icon at the end matching image 2
-                    Box(
-                        modifier = Modifier
-                            .size(if (isGrid) 16.dp else 28.dp)
-                            .clip(CircleShape)
-                            .clickable {
-                                currentEmojis = defaultEmojis.shuffled().take(5)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.AccountCircle,
-                            contentDescription = "More",
-                            tint = Color.White.copy(alpha = 0.8f),
-                            modifier = Modifier.size(if (isGrid) 12.dp else 24.dp)
-                        )
-                    }
-                }
-            }
-        }
+        )
     } else if (isUser && !hasSubmission) {
         // BOUNCING SCREEN SAVER CARD FOR USER (Slot 0, empty)
         BoxWithConstraints(

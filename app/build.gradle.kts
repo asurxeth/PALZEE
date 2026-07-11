@@ -65,7 +65,8 @@ android {
             arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
         }
         ndk {
-            abiFilters.addAll(setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64"))
+            abiFilters.clear()
+            abiFilters.addAll(setOf("arm64-v8a"))
         }
     }
 
@@ -75,8 +76,8 @@ android {
             isShrinkResources = false
         }
         getByName("release") {
-            isMinifyEnabled = false      // Turn this OFF to stop R8 from stripping code
-            isShrinkResources = false   // Turn this OFF to keep all assets intact
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -98,7 +99,7 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = false
             pickFirsts.add("**/libsurface_util_jni.so")
             pickFirsts.add("**/libimage_processing_util_jni.so")
             pickFirsts.add("**/libdatastore_shared_counter.so")
