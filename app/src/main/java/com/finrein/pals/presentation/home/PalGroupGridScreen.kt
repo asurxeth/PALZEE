@@ -233,79 +233,10 @@ fun PalGroupGridScreen(
                                     factory = { ctx ->
                                         val view = android.view.LayoutInflater.from(ctx)
                                             .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                        view.layoutParams = android.view.ViewGroup.LayoutParams(
-                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                        )
                                         view.apply {
                                             player = vlogExoPlayer
                                             useController = false
-                                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                            setBackgroundColor(android.graphics.Color.BLACK)
-    
-                                            fun applyVideoScale() {
-                                                val videoSize = vlogExoPlayer.videoSize
-                                                val videoWidth = videoSize.width
-                                                val videoHeight = videoSize.height
-                                                val videoRotation = videoSize.unappliedRotationDegrees
-                                                val textureView = getVideoSurfaceView() as? android.view.TextureView
-                                                if (textureView == null) {
-                                                    postDelayed({ applyVideoScale() }, 100)
-                                                    return
-                                                }
-                                                val containerWidth = width.toFloat()
-                                                val containerHeight = height.toFloat()
-                                                if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                                    val isPortrait = videoHeight > videoWidth
-                                                    val rotatedWidth = if (isPortrait) videoHeight.toFloat() else videoWidth.toFloat()
-                                                    val rotatedHeight = if (isPortrait) videoWidth.toFloat() else videoHeight.toFloat()
-                                                    
-                                                    val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight)
-                                                    
-                                                    val calculatedScaleX: Float
-                                                    val calculatedScaleY: Float
-                                                    val calculatedRotation: Float
-                                                    if (isPortrait) {
-                                                        calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                                        calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                                        calculatedRotation = 270f
-                                                    } else {
-                                                        calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                                        calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                                        calculatedRotation = 0f
-                                                    }
-                                                    
-                                                    android.util.Log.d("PalVideoScale", "Reverted scale for vlogExoPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
-                                                    
-                                                    textureView.pivotX = containerWidth / 2f
-                                                    textureView.pivotY = containerHeight / 2f
-                                                    textureView.scaleX = calculatedScaleX
-                                                    textureView.scaleY = calculatedScaleY
-                                                    textureView.rotation = calculatedRotation
-                                                } else {
-                                                    postDelayed({ applyVideoScale() }, 100)
-                                                }
-                                            }
-    
-                                            // Apply scaling when layout is determined/changed
-                                            val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                                                applyVideoScale()
-                                            }
-                                            addOnLayoutChangeListener(layoutListener)
-    
-                                            // Apply scaling on size change events
-                                            vlogExoPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                                                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                                    super.onVideoSizeChanged(videoSize)
-                                                    applyVideoScale()
-                                                }
-                                                override fun onPlaybackStateChanged(playbackState: Int) {
-                                                    super.onPlaybackStateChanged(playbackState)
-                                                    applyVideoScale()
-                                                }
-                                            })
-    
-                                            applyVideoScale()
+                                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                                         }
                                     },
                                     modifier = Modifier.fillMaxSize(),

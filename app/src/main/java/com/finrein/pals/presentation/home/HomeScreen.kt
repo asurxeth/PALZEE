@@ -5829,6 +5829,13 @@ fun CameraPreview(
     var activeCamera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
     var lastZoomUpdateTime by remember { mutableLongStateOf(0L) }
     
+    val cameraExecutor = remember { java.util.concurrent.Executors.newSingleThreadExecutor() }
+    DisposableEffect(Unit) {
+        onDispose {
+            cameraExecutor.shutdown()
+        }
+    }
+
     LaunchedEffect(isCameraFlipped, isCameraActive) {
         val cameraProvider = withContext(kotlinx.coroutines.Dispatchers.IO) {
             cameraProviderFuture.get()
@@ -5851,14 +5858,9 @@ fun CameraPreview(
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
 
-        val qualitySelector = QualitySelector.fromOrderedList(
-            listOf(Quality.FHD, Quality.HD),
-            androidx.camera.video.FallbackStrategy.higherQualityOrLowerThan(Quality.FHD)
-        )
-
         val recorder = Recorder.Builder()
-            .setQualitySelector(qualitySelector)
-            .setExecutor(androidx.core.content.ContextCompat.getMainExecutor(context))
+            .setQualitySelector(QualitySelector.from(Quality.FHD))
+            .setExecutor(cameraExecutor)
             .build()
         val videoCapture = VideoCapture.withOutput(recorder)
         onVideoCaptureCreated(videoCapture)
@@ -7563,29 +7565,12 @@ fun CapturedPreviewScreen(
                     ) {
                         androidx.compose.ui.viewinterop.AndroidView(
                             factory = { context ->
-                                val currentDeviceSdk = android.os.Build.VERSION.SDK_INT
-                                val view = if (currentDeviceSdk >= 33) {
-                                    androidx.media3.ui.PlayerView(context)
-                                } else {
-                                    android.view.LayoutInflater.from(context)
-                                        .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                }
+                                val view = android.view.LayoutInflater.from(context)
+                                    .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
                                 view.apply {
                                     this.useController = false
                                     this.setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
                                     this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
-
-                                    try {
-                                        val surfaceField = androidx.media3.ui.PlayerView::class.java.getDeclaredField("b0")
-                                        surfaceField.isAccessible = true
-                                        val glSurfaceClass = Class.forName("defpackage.v93") 
-                                        val glSurfaceView = glSurfaceClass.getConstructor(android.content.Context::class.java).newInstance(context) as android.view.View
-                                        surfaceField.set(this, glSurfaceView)
-                                        val contentFrame = this.findViewById<androidx.media3.ui.AspectRatioFrameLayout>(androidx.media3.ui.R.id.exo_content_frame)
-                                        contentFrame?.addView(glSurfaceView, 0)
-                                    } catch (e: Exception) {
-                                        // Fallback safely to compatible layer (TextureView for API < 33, SurfaceView for API >= 33)
-                                    }
                                     
                                     layoutParams = android.view.ViewGroup.LayoutParams(
                                         android.view.ViewGroup.LayoutParams.MATCH_PARENT,
@@ -7597,8 +7582,6 @@ fun CapturedPreviewScreen(
                             },
                             modifier = Modifier.fillMaxSize(),
                             update = { view ->
-                                val triggerRotation = videoRotation
-                                val triggerZoom = zoomFactor
                                 if (view.player != exoPlayer) {
                                     view.player = exoPlayer
                                 }
@@ -7617,53 +7600,6 @@ fun CapturedPreviewScreen(
                                     exoPlayer.seekTo(0L)
                                     exoPlayer.playWhenReady = true
                                     view.tag = targetUri.toString()
-                                }
-                                
-                                val surfaceView = view.videoSurfaceView
-                                if (surfaceView is TextureView) {
-                                    surfaceView.post {
-                                        try {
-                                            surfaceView.removeOnLayoutChangeListener(null)
-                                            view.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
-                                            
-                                            val videoSize = exoPlayer.videoSize
-                                            val videoWidth = videoSize.width
-                                            val videoHeight = videoSize.height
-                                            if (view.width > 0 && view.height > 0 && videoWidth > 0 && videoHeight > 0) {
-                                                val containerWidth = view.width.toFloat()
-                                                val containerHeight = view.height.toFloat()
-                                                val needsRotation = triggerRotation == 270 || triggerRotation == 90
-                                                
-                                                val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
-                                                val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
-                                                
-                                                val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                                
-                                                val calculatedScaleX: Float
-                                                val calculatedScaleY: Float
-                                                val calculatedRotation: Float
-                                                if (needsRotation) {
-                                                    calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                                    calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                                    calculatedRotation = 270f
-                                                } else {
-                                                    calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                                    calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                                    calculatedRotation = 0f
-                                                }
-                                                
-                                                surfaceView.pivotX = containerWidth / 2f
-                                                surfaceView.pivotY = containerHeight / 2f
-                                                surfaceView.scaleX = calculatedScaleX
-                                                surfaceView.scaleY = calculatedScaleY
-                                                surfaceView.rotation = calculatedRotation
-                                                surfaceView.invalidate()
-                                                view.invalidate()
-                                            }
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                        }
-                                    }
                                 }
                                 
                                 if (!exoPlayer.isPlaying && exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
@@ -8241,56 +8177,38 @@ data class VlogScreenContentParams(
 )
 
 @Composable
-fun SimultaneousPalThumbnail(
+fun UnifiedPalPlayerBox(
     videoUri: android.net.Uri,
-    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val cellPlayer = remember(videoUri) {
-        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+    
+    // Force a clean initialization cycle per videoUri instance assignment
+    val player = remember(videoUri) {
+        DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
             this.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
             this.volume = 0f
-            val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(context)
-            val mediaSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(androidx.media3.common.MediaItem.fromUri(videoUri))
-            this.setMediaSource(mediaSource)
+            
+            // Directly pass media item configurations cleanly
+            this.setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUri))
             this.prepare()
             this.playWhenReady = true
-
-            this.addListener(object : androidx.media3.common.Player.Listener {
-                override fun onPositionDiscontinuity(
-                    oldPosition: androidx.media3.common.Player.PositionInfo,
-                    newPosition: androidx.media3.common.Player.PositionInfo,
-                    reason: Int
-                ) {
-                    if (reason == androidx.media3.common.Player.DISCONTINUITY_REASON_AUTO_TRANSITION || 
-                        reason == androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK) {
-                        try {
-                            context.cacheDir.deleteRecursively()
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-                }
-            })
         }
     }
 
     DisposableEffect(videoUri) {
         onDispose {
-            cellPlayer.stop()
-            cellPlayer.release()
-            try {
-                context.cacheDir.deleteRecursively()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            player.stop()
+            player.clearMediaItems()
+            player.release()
         }
     }
 
     Box(
-        modifier = modifier.clickable { onClick() }
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
     ) {
         androidx.compose.ui.viewinterop.AndroidView(
             factory = { ctx ->
@@ -8299,25 +8217,49 @@ fun SimultaneousPalThumbnail(
                 view.apply {
                     this.useController = false
                     this.setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
-                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT)
+                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
                 }
             },
             update = { playerView ->
-                if (playerView.player != cellPlayer) {
-                    playerView.player = cellPlayer
+                if (playerView.player != player) {
+                    playerView.player = player
                 }
-                val surfaceView = playerView.videoSurfaceView
-                if (surfaceView is android.view.TextureView) {
-                    surfaceView.post {
-                        try {
-                            surfaceView.removeOnLayoutChangeListener(null)
-                            playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
+
+                // TRUE ROTATION MATRIX BALANCING PASS:
+                player.addListener(object : androidx.media3.common.Player.Listener {
+                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                        val surfaceView = playerView.getVideoSurfaceView()
+                        if (surfaceView is android.view.TextureView) {
+                            surfaceView.post {
+                                // CORRECT ALIGNMENT: Portrait captures (90 or 270 degrees) MUST be kept 
+                                // vertically aligned inside the view plane via RESIZE_MODE_FIT.
+                                // Horizontal captures scale cleanly to fill layout parameters without transformations.
+                                if (videoSize.unappliedRotationDegrees == 90 || videoSize.unappliedRotationDegrees == 270) {
+                                    playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT)
+                                } else {
+                                    playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
+                                }
+                            }
                         }
                     }
-                }
+                })
             },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+@Composable
+fun SimultaneousPalThumbnail(
+    videoUri: android.net.Uri,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.clickable { onClick() }
+    ) {
+        UnifiedPalPlayerBox(
+            videoUri = videoUri,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -8432,17 +8374,412 @@ fun GroupMemberCard(
                 android.net.Uri.fromFile(java.io.File(cleanPath))
             }
         }
-        
-        SimultaneousPalThumbnail(
-            videoUri = videoUri,
-            onClick = {
-                onSelectedMemberIndexChange(index)
-            },
+        val caption = firstSub.imageUrl.split("|||").getOrNull(1) ?: ""
+        val videoPaths = remember(sortedMemberSubs) { sortedMemberSubs.map { it.imageUrl.split("|||").firstOrNull() ?: "" }.filter { it.isNotEmpty() } }
+        val latestReaction = palReactions[videoPath]
+        val memberReplies = remember(messages, videoPath) {
+            messages.filter { msg ->
+                if (msg.content.startsWith("REPLY|||")) {
+                    val parts = msg.content.split("|||")
+                    val msgVideoPath = parts.getOrNull(3) ?: ""
+                    msgVideoPath == videoPath
+                } else {
+                    false
+                }
+            }.map { msg ->
+                val senderMember = groupMembers.firstOrNull { it.startsWith("${msg.userId}|||") }
+                val (senderName, senderAvatar) = if (senderMember != null) {
+                    val parts = senderMember.split("|||")
+                    Pair(parts.getOrNull(1) ?: "Pal", parts.getOrNull(2))
+                } else {
+                    if (msg.userId == currentUserId) {
+                        Pair(userFirstName, customAvatarUriString)
+                    } else {
+                        Pair("Pal", null)
+                    }
+                }
+                val parts = msg.content.split("|||")
+                val replyText = parts.getOrNull(4) ?: ""
+                Triple(senderAvatar, replyText, senderName)
+            }.distinctBy { it.second }
+        }
+
+        var currentReplyIndex by remember(memberReplies) { mutableStateOf(0) }
+        LaunchedEffect(memberReplies) {
+            if (memberReplies.size > 1) {
+                while (true) {
+                    kotlinx.coroutines.delay(2000)
+                    currentReplyIndex = (currentReplyIndex + 1) % memberReplies.size
+                }
+            }
+        }
+
+        if (isUser) {
+            LaunchedEffect(isEditingCaption) {
+                if (isEditingCaption) {
+                    onEditCaptionTextChange(
+                        androidx.compose.ui.text.input.TextFieldValue(
+                            text = caption,
+                            selection = androidx.compose.ui.text.TextRange(caption.length)
+                        )
+                    )
+                }
+            }
+        }
+
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(cardHeightDp)
                 .clip(cardShape)
-        )
+                .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE5E5EA))
+        ) {
+            SimultaneousPalThumbnail(
+                videoUri = videoUri,
+                onClick = {
+                    onSelectedMemberIndexChange(index)
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Overlay 1: Avatar and Name (Top Left)
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val userAvatar = if (isUser) customAvatarUriString else memberAvatar
+                if (!userAvatar.isNullOrEmpty()) {
+                    UriImage(
+                        uriString = userAvatar,
+                        modifier = Modifier
+                            .size(if (isGrid) 18.dp else 24.dp)
+                            .clip(CircleShape)
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(if (isGrid) 18.dp else 24.dp)
+                            .clip(CircleShape)
+                            .background(accentColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.smile_medium),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .rotate(180f)
+                        )
+                    }
+                }
+
+                Text(
+                    text = if (isUser) userFirstName else (memberName ?: ""),
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = if (isGrid) 12.sp else 15.sp,
+                    fontWeight = FontWeight.Normal,
+                    color = Color.White
+                )
+            }
+
+            // Overlays 2 & 3: Inline edit layout or Centered caption layout (with timestamp stripped out)
+            if (isUser && isEditingCaption) {
+                val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+                LaunchedEffect(Unit) {
+                    focusRequester.requestFocus()
+                }
+
+                androidx.compose.foundation.text.BasicTextField(
+                    value = editCaptionText,
+                    onValueChange = onEditCaptionTextChange,
+                    textStyle = TextStyle(
+                        fontFamily = RobotoFontFamily,
+                        fontSize = if (isGrid) 12.sp else 16.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = Color.Black.copy(alpha = 0.5f),
+                            offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                            blurRadius = 3f
+                        )
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(accentColor),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = if (isGrid) 8.dp else 16.dp)
+                        .focusRequester(focusRequester),
+                    decorationBox = { innerTextField ->
+                        Box(contentAlignment = Alignment.Center) {
+                            if (editCaptionText.text.isEmpty()) {
+                                Text(
+                                    text = "write caption...",
+                                    fontFamily = RobotoFontFamily,
+                                    fontSize = if (isGrid) 12.sp else 16.sp,
+                                    color = Color.White.copy(alpha = 0.5f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+
+                // Overlay 5: Top Right Checkmark Save button (only visible during caption editing mode)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = if (isGrid) 4.dp else 8.dp, end = if (isGrid) 6.dp else 12.dp)
+                        .size(if (isGrid) 24.dp else 36.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .clickable {
+                            val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                            if (userSub != null) {
+                                val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
+                                if (userPath.isNotEmpty()) {
+                                    onUpdateVlogCaption(userPath, editCaptionText.text.trim())
+                                }
+                            }
+                            onIsEditingCaptionChange(false)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Save Caption",
+                        tint = Color.White,
+                        modifier = Modifier.size(if (isGrid) 14.dp else 20.dp)
+                    )
+                }
+            } else {
+                // Both user (when not editing) and other members show caption ONLY (no timeText)
+                if (caption.isNotEmpty()) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.align(Alignment.Center)
+                    ) {
+                        Text(
+                            text = caption,
+                            fontFamily = RobotoFontFamily,
+                            fontSize = if (isGrid) 11.sp else 14.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color.White,
+                            style = TextStyle(
+                                shadow = androidx.compose.ui.graphics.Shadow(
+                                    color = Color.Black.copy(alpha = 0.5f),
+                                    offset = androidx.compose.ui.geometry.Offset(1f, 1f),
+                                    blurRadius = 3f
+                                )
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Overlay 4: Options menu trailing dots (Only shown if user has submission)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isUser && !isEditingCaption) {
+                    Box {
+                        Text(
+                            text = "•••",
+                            fontSize = if (isGrid) 10.sp else 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.clickable { showDropdownMenu = true }
+                        )
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = showDropdownMenu,
+                            onDismissRequest = { showDropdownMenu = false }
+                        ) {
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Edit Caption") },
+                                onClick = {
+                                    showDropdownMenu = false
+                                    onEditCaptionClick(index)
+                                }
+                            )
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = { Text("Delete Pal") },
+                                onClick = {
+                                    showDropdownMenu = false
+                                    onDeleteClick(index)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Overlay 5: Interaction row at the bottom
+            if (!isUser) {
+                // 1. Reply Arrow Icon in the bottom right corner (shifted up slightly to stack above love icon)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = if (isGrid) 10.dp else 16.dp)
+                        .clickable { onReplyClick(videoPath) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                        contentDescription = "Reply",
+                        tint = Color.White,
+                        modifier = Modifier.size(if (isGrid) 18.dp else 25.dp)
+                    )
+                }
+
+                // 2. Love Icon or Reacted Emoji in the bottom right corner
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
+                        .clickable { showEmojiOverlay = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (latestReaction != null) {
+                        Text(
+                            text = latestReaction,
+                            fontSize = if (isGrid) 16.sp else 24.sp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Filled.FavoriteBorder,
+                            contentDescription = "Love",
+                            tint = Color.White,
+                            modifier = Modifier.size(if (isGrid) 18.dp else 25.dp)
+                        )
+                    }
+                }
+
+                // 3. Replies slideshow shown at Bottom Left corner
+                if (memberReplies.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(bottom = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = currentReplyIndex,
+                            transitionSpec = {
+                                (androidx.compose.animation.slideInVertically { height -> height } + androidx.compose.animation.fadeIn()) togetherWith 
+                                (androidx.compose.animation.slideOutVertically { height -> -height } + androidx.compose.animation.fadeOut())
+                            },
+                            label = "ReplySlideshow"
+                        ) { idx ->
+                            val reply = memberReplies.getOrNull(idx)
+                            if (reply != null) {
+                                val (avatar, text, name) = reply
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    if (!avatar.isNullOrEmpty()) {
+                                        UriImage(
+                                            uriString = avatar,
+                                            modifier = Modifier
+                                                .size(if (isGrid) 16.dp else 20.dp)
+                                                .clip(CircleShape)
+                                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(if (isGrid) 16.dp else 20.dp)
+                                                .clip(CircleShape)
+                                                .background(accentColor),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Image(
+                                                painter = painterResource(id = R.drawable.smile_medium),
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .rotate(180f)
+                                            )
+                                        }
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color.White, RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = text,
+                                            color = Color.Black,
+                                            fontSize = if (isGrid) 9.sp else 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.SansSerif
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Transparent Emoji Selector Overlay in the exact middle of the card
+            if (showEmojiOverlay) {
+                // Dimmed dismiss overlay background
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .clickable { showEmojiOverlay = false }
+                )
+
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.5.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    currentEmojis.forEach { emoji ->
+                        Text(
+                            text = emoji,
+                            fontSize = if (isGrid) 12.sp else 24.sp,
+                            modifier = Modifier
+                                .clickable {
+                                    onEmojiReacted(videoPath, emoji)
+                                    showEmojiOverlay = false
+                                }
+                        )
+                    }
+
+                    // Refresh/Smiley indicator as outline icon at the end matching image 2
+                    Box(
+                        modifier = Modifier
+                            .size(if (isGrid) 16.dp else 28.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                currentEmojis = defaultEmojis.shuffled().take(5)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AccountCircle,
+                            contentDescription = "More",
+                            tint = Color.White.copy(alpha = 0.8f),
+                            modifier = Modifier.size(if (isGrid) 12.dp else 24.dp)
+                        )
+                    }
+                }
+            }
+        }
     } else if (isUser && !hasSubmission) {
         // BOUNCING SCREEN SAVER CARD FOR USER (Slot 0, empty)
         BoxWithConstraints(
@@ -9752,81 +10089,10 @@ fun VlogScreenContent(
                                         factory = { ctx ->
                                             val view = android.view.LayoutInflater.from(ctx)
                                                 .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
-                                            view.layoutParams = android.view.ViewGroup.LayoutParams(
-                                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                                            )
                                             view.apply {
-                                                            player = localPlayer
+                                                player = localPlayer
                                                 useController = false
-                                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                                                setBackgroundColor(android.graphics.Color.BLACK)
-        
-                                                fun applyVideoScale() {
-                                                    val videoSize = localPlayer.videoSize
-                                                    val videoWidth = videoSize.width
-                                                    val videoHeight = videoSize.height
-                                                    val videoRotation = getVideoFileRotation(context, path)
-                                                    val textureView = getVideoSurfaceView() as? android.view.TextureView
-                                                    if (textureView == null) {
-                                                        postDelayed({ applyVideoScale() }, 100)
-                                                        return
-                                                    }
-                                                    val containerWidth = width.toFloat()
-                                                    val containerHeight = height.toFloat()
-                                                    if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                                        val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, path), getPathZoomFactor(path))
-                                                        val needsRotation = videoRotation == 90 || videoRotation == 270
-                                                        val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
-                                                        val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
-                                                        
-                                                        val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-                                                        
-                                                        val calculatedScaleX: Float
-                                                        val calculatedScaleY: Float
-                                                        val calculatedRotation: Float
-                                                        if (needsRotation) {
-                                                            calculatedScaleX = (rotatedHeight * scale) / containerWidth
-                                                            calculatedScaleY = (rotatedWidth * scale) / containerHeight
-                                                            calculatedRotation = 270f
-                                                        } else {
-                                                            calculatedScaleX = (rotatedWidth * scale) / containerWidth
-                                                            calculatedScaleY = (rotatedHeight * scale) / containerHeight
-                                                            calculatedRotation = 0f
-                                                        }
-                                                         
-                                                         android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
-                                                         
-                                                         textureView.pivotX = containerWidth / 2f
-                                                         textureView.pivotY = containerHeight / 2f
-                                                         textureView.scaleX = calculatedScaleX
-                                                         textureView.scaleY = calculatedScaleY
-                                                         textureView.rotation = calculatedRotation
-                                                     } else {
-                                                        postDelayed({ applyVideoScale() }, 100)
-                                                    }
-                                                }
-
-                                                val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                                                    applyVideoScale()
-                                                }
-                                                addOnLayoutChangeListener(layoutListener)
-
-                                                localPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                                                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                                        super.onVideoSizeChanged(videoSize)
-                                                        applyVideoScale()
-                                                    }
-                                                    override fun onPlaybackStateChanged(playbackState: Int) {
-                                                        super.onPlaybackStateChanged(playbackState)
-                                                        applyVideoScale()
-                                                        if (playbackState == androidx.media3.common.Player.STATE_READY) {
-                                                            localPlayer.play()
-                                                        }
-                                                    }
-                                                })
-
-                                                applyVideoScale()
+                                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                                             }
                                         },
                                         modifier = Modifier.fillMaxSize(),
@@ -13333,76 +13599,9 @@ fun VideoPlayerItem(
                     val view = android.view.LayoutInflater.from(ctx)
                         .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
                     view.apply {
-                                    player = localPlayer
+                        player = localPlayer
                         useController = false
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-
-                        fun applyVideoScale() {
-                            val videoSize = localPlayer.videoSize
-                            val videoWidth = videoSize.width
-                            val videoHeight = videoSize.height
-                            val currentIdx = localPlayer.currentMediaItemIndex
-                            val localPath = resolvedPaths.getOrNull(currentIdx)
-                            val videoRotation = getVideoFileRotation(context, localPath)
-                            val textureView = getVideoSurfaceView() as? android.view.TextureView
-                            if (textureView == null) {
-                                postDelayed({ applyVideoScale() }, 100)
-                                return
-                            }
-                            val containerWidth = width.toFloat()
-                            val containerHeight = height.toFloat()
-                            if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                val needsRotation = videoRotation == 90 || videoRotation == 270
-val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
-val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
-
-val currentIdx = localPlayer.currentMediaItemIndex
-val rawPath = videoPaths.getOrNull(currentIdx)
-val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, rawPath), getPathZoomFactor(rawPath))
-val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-
-val calculatedScaleX: Float
-val calculatedScaleY: Float
-val calculatedRotation: Float
-if (needsRotation) {
-    calculatedScaleX = (rotatedHeight * scale) / containerWidth
-    calculatedScaleY = (rotatedWidth * scale) / containerHeight
-    calculatedRotation = 270f
-} else {
-    calculatedScaleX = (rotatedWidth * scale) / containerWidth
-    calculatedScaleY = (rotatedHeight * scale) / containerHeight
-    calculatedRotation = 0f
-}
-                                
-                                android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
-                                
-                                textureView.pivotX = containerWidth / 2f
-                                textureView.pivotY = containerHeight / 2f
-                                textureView.scaleX = calculatedScaleX
-                                textureView.scaleY = calculatedScaleY
-                                textureView.rotation = calculatedRotation
-                            } else {
-                                postDelayed({ applyVideoScale() }, 100)
-                            }
-                        }
-
-                        val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                            applyVideoScale()
-                        }
-                        addOnLayoutChangeListener(layoutListener)
-
-                        localPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                super.onVideoSizeChanged(videoSize)
-                                applyVideoScale()
-                            }
-                            override fun onPlaybackStateChanged(playbackState: Int) {
-                                super.onPlaybackStateChanged(playbackState)
-                                applyVideoScale()
-                            }
-                        })
-
-                        applyVideoScale()
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     }
                 },
                 update = { view ->
@@ -18623,80 +18822,9 @@ private fun GroupExportMemberSlot(
                     val view = android.view.LayoutInflater.from(ctx)
                         .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
                     view.apply {
-                                    player = localPlayer
+                        player = localPlayer
                         useController = false
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                        setBackgroundColor(android.graphics.Color.BLACK)
-                        
-                        fun applyVideoScale() {
-                            val videoSize = localPlayer.videoSize
-                            val videoWidth = videoSize.width
-                            val videoHeight = videoSize.height
-                            val currentIdx = localPlayer.currentMediaItemIndex
-                            val localPath = resolvedPathsState.getOrNull(currentIdx)
-                            val videoRotation = getVideoFileRotation(context, localPath)
-                            val textureView = getVideoSurfaceView() as? android.view.TextureView
-                            if (textureView == null) {
-                                postDelayed({ applyVideoScale() }, 100)
-                                return
-                            }
-                            val containerWidth = width.toFloat()
-                            val containerHeight = height.toFloat()
-                            if (containerWidth > 0f && containerHeight > 0f && videoWidth > 0 && videoHeight > 0) {
-                                val needsRotation = videoRotation == 90 || videoRotation == 270
-val rotatedWidth = if (needsRotation) videoHeight.toFloat() else videoWidth.toFloat()
-val rotatedHeight = if (needsRotation) videoWidth.toFloat() else videoHeight.toFloat()
-
-val currentIdx = localPlayer.currentMediaItemIndex
-val rawPath = videoPaths.getOrNull(currentIdx)
-val zoomFactor = java.lang.Math.max(getLocalVlogZoomFactor(context, rawPath), getPathZoomFactor(rawPath))
-val scale = java.lang.Math.max(containerWidth / rotatedWidth, containerHeight / rotatedHeight) * 1.0f
-
-val calculatedScaleX: Float
-val calculatedScaleY: Float
-val calculatedRotation: Float
-if (needsRotation) {
-    calculatedScaleX = (rotatedHeight * scale) / containerWidth
-    calculatedScaleY = (rotatedWidth * scale) / containerHeight
-    calculatedRotation = 270f
-} else {
-    calculatedScaleX = (rotatedWidth * scale) / containerWidth
-    calculatedScaleY = (rotatedHeight * scale) / containerHeight
-    calculatedRotation = 0f
-}
-                                
-                                android.util.Log.d("PalVideoScale", "Reverted scale for localPlayer: video=${videoWidth}x${videoHeight}, container=${containerWidth}x${containerHeight}, scaleX=${calculatedScaleX}, scaleY=${calculatedScaleY}, rotation=${calculatedRotation}")
-                                
-                                textureView.pivotX = containerWidth / 2f
-                                textureView.pivotY = containerHeight / 2f
-                                textureView.scaleX = calculatedScaleX
-                                textureView.scaleY = calculatedScaleY
-                                textureView.rotation = calculatedRotation
-                            } else {
-                                postDelayed({ applyVideoScale() }, 100)
-                            }
-                        }
-
-                        val layoutListener = android.view.View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-                            applyVideoScale()
-                        }
-                        addOnLayoutChangeListener(layoutListener)
-
-                        localPlayer.addListener(object : androidx.media3.common.Player.Listener {
-                            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                super.onVideoSizeChanged(videoSize)
-                                applyVideoScale()
-                            }
-                            override fun onPlaybackStateChanged(playbackState: Int) {
-                                super.onPlaybackStateChanged(playbackState)
-                                applyVideoScale()
-                                if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
-                                    onPlaybackEnded()
-                                }
-                            }
-                        })
-
-                        applyVideoScale()
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
