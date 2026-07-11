@@ -240,7 +240,7 @@ fun PalGroupGridScreen(
                                         view.apply {
                                             player = vlogExoPlayer
                                             useController = false
-                                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                                             setBackgroundColor(android.graphics.Color.BLACK)
     
                                             fun applyVideoScale() {

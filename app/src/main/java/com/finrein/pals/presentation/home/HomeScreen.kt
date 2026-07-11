@@ -5845,16 +5845,22 @@ fun CameraPreview(
         }
         
         val preview = Preview.Builder()
+            .setTargetAspectRatio(androidx.camera.core.AspectRatio.RATIO_16_9)
             .build()
             .also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
 
+        val qualitySelector = QualitySelector.fromOrderedList(
+            listOf(Quality.FHD, Quality.HD),
+            androidx.camera.video.FallbackStrategy.higherQualityOrLowerThan(Quality.FHD)
+        )
+
         val recorder = Recorder.Builder()
-            .setQualitySelector(QualitySelector.from(Quality.HD))
+            .setQualitySelector(qualitySelector)
+            .setExecutor(androidx.core.content.ContextCompat.getMainExecutor(context))
             .build()
-        val videoCapture = VideoCapture.Builder(recorder)
-            .build()
+        val videoCapture = VideoCapture.withOutput(recorder)
         onVideoCaptureCreated(videoCapture)
         
         val cameraSelector = if (isCameraFlipped) {
@@ -7557,8 +7563,13 @@ fun CapturedPreviewScreen(
                     ) {
                         androidx.compose.ui.viewinterop.AndroidView(
                             factory = { context ->
-                                val view = android.view.LayoutInflater.from(context)
-                                    .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                                val currentDeviceSdk = android.os.Build.VERSION.SDK_INT
+                                val view = if (currentDeviceSdk >= 33) {
+                                    androidx.media3.ui.PlayerView(context)
+                                } else {
+                                    android.view.LayoutInflater.from(context)
+                                        .inflate(R.layout.player_view_texture, null) as androidx.media3.ui.PlayerView
+                                }
                                 view.apply {
                                     this.useController = false
                                     this.setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
@@ -7573,7 +7584,7 @@ fun CapturedPreviewScreen(
                                         val contentFrame = this.findViewById<androidx.media3.ui.AspectRatioFrameLayout>(androidx.media3.ui.R.id.exo_content_frame)
                                         contentFrame?.addView(glSurfaceView, 0)
                                     } catch (e: Exception) {
-                                        // Fallback safely to compatible texture layer already set up by layout inflation
+                                        // Fallback safely to compatible layer (TextureView for API < 33, SurfaceView for API >= 33)
                                     }
                                     
                                     layoutParams = android.view.ViewGroup.LayoutParams(
@@ -8246,6 +8257,23 @@ fun SimultaneousPalThumbnail(
             this.setMediaSource(mediaSource)
             this.prepare()
             this.playWhenReady = true
+
+            this.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onPositionDiscontinuity(
+                    oldPosition: androidx.media3.common.Player.PositionInfo,
+                    newPosition: androidx.media3.common.Player.PositionInfo,
+                    reason: Int
+                ) {
+                    if (reason == androidx.media3.common.Player.DISCONTINUITY_REASON_AUTO_TRANSITION || 
+                        reason == androidx.media3.common.Player.DISCONTINUITY_REASON_SEEK) {
+                        try {
+                            context.cacheDir.deleteRecursively()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            })
         }
     }
 
@@ -8271,7 +8299,7 @@ fun SimultaneousPalThumbnail(
                 view.apply {
                     this.useController = false
                     this.setShowBuffering(androidx.media3.ui.PlayerView.SHOW_BUFFERING_NEVER)
-                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM)
+                    this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT)
                 }
             },
             update = { playerView ->
@@ -8283,7 +8311,7 @@ fun SimultaneousPalThumbnail(
                     surfaceView.post {
                         try {
                             surfaceView.removeOnLayoutChangeListener(null)
-                            playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
+                            playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT)
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }

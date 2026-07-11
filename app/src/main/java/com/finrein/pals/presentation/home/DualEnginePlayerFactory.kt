@@ -21,7 +21,7 @@ object DualEnginePlayerFactory {
                 requiresSecureDecoder,
                 requiresTunnelingDecoder
             )
-            // Sort decoders to prioritize software ones (containing c2.android or omx.google)
+            // Restore the original software decoder sorting mechanism perfectly
             return decoders.sortedWith(compareByDescending { info ->
                 val name = info.name.lowercase()
                 name.contains("c2.android") || name.contains("omx.google") || name.contains("google")
@@ -37,12 +37,7 @@ object DualEnginePlayerFactory {
             setEnableDecoderFallback(true)
         }
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                100,  // minBufferMs
-                500,  // maxBufferMs
-                50,   // bufferForPlaybackMs
-                50    // bufferForPlaybackAfterRebufferMs
-            )
+            .setBufferDurationsMs(100, 500, 50, 50)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -64,12 +59,7 @@ object DualEnginePlayerFactory {
             setEnableDecoderFallback(true)
         }
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                100,  // minBufferMs
-                500,  // maxBufferMs
-                50,   // bufferForPlaybackMs
-                50    // bufferForPlaybackAfterRebufferMs
-            )
+            .setBufferDurationsMs(100, 500, 50, 50)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
