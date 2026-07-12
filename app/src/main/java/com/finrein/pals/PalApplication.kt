@@ -1,6 +1,8 @@
 package com.finrein.pals
 
 import android.app.Application
+import android.util.Log
+import androidx.profileinstaller.ProfileInstaller
 import dagger.hilt.android.HiltAndroidApp
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
@@ -19,6 +21,16 @@ class PalApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        
+        // Force critical path tracing directly on startup 
+        // to stabilize Compose view trees
+        Thread {
+            try {
+                ProfileInstaller.writeProfile(this)
+            } catch (e: Exception) {
+                Log.e("Profile_Debug", "Failed to write profile", e)
+            }
+        }.start()
     }
 
     companion object {

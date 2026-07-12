@@ -1,6 +1,11 @@
 package com.finrein.pals
 
 import android.os.Bundle
+import android.content.Context
+import android.content.Intent
+import android.os.PowerManager
+import android.provider.Settings
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -81,6 +86,24 @@ class MainActivity : ComponentActivity() {
                 action = "com.finrein.pals.ACTION_CHECK_FIRST_PAL"
             }
             applicationContext.sendBroadcast(checkIntent)
+        }
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val packageName = packageName
+
+        if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+            try {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                try {
+                    val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    startActivity(fallbackIntent)
+                } catch (ex: Exception) {
+                    ex.printStackTrace()
+                }
+            }
         }
 
         setContent {
@@ -214,6 +237,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val targetTab = intent.getStringExtra("TARGET_TAB")
+        if (targetTab != null) {
+            homeViewModel.setCurrentTab(targetTab)
         }
     }
 

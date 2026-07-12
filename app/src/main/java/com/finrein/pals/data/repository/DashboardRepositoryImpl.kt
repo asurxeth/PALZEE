@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.booleanOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -50,10 +51,16 @@ class DashboardRepositoryImpl @Inject constructor(
                     size = groupSize,
                     code = obj["code"]?.jsonPrimitive?.content ?: "",
                     isVlog = false,
-                    isCreator = obj["is_creator"]?.jsonPrimitive?.boolean ?: false
+                    isCreator = try {
+                        val prim = obj["is_creator"]?.jsonPrimitive
+                        prim?.booleanOrNull ?: prim?.content?.toBoolean() ?: false
+                    } catch (e: Exception) {
+                        false
+                    }
                 )
             }
 
+            android.util.Log.d("RepoDebug", "Mapped groups size: ${mappedPals.size}")
             listOf(defaultVlog) + mappedPals
         }
     }

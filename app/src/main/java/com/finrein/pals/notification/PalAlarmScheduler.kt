@@ -4,13 +4,17 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import java.util.Calendar
+import com.google.firebase.messaging.FirebaseMessaging
 
 object PalAlarmScheduler {
     private const val REQUEST_CODE = 1001
     const val ACTION_PAL_ALARM = "com.finrein.pals.ACTION_HOURLY_PAL_ALARM"
 
     fun updateScheduling(context: Context, interval: String) {
+        // 1. Permanently cancel any existing client-side AlarmManager reminders
+        cancelAlarm(context)
+
+        // 2. Sync FCM topic subscriptions
         val hasPermission = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             androidx.core.content.ContextCompat.checkSelfPermission(
                 context, android.Manifest.permission.POST_NOTIFICATIONS
@@ -19,108 +23,43 @@ object PalAlarmScheduler {
             true
         }
 
-        if (interval == "off" || interval.isBlank() || !hasPermission) {
-            cancelAlarm(context)
-        } else {
-            scheduleNextAlarm(context, interval)
-        }
-    }
-
-    private fun scheduleNextAlarm(context: Context, interval: String) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        
-        val (nextAlarmTime, targetHour) = getNextAlarmTimeAndHour(interval)
-        
-        val intent = Intent(context, PalNotificationReceiver::class.java).apply {
-            action = ACTION_PAL_ALARM
-            putExtra("EXTRA_SCHEDULED_HOUR", targetHour)
-        }
-        
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            REQUEST_CODE,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                if (alarmManager.canScheduleExactAlarms()) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        nextAlarmTime,
-                        pendingIntent
-                    )
-                } else {
-                    alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        nextAlarmTime,
-                        pendingIntent
-                    )
-                }
-            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    nextAlarmTime,
-                    pendingIntent
-                )
+            val messaging = FirebaseMessaging.getInstance()
+            if (interval == "off" || interval.isBlank() || !hasPermission) {
+                messaging.unsubscribeFromTopic("pals_first_time")
+                messaging.unsubscribeFromTopic("pals_hourly")
+                messaging.unsubscribeFromTopic("pals_three_hourly")
+                android.util.Log.d("PalAlarmScheduler", "FCM: Unsubscribed from all topics (notifications off/disabled)")
             } else {
-                alarmManager.setExact(
-                    AlarmManager.RTC_WAKEUP,
-                    nextAlarmTime,
-                    pendingIntent
-                )
+                when (interval) {
+                    "first time" -> {
+                        messaging.subscribeToTopic("pals_first_time")
+                        messaging.unsubscribeFromTopic("pals_hourly")
+                        messaging.unsubscribeFromTopic("pals_three_hourly")
+                        android.util.Log.d("PalAlarmScheduler", "FCM: Subscribed to pals_first_time, unsubscribed from others")
+                    }
+                    "every 1hr" -> {
+                        messaging.subscribeToTopic("pals_hourly")
+                        messaging.unsubscribeFromTopic("pals_first_time")
+                        messaging.unsubscribeFromTopic("pals_three_hourly")
+                        android.util.Log.d("PalAlarmScheduler", "FCM: Subscribed to pals_hourly, unsubscribed from others")
+                    }
+                    "every 3hrs" -> {
+                        messaging.subscribeToTopic("pals_three_hourly")
+                        messaging.unsubscribeFromTopic("pals_first_time")
+                        messaging.unsubscribeFromTopic("pals_hourly")
+                        android.util.Log.d("PalAlarmScheduler", "FCM: Subscribed to pals_three_hourly, unsubscribed from others")
+                    }
+                    else -> {
+                        messaging.unsubscribeFromTopic("pals_first_time")
+                        messaging.unsubscribeFromTopic("pals_hourly")
+                        messaging.unsubscribeFromTopic("pals_three_hourly")
+                    }
+                }
             }
-            android.util.Log.d("PalAlarmScheduler", "Scheduled next alarm at: ${java.util.Date(nextAlarmTime)} (Hour: $targetHour)")
         } catch (e: Exception) {
-            try {
-                alarmManager.setAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    nextAlarmTime,
-                    pendingIntent
-                )
-            } catch (ex: Exception) {
-                alarmManager.set(
-                    AlarmManager.RTC_WAKEUP,
-                    nextAlarmTime,
-                    pendingIntent
-                )
-            }
+            android.util.Log.e("PalAlarmScheduler", "Failed to update FCM topic subscriptions", e)
         }
-    }
-
-    fun getNextAlarmTimeAndHour(interval: String): Pair<Long, Int> {
-        val now = System.currentTimeMillis()
-        val isThreeHours = interval == "every 3hrs"
-        
-        for (i in 0..48) {
-            val testCal = Calendar.getInstance().apply {
-                add(Calendar.HOUR_OF_DAY, i)
-            }
-            val testHour = testCal.get(Calendar.HOUR_OF_DAY)
-            val relativeHour = (testHour - 4 + 24) % 24
-            
-            if (isThreeHours && (relativeHour % 3 != 0)) {
-                continue
-            }
-            
-            val totalSeconds = relativeHour * 150
-            val targetMinute = totalSeconds / 60
-            val targetSecond = totalSeconds % 60
-            
-            testCal.set(Calendar.MINUTE, targetMinute)
-            testCal.set(Calendar.SECOND, targetSecond)
-            testCal.set(Calendar.MILLISECOND, 0)
-            
-            if (testCal.timeInMillis > now) {
-                return Pair(testCal.timeInMillis, testHour)
-            }
-        }
-        
-        val fallbackCal = Calendar.getInstance().apply {
-            add(Calendar.HOUR_OF_DAY, 1)
-        }
-        return Pair(fallbackCal.timeInMillis, fallbackCal.get(Calendar.HOUR_OF_DAY))
     }
 
     fun cancelAlarm(context: Context) {
@@ -137,6 +76,8 @@ object PalAlarmScheduler {
         if (pendingIntent != null) {
             alarmManager.cancel(pendingIntent)
             pendingIntent.cancel()
+            android.util.Log.d("PalAlarmScheduler", "Cancelled existing client-side AlarmManager alarm")
         }
     }
 }
+

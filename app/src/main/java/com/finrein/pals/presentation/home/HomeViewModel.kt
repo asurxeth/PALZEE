@@ -1,5 +1,6 @@
 package com.finrein.pals.presentation.home
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,16 +22,57 @@ import kotlinx.serialization.json.jsonPrimitive
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
+    private val application: Application,
     private val dashboardRepository: DashboardRepository,
     private val chatRepository: ChatRepository,
     private val activePalRepository: ActivePalRepository
 ) : ViewModel() {
 
-    private val _createdPals = MutableStateFlow<List<PalItem>>(emptyList())
+    private val _createdPals = MutableStateFlow<List<PalItem>>(getInitialCachedPals(application))
     val createdPals: StateFlow<List<PalItem>> = _createdPals
+
+    init {
+        android.util.Log.d("PalsDataDebug", "ViewModel init - HashCode: ${this.hashCode()}")
+        loadCachedPals()
+    }
+
+    private fun loadCachedPals() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val sharedPrefs = getVlogPrefs(application)
+                val saved = sharedPrefs.getString("created_pals", "") ?: ""
+                val initialList = if (saved.isEmpty()) {
+                    listOf(PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true))
+                } else {
+                    saved.split(";;;").mapNotNull { s ->
+                        val parts = s.split(":")
+                        if (parts.size < 3) null else {
+                            PalItem(
+                                name = parts[0].replace("\\:", ":"),
+                                size = parts.getOrNull(1) ?: "4",
+                                code = parts.getOrNull(2) ?: "",
+                                isVlog = parts.getOrNull(3)?.toBoolean() ?: false,
+                                isCreator = parts.getOrNull(4)?.toBoolean() ?: false
+                            )
+                        }
+                    }
+                }
+                _createdPals.value = initialList
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    private val _currentTab = MutableStateFlow<String?>(null)
+    val currentTab: StateFlow<String?> = _currentTab
 
     private val _palMessages = MutableStateFlow<Map<String, List<MessageDbItem>>>(emptyMap())
     val palMessages: StateFlow<Map<String, List<MessageDbItem>>> = _palMessages
+
+    fun setCurrentTab(tab: String?) {
+        _currentTab.value = tab
+    }
 
     fun updateCreatedPals(list: List<PalItem>) {
         _createdPals.value = list
@@ -44,11 +86,25 @@ class HomeViewModel @Inject constructor(
         _palMessages.value = _palMessages.value - key
     }
 
-    suspend fun refreshPals(currentUserId: String) {
+    private var isInitialized = false
+
+    suspend fun refreshPals(currentUserId: String, force: Boolean = false) {
+        android.util.Log.d("PalsDataDebug", "RefreshPals called - HashCode: ${this.hashCode()}")
         if (currentUserId.isEmpty()) return
+        val onlyHasPlaceholder = _createdPals.value.size <= 1 && _createdPals.value.firstOrNull()?.code == "vlog"
+        if (!force && isInitialized && !onlyHasPlaceholder) return
         val result = dashboardRepository.getCleanHomescreenDashboard(currentUserId)
-        result.getOrNull()?.let { list ->
-            _createdPals.value = list.distinctBy { it.code }
+        result.getOrNull()?.let { remoteList ->
+            val vlogItem = PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true, isCreator = false)
+            val combinedList = (listOf(vlogItem) + remoteList.filter { it.code != "vlog" })
+                .filter { it.code.isNotBlank() }
+            android.util.Log.d("PalsDebug", "Remote list size: ${remoteList.size}")
+            android.util.Log.d("PalsDataDebug", "Remote list size: ${remoteList.size}")
+            remoteList.forEach { item ->
+                android.util.Log.d("PalsDataDebug", "Item found: ${item.name}, Code: ${item.code}")
+            }
+            _createdPals.value = combinedList.distinctBy { it.code }
+            isInitialized = true
         }
     }
 
@@ -170,8 +226,33 @@ class HomeViewModel @Inject constructor(
                 }
             )
             result.getOrNull()?.let { state ->
+                cacheSubmissionRotations(application, state.submissions)
                 _activePalState.value = state
             }
         }
+    }
+}
+
+private fun getInitialCachedPals(application: android.app.Application): List<PalItem> {
+    try {
+        val sharedPrefs = getVlogPrefs(application)
+        val saved = sharedPrefs.getString("created_pals", "") ?: ""
+        if (saved.isEmpty()) {
+            return listOf(PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true))
+        }
+        return saved.split(";;;").mapNotNull { s ->
+            val parts = s.split(":")
+            if (parts.size < 3) null else {
+                PalItem(
+                    name = parts[0].replace("\\:", ":"),
+                    size = parts.getOrNull(1) ?: "4",
+                    code = parts.getOrNull(2) ?: "",
+                    isVlog = parts.getOrNull(3)?.toBoolean() ?: false,
+                    isCreator = parts.getOrNull(4)?.toBoolean() ?: false
+                )
+            }
+        }
+    } catch (e: Exception) {
+        return listOf(PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true))
     }
 }

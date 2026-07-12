@@ -229,30 +229,12 @@ fun PalGroupGridScreen(
                                     .background(Color.Black)
                                     .clickable { onPalClick(vlogPal) }
                             ) {
-                                androidx.compose.ui.viewinterop.AndroidView(
-                                    factory = { ctx ->
-                                        PlayerView(ctx).apply {
-                                            useController = false
-                                            this.implementationMode = PlayerView.IMPLEMENTATION_MODE_COMPATIBLE
-                                            this.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL)
-                                        }
-                                    },
+                                VideoPlayerWithThumbnail(
+                                    exoPlayer = vlogExoPlayer,
+                                    videoPath = capturedVlogsPaths.getOrNull(currentPlayingIndex),
                                     modifier = Modifier.fillMaxSize(),
-                                    update = { view ->
-                                        if (view.player != vlogExoPlayer) {
-                                            view.player = vlogExoPlayer
-                                        }
-                                        setupVideoScaleRotation(view.context, view, vlogExoPlayer) {
-                                            capturedVlogsPaths.getOrNull(vlogExoPlayer.currentMediaItemIndex)
-                                        }
-                                        if (!vlogExoPlayer.isPlaying && vlogExoPlayer.playbackState == androidx.media3.common.Player.STATE_READY) {
-                                            vlogExoPlayer.play()
-                                        }
-                                    },
-                                    onRelease = { view ->
-                                        view.player = null
-                                        setupVideoScaleRotation(view.context, view, null)
-                                    }
+                                    resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL,
+                                    isSubsequentSlideshowVideo = currentPlayingIndex > 0
                                 )
 
 
@@ -492,7 +474,7 @@ fun PalGroupGridScreen(
             }
 
             // E. Onboarding Steps (shown if no group spaces exist)
-            if (createdPals.none { !it.isVlog }) {
+            if (!isLoadingPals && createdPals.none { !it.isVlog }) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(
                         modifier = Modifier

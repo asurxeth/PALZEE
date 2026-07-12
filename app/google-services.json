@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "852121472904",
+    "project_id": "palls-31c36",
+    "storage_bucket": "palls-31c36.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:852121472904:android:e7588fbae591b537a1f43d",
+        "android_client_info": {
+          "package_name": "com.finrein.pals"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "852121472904-58hhq0cg6k45kknu1d64pi6tmmch0tld.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDQ1yGkTSocoIt2p1tlMKSJnVtJ8A3ptnc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "852121472904-58hhq0cg6k45kknu1d64pi6tmmch0tld.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

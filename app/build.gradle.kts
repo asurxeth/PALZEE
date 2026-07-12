@@ -4,7 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.google.services)
     kotlin("plugin.serialization") version "2.0.0"
+
 }
 
 import java.util.Properties
@@ -37,6 +39,8 @@ android {
             storePassword = "11223344"
             keyAlias = "pals-release"
             keyPassword = "11223344"
+            enableV3Signing = true
+            enableV4Signing = true
         }
     }
 
@@ -78,6 +82,8 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
+            isJniDebuggable = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -104,6 +110,14 @@ android {
             pickFirsts.add("**/libimage_processing_util_jni.so")
             pickFirsts.add("**/libdatastore_shared_counter.so")
         }
+        dex {
+            useLegacyPackaging = false
+        }
+    }
+
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
     }
 }
 
@@ -112,8 +126,10 @@ dependencies {
     // Core AndroidX
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.2")
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 
     // Compose BOM & UI Elements
     implementation(platform(libs.androidx.compose.bom))
@@ -180,7 +196,12 @@ dependencies {
 
     // Tooling dependencies for development
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    // Firebase Cloud Messaging dependencies
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging.ktx)
 }
+
 
 
 

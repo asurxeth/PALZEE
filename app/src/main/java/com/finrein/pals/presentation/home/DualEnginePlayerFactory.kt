@@ -32,22 +32,25 @@ object DualEnginePlayerFactory {
         return playerPool.poll() ?: ExoPlayer.Builder(context.applicationContext).apply {
             val renderersFactory = DefaultRenderersFactory(context.applicationContext).apply {
                 setMediaCodecSelector(softwareMediaCodecSelector)
-                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
                 setEnableDecoderFallback(true)
             }
             setRenderersFactory(renderersFactory)
             
             val loadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(100, 500, 100, 100)
+                .setBufferDurationsMs(2500, 5000, 1000, 1500)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
             setLoadControl(loadControl)
-        }.build()
+        }.build().apply {
+            playbackParameters = androidx.media3.common.PlaybackParameters.DEFAULT
+        }
     }
 
     fun releaseIntoPool(player: ExoPlayer) {
         try {
             player.stop()
+            player.clearVideoSurface()
             player.clearMediaItems()
             if (playerPool.size < 10) {
                 playerPool.offer(player)
@@ -65,4 +68,16 @@ object DualEnginePlayerFactory {
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun createStandardPreviewPlayer(context: Context): ExoPlayer = getPooledInstance(context)
+
+    fun releaseAll() {
+        var player = playerPool.poll()
+        while (player != null) {
+            try {
+                player.release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            player = playerPool.poll()
+        }
+    }
 }
