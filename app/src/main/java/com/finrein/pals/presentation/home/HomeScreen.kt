@@ -1933,6 +1933,77 @@ fun deleteCachedVideo(context: android.content.Context, path: String) {
                 vlogPrefs.edit().remove(key).apply()
             }
         }
+        pruneOrphanedAppCache(context)
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
+fun pruneOrphanedAppCache(context: android.content.Context) {
+    try {
+        val cacheDir = context.cacheDir ?: return
+        
+        // 1. Gather all active local vlog paths from the vlog SharedPreferences
+        val vlogPrefs = getVlogPrefs(context)
+        val savedPaths = vlogPrefs.getString("vlog_paths", "") ?: ""
+        val activeLocalPaths = if (savedPaths.isEmpty()) emptySet<String>() else savedPaths.split(";;;").toSet()
+        
+        // Also resolve any localized paths from preferences
+        val activeResolvedPaths = mutableSetOf<String>()
+        activeLocalPaths.forEach { path ->
+            activeResolvedPaths.add(path)
+            val localPath = vlogPrefs.getString("local_path_$path", null)
+            if (localPath != null) {
+                activeResolvedPaths.add(localPath)
+            }
+            val cleanPath = if (path.startsWith("file://")) path.substring(7) else path
+            activeResolvedPaths.add(cleanPath)
+        }
+        
+        // Also query pal_prefs for localized video/audio player caches
+        val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+        palPrefs.all.forEach { (key, value) ->
+            if (key.startsWith("local_path_") && value is String) {
+                activeResolvedPaths.add(value)
+                val cleanVal = if (value.startsWith("file://")) value.substring(7) else value
+                activeResolvedPaths.add(cleanVal)
+            }
+        }
+        
+        // 2. Scan and prune files inside cacheDir
+        val files = cacheDir.listFiles() ?: return
+        val protectedDirectories = listOf(
+            "exoplayer_cache", // NEVER touch this; ExoPlayer manages it internally
+            "app_icons",       // Or any folder that is persistent and not temporary
+            "lib",
+            "code_cache"
+        )
+        
+        for (file in files) {
+            val fileName = file.name
+            if (fileName in protectedDirectories) {
+                continue
+            }
+            
+            // Check if file represents an active local media file
+            val fileAbsolute = file.absolutePath
+            val cleanFileAbsolute = if (fileAbsolute.startsWith("file://")) fileAbsolute.substring(7) else fileAbsolute
+            
+            val isActive = activeResolvedPaths.contains(fileAbsolute) || 
+                           activeResolvedPaths.contains(cleanFileAbsolute) ||
+                           activeResolvedPaths.any { it.endsWith(fileName) }
+            
+            if (!isActive) {
+                // Delete if it's a temporary video/audio or download cache
+                if (fileName.startsWith("temp_") || 
+                    fileName.startsWith("PAL_Captured_") || 
+                    fileName.startsWith("cached_pal_") ||
+                    fileName.endsWith(".mp4") ||
+                    fileName.endsWith(".tmp")) {
+                    file.delete()
+                }
+            }
+        }
     } catch (e: Exception) {
         e.printStackTrace()
     }
@@ -6389,6 +6460,7 @@ fun CameraPreview(
             return@LaunchedEffect
         }
         
+        @Suppress("DEPRECATION")
         val preview = Preview.Builder()
             .setTargetAspectRatio(androidx.camera.core.AspectRatio.RATIO_16_9)
             .setTargetRotation(android.view.Surface.ROTATION_0) // Kept exactly as your working baseline
@@ -6669,13 +6741,13 @@ fun CameraScreenContent(
         val progressWidth = 7.5.dp
 
         // Precise positioning constants for taller layout
-        val shutterBottomMargin = 67.5.dp
+        val shutterBottomMargin = 65.5.dp
         val shutterSize = 59.dp * scale
         val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
         val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
 
         // Dynamically calculate camera frame size to be exactly 7.5dp spaced from both ends of the screen
-        var cameraWidth = screenWidth - 15.dp
+        var cameraWidth = screenWidth - 11.dp
         var cameraHeight = cameraWidth * (16f / 9f)
 
         val danceInnerColors = remember {
@@ -7087,7 +7159,7 @@ fun CameraScreenContent(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(x = (-64).dp * scale)
-                .padding(bottom = cameraFrameBottomPadding + 27.5.dp - (36.dp * scale / 2f))
+                .padding(bottom = cameraFrameBottomPadding + 20.5.dp - (36.dp * scale / 2f))
                 .size(36.dp * scale)
                 .clip(CircleShape) // circular shape for soft click ripple!
                 .clickable {
@@ -7116,22 +7188,31 @@ fun CameraScreenContent(
 
         // Screen-Edge Anchored Vertical Progress Bar (parallel to card straight-edge, highest Z-index)
         if (isRecording && recordingProgress > 0.0f) {
-            Box(
+            val drawWidth = 3.5.dp * scale
+            val drawEnd = 5.5.dp - drawWidth
+            Canvas(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = cameraFrameBottomPadding + 28.dp * scale, end = 0.dp) // aligned with straight vertical edge of card
-                    .width(progressWidth) // width
-                    .height(cameraHeight - 56.dp * scale) // length of straight vertical edge (cameraHeight - 28.dp * 2)
-                    .clip(RoundedCornerShape(3.25.dp * scale))
-                    .background(Color.Transparent) // fully transparent track
+                    .padding(bottom = cameraFrameBottomPadding + 32.dp * scale, end = drawEnd) // aligned with straight vertical edge of card
+                    .width(drawWidth) // width
+                    .height(cameraHeight - 64.dp * scale) // length of straight vertical edge (cameraHeight - 32.dp * 2)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(recordingProgress)
-                        .align(Alignment.TopCenter) // fills from top to bottom
-                        .background(palTextLogoColor) // exact same color as pal text logo on top left!
-                )
+                val strokeWidthPx = size.width
+                val heightPx = size.height
+                val radius = strokeWidthPx / 2f
+
+                val startY = radius
+                val endY = radius + (heightPx - strokeWidthPx) * recordingProgress
+
+                if (endY > startY) {
+                    drawLine(
+                        color = palTextLogoColor,
+                        start = androidx.compose.ui.geometry.Offset(radius, startY),
+                        end = androidx.compose.ui.geometry.Offset(radius, endY),
+                        strokeWidth = strokeWidthPx,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                }
             }
         }
 
@@ -7434,6 +7515,12 @@ fun VideoPlayerWithThumbnail(
         isBuffering = true
     }
 
+    LaunchedEffect(isVideoReady, isScaleApplied) {
+        if (isVideoReady && isScaleApplied) {
+            onFirstFrameRendered?.invoke()
+        }
+    }
+
     DisposableEffect(exoPlayer, videoPath) {
         val listener = object : androidx.media3.common.Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -7451,7 +7538,6 @@ fun VideoPlayerWithThumbnail(
                 super.onRenderedFirstFrame()
                 isVideoReady = true
                 isBuffering = false
-                onFirstFrameRendered?.invoke()
             }
         }
         exoPlayer.addListener(listener)
@@ -7491,7 +7577,6 @@ fun VideoPlayerWithThumbnail(
                     overrideZoomFactor = zoomFactor,
                     onScaleApplied = {
                         isScaleApplied = true
-                        onFirstFrameRendered?.invoke()
                     },
                     getPath = { videoPath }
                 )
@@ -8512,7 +8597,9 @@ fun CapturedPreviewScreen(
                 compareByDescending<PalItem> { it.isVlog }.thenBy { it.name }
             )
             val savedDeleted = sharedPrefs.getString(deletedVlogsKey, "") ?: ""
-            val currentDeleted = if (savedDeleted.isEmpty()) emptySet<String>() else savedDeleted.split(";;;").toSet()
+            val legacyDeleted = if (savedDeleted.isEmpty()) emptySet<String>() else savedDeleted.split(";;;").toSet()
+            val permanentDeleted = getPermanentlyDeletedSubmissions(context)
+            val currentDeleted = legacyDeleted + permanentDeleted
 
             sortedPals.forEach { pal ->
                 val isSelected = selectedPals.contains(pal.code)
@@ -8693,14 +8780,10 @@ fun CapturedPreviewScreen(
                         contentAlignment = Alignment.CenterEnd
                     ) {
                         if (pal.isVlog) {
-                            val groupSubs = groupSubmissionsMap["vlog"] ?: emptyList()
-                            val finalSubs = groupSubs.filter { sub ->
-                                val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
-                                path !in currentDeleted && sub.imageUrl !in currentDeleted
-                            }
+                            val activeVlogs = capturedVlogsPaths.filter { it !in currentDeleted }
                             GroupMembersSmileysRow(
                                 members = listOf("$currentUserId|||$currentDisplayName|||${customAvatarUriString ?: ""}"),
-                                submissions = finalSubs,
+                                submissions = if (activeVlogs.isEmpty()) emptyList() else listOf(SubmissionDbItem(palCode = "vlog", userId = currentUserId, userDisplayName = currentDisplayName, imageUrl = "vlog_placeholder")),
                                 isDark = isDark,
                                 accentColor = accentColor,
                                 palTextLogoColor = palTextLogoColor,
@@ -14155,7 +14238,7 @@ fun ReplyPreviewOverlay(
             }
         }
 
-        // 3. Message Input Bar at bottom
+        val isDark = isSystemInDarkTheme()
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -14170,8 +14253,8 @@ fun ReplyPreviewOverlay(
                     .weight(1f)
                     .height(48.dp)
                     .clip(RoundedCornerShape(24.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
-                    .background(Color.White.copy(alpha = 0.08f))
+                    .border(1.dp, if (isDark) Color(0xFF333333) else Color(0xFFCCCCCC), RoundedCornerShape(24.dp))
+                    .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
                     .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -14181,10 +14264,10 @@ fun ReplyPreviewOverlay(
                     textStyle = androidx.compose.ui.text.TextStyle(
                         fontFamily = FontFamily.SansSerif,
                         fontSize = 14.sp,
-                        color = Color.White
+                        color = if (isDark) Color.White else Color.Black
                     ),
                     singleLine = true,
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(if (isDark) Color.White else Color.Black),
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                     decorationBox = { innerTextField ->
                         if (replyInput.isEmpty()) {
@@ -14192,7 +14275,7 @@ fun ReplyPreviewOverlay(
                                 text = "message",
                                 fontFamily = FontFamily.SansSerif,
                                 fontSize = 14.sp,
-                                color = Color.White.copy(alpha = 0.5f)
+                                color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f)
                             )
                         }
                         innerTextField()
@@ -14205,7 +14288,8 @@ fun ReplyPreviewOverlay(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(if (isReplyValid) accentColor else Color.White.copy(alpha = 0.1f))
+                    .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
+                    .border(1.dp, if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.1f), CircleShape)
                     .clickable(enabled = isReplyValid) {
                         onSendReply(videoPath, replyInput.trim())
                         onActiveReplyPreviewPathChange(null)
@@ -14215,7 +14299,7 @@ fun ReplyPreviewOverlay(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send",
-                    tint = if (isReplyValid) Color.White else Color.White.copy(alpha = 0.4f),
+                    tint = if (isReplyValid) accentColor else (if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.3f)),
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -16312,7 +16396,7 @@ fun PalChatOverlay(
                             .height(44.dp)
                             .clip(RoundedCornerShape(22.dp))
                             .border(1.dp, if (isDark) Color(0xFF333333) else Color(0xFFCCCCCC), RoundedCornerShape(22.dp))
-                            .background(Color.Transparent)
+                            .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
                             .padding(horizontal = 16.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
@@ -16348,7 +16432,8 @@ fun PalChatOverlay(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .background(if (isInputValid) accentColor else headerButtonBg)
+                            .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
+                            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.1f), CircleShape)
                             .clickable(enabled = isInputValid) {
                                 val replyTarget = replyTargetFeedItem
                                 val text = messageInput.trim()
@@ -16366,7 +16451,7 @@ fun PalChatOverlay(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Send,
                             contentDescription = "Send",
-                            tint = if (isInputValid) Color.White else textColor.copy(alpha = 0.4f),
+                            tint = if (isInputValid) accentColor else (if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.3f)),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -18983,7 +19068,7 @@ private fun GroupExportMemberSlot(
     ) {
         if (videoPaths.isNotEmpty()) {
             var resolvedPathsState by remember(videoPaths) { mutableStateOf<List<String>>(emptyList()) }
-            var hasLoadedFirstSlotPal by remember(videoPaths) { mutableStateOf(false) }
+            var hasLoadedFirstSlotPal by remember { mutableStateOf(false) }
             var localPlayerIndex by remember { mutableStateOf(0) }
             @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
             val localPlayer = remember(videoPaths) {

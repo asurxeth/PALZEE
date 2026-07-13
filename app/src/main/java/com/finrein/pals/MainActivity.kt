@@ -74,6 +74,11 @@ class MainActivity : ComponentActivity() {
                 android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
         super.onCreate(savedInstanceState)
+        try {
+            com.finrein.pals.presentation.home.pruneOrphanedAppCache(applicationContext)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         
         val sessionManager = com.finrein.pals.data.local.SessionManager(applicationContext)
         val interval = sessionManager.getNotificationInterval()
@@ -111,7 +116,7 @@ class MainActivity : ComponentActivity() {
             DisposableEffect(Unit) {
                 onDispose {
                     try {
-                        context.cacheDir.deleteRecursively()
+                        com.finrein.pals.presentation.home.pruneOrphanedAppCache(context)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -246,6 +251,15 @@ class MainActivity : ComponentActivity() {
         val targetTab = intent.getStringExtra("TARGET_TAB")
         if (targetTab != null) {
             homeViewModel.setCurrentTab(targetTab)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            com.finrein.pals.presentation.home.pruneOrphanedAppCache(applicationContext)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
