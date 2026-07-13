@@ -1,4 +1,4 @@
-# Palzee (PALS) 📹✨
+# Palzee 📹✨
 
 Palzee is a modern, real-time social sharing Android application designed for close friend groups to share their daily moments side-by-side. Featuring interactive hourly reminder notifications, custom camera captures with visual effects, real-time chat, and a custom soundboard, Palzee keeps friend groups connected throughout the day.
 
