@@ -1,5 +1,5 @@
 # Palzee 🎥
-### High-Performance Local-First Vlogging Engine & Jetpack Compose Media Pipeline
+### Low-Latency Local-First Media Architecture & Android Media3 Processing Pipeline
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
 [![Design-System](https://img.shields.io/badge/Design_System-Material_3-6750A4?logo=materialdesign&logoColor=white)](https://m3.material.io/)
 [![Framework](https://img.shields.io/badge/Framework-Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack-compose)
@@ -23,25 +23,21 @@ Palzee implements a modular framework engineered for predictable memory allocati
 
 ---
 
-## 📱 Material Device Viewports & App Mockups
+## 📊 Application Diagnostics, Architectural State & System Mappings
 
-The core user experience is delivered through dedicated native viewports optimized for real-time asset tracking and media controls.
+Instead of decorative interface previews, the structural blocks below map out the actual low-level runtime execution environments, resource pipelines, and color token configurations running inside the Palzee engine.
 
-### 1. Camera Viewport & Capture HUD
-Mockup detailing the active CameraX view, central preview framing, shutter button, zoom range selector (1x - 5x), 3s/timer control, front/back view switch, and flash toggle settings.
-![1. Camera Viewport & Capture HUD](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/camera_hud_1783941414263.png)
+### 1. Android Media System Architecture
+Detailed diagram of Palzee's low-level system components, showing how media processing, thumbnail generation, and caching interact with system layers.
+![1. Android Media System Architecture](./assets/media_architecture_1783942474188.png)
 
-### 2. Vlog Dashboard Viewport
-Mockup detailing the vlog screen feed layout, showing the centered 'vlog' header typography, active user video card playback container, back navigation, and chat room buttons.
-![2. Vlog Dashboard Viewport](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/vlog_menu_1783941462429.png)
+### 2. Material 3 Design Token Spectrum
+Sankey mapping diagram of Material 3 style design token values, showing color relations and layout variables.
+![2. Material 3 Design Token Spectrum](./assets/design_tokens_1783942532719.png)
 
-### 3. Pals Group Screen
-Mockup detailing the home dashboard group feed grid, containing the active user/member video loop containers, bottom navigation bar, export buttons, and chat launch pathways.
-![3. Pals Group Screen](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/pals_group_screen_1783941516085.png)
-
-### 4. Video Export Control Panel
-Mockup detailing the export settings dialog, showing the central Pal video loop card, and four core system action buttons (Cancel, Share, Save to Gallery, Export Video).
-![4. Video Export Control Panel](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/export_menu_1783941570345.png)
+### 3. Storage Manager Log Output
+Terminal diagnostic tracing output from the storage manager and asset garbage collection thread sweeps.
+![3. Storage Manager Log Output](./assets/storage_logs_1783942589083.png)
 
 ---
 
@@ -79,6 +75,25 @@ To protect the runtime system heap and maintain an optimal storage footprint in 
 
 ### 3. Asynchronous Sync Shifting
 Network uploads run detached from critical UI processing tracks. Database insert actions enforce distinct returned constraints (`.select("id")`), blocking heavy rows from sending unnecessary payloads back across the network, reducing data overhead.
+
+---
+
+## 🚀 Initialization Framework
+
+Clone and build the system using the following release sequence:
+
+```bash
+# 1. Clean build directories and erase standard task caches
+./gradlew clean
+
+# 2. Compile full production release variants
+./gradlew assembleRelease
+
+# 3. Perform atomic target device uninstallation followed by fresh installation
+./gradlew uninstallRelease installRelease
+```
+
+*Note: Ensure target environment signing flags (`signingConfig`) are securely declared inside your active modules before deploying the system release variants.*
 
 ---
 
