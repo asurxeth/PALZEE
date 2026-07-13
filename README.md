@@ -27,13 +27,17 @@ Palzee implements a modular framework engineered for predictable memory allocati
 
 The core user experience is delivered through dedicated native viewports optimized for real-time asset tracking and media controls.
 
-<Carousel>
-{/* Reason: Renders the 4 core interactive views of Palzee inside native Android Material mockups to showcase full-system rendering. */}
-  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/editorial_dashboard_1783940242349.png" alt="Palzee Home Dashboard displaying responsive grid viewports, structural card containers, and native Material 3 user interaction layouts." caption="1. Material 3 Home Viewport Layout" />
-  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/camera_capture_1783940256558.png" alt="CameraX capture viewfinder layout displaying clear framing boundaries, ratio lines, and core recording state controls." caption="2. CameraX Viewfinder HUD" />
-  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/playback_preview_1783940271262.png" alt="Native media player interface displaying low-latency playback frames mounted directly via ExoPlayer surface listeners." caption="3. Native Playback Preview Frame" />
-  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/storage_metrics_1783940292767.png" alt="Android settings display interface detailing the optimization profile and minimal storage footprint after garbage collection." caption="4. Application Storage Metrics View" />
-</Carousel>
+### 1. Material 3 Home Viewport Layout
+![1. Material 3 Home Viewport Layout](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/editorial_dashboard_1783940242349.png)
+
+### 2. CameraX Viewfinder HUD
+![2. CameraX Viewfinder HUD](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/camera_capture_1783940256558.png)
+
+### 3. Native Playback Preview Frame
+![3. Native Playback Preview Frame](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/playback_preview_1783940271262.png)
+
+### 4. Application Storage Metrics View
+![4. Application Storage Metrics View](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/storage_metrics_1783940292767.png)
 
 ---
 
