@@ -78,24 +78,5 @@ Network uploads run detached from critical UI processing tracks. Database insert
 
 ---
 
-## 🚀 Initialization Framework
-
-Clone and build the system using the following release sequence:
-
-```bash
-# 1. Clean build directories and erase standard task caches
-./gradlew clean
-
-# 2. Compile full production release variants
-./gradlew assembleRelease
-
-# 3. Perform atomic target device uninstallation followed by fresh installation
-./gradlew uninstallRelease installRelease
-```
-
-*Note: Ensure target environment signing flags (`signingConfig`) are securely declared inside your active modules before deploying the system release variants.*
-
----
-
 ## 🛡️ License
 All rights reserved by Finrein.
