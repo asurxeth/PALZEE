@@ -32,6 +32,7 @@ class PreviewActivity : ComponentActivity() {
         super.finish()
     }
 
+    @Deprecated("Deprecated in Java")
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         android.util.Log.e("PreviewClose", "onBackPressed called!")
@@ -57,7 +58,9 @@ class PreviewActivity : ComponentActivity() {
         val bundleKeys = intent.extras?.keySet()
         if (bundleKeys != null) {
             for (key in bundleKeys) {
-                android.util.Log.e("PreviewActivity", "Found Intent Extra Key: '$key' -> Value: ${intent.extras?.get(key)}")
+                @Suppress("DEPRECATION")
+                val value = intent.extras?.get(key)
+                android.util.Log.e("PreviewActivity", "Found Intent Extra Key: '$key' -> Value: $value")
             }
         } else {
             android.util.Log.e("PreviewActivity", "Bundle extras object itself is completely null!")
@@ -65,7 +68,12 @@ class PreviewActivity : ComponentActivity() {
 
         // 2. Test your specific expected targets
         val pathString = intent.getStringExtra("video_path") 
-        val uriExtra = intent.getParcelableExtra<android.net.Uri>("video_uri") 
+        val uriExtra = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra("video_uri", android.net.Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra<android.net.Uri>("video_uri")
+        } 
 
         android.util.Log.e("PreviewActivity", "Target Path String evaluation: '$pathString'")
         android.util.Log.e("PreviewActivity", "Target Uri Extra evaluation: '$uriExtra'")
