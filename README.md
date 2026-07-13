@@ -23,24 +23,6 @@ Palzee implements a modular framework engineered for predictable memory allocati
 
 ---
 
-## 📊 Application Diagnostics, Architectural State & System Mappings
-
-Instead of decorative interface previews, the structural blocks below map out the actual low-level runtime execution environments, resource pipelines, and color token configurations running inside the Palzee engine.
-
-### 1. Android Media System Architecture
-Detailed diagram of Palzee's low-level system components, showing how media processing, thumbnail generation, and caching interact with system layers.
-![1. Android Media System Architecture](./assets/media_architecture_1783942474188.png)
-
-### 2. Material 3 Design Token Spectrum
-Sankey mapping diagram of Material 3 style design token values, showing color relations and layout variables.
-![2. Material 3 Design Token Spectrum](./assets/design_tokens_1783942532719.png)
-
-### 3. Storage Manager Log Output
-Terminal diagnostic tracing output from the storage manager and asset garbage collection thread sweeps.
-![3. Storage Manager Log Output](./assets/storage_logs_1783942589083.png)
-
----
-
 ## 📐 User Navigation & Flow Architecture
 
 The user journey transitions smoothly between full-screen continuous media recording and interactive group dashboard layouts. Below is the structural state-machine path:
@@ -75,25 +57,6 @@ To protect the runtime system heap and maintain an optimal storage footprint in 
 
 ### 3. Asynchronous Sync Shifting
 Network uploads run detached from critical UI processing tracks. Database insert actions enforce distinct returned constraints (`.select("id")`), blocking heavy rows from sending unnecessary payloads back across the network, reducing data overhead.
-
----
-
-## 🚀 Initialization Framework
-
-Clone and build the system using the following release sequence:
-
-```bash
-# 1. Clean build directories and erase standard task caches
-./gradlew clean
-
-# 2. Compile full production release variants
-./gradlew assembleRelease
-
-# 3. Perform atomic target device uninstallation followed by fresh installation
-./gradlew uninstallRelease installRelease
-```
-
-*Note: Ensure target environment signing flags (`signingConfig`) are securely declared inside your active modules before deploying the system release variants.*
 
 ---
 
