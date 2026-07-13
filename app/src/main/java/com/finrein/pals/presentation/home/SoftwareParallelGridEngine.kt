@@ -98,19 +98,29 @@ object SoftwareParallelGridEngine {
                 repeatMode = ExoPlayer.REPEAT_MODE_ALL
                 volume = 0f // Extra safety mute
                 
-                val cleanPath = when {
-                    videoPath.startsWith("file://") -> videoPath.substring(7)
-                    else -> videoPath
+                val targetPath = if (videoPath.startsWith("http")) {
+                    var res = videoPath
+                    if (res.contains("/PALS/", ignoreCase = true)) res = res.replace("/PALS/", "/pals/", ignoreCase = true)
+                    if (res.contains("/PALS_VLOGS/", ignoreCase = true)) res = res.replace("/PALS_VLOGS/", "/pals_vlogs/", ignoreCase = true)
+                    if (res.contains("/AVATARS/", ignoreCase = true)) res = res.replace("/AVATARS/", "/avatars/", ignoreCase = true)
+                    res
+                } else {
+                    videoPath
                 }
                 
-                val mediaItem = if (videoPath.startsWith("http") || videoPath.startsWith("content://")) {
-                    MediaItem.fromUri(android.net.Uri.parse(videoPath))
+                val cleanPath = when {
+                    targetPath.startsWith("file://") -> targetPath.substring(7)
+                    else -> targetPath
+                }
+                
+                val mediaItem = if (targetPath.startsWith("http") || targetPath.startsWith("content://")) {
+                    MediaItem.fromUri(android.net.Uri.parse(targetPath))
                 } else {
                     val file = java.io.File(cleanPath)
                     if (file.exists()) {
                         MediaItem.fromUri(android.net.Uri.fromFile(file))
                     } else {
-                        MediaItem.fromUri(android.net.Uri.parse(videoPath))
+                        MediaItem.fromUri(android.net.Uri.parse(targetPath))
                     }
                 }
                 

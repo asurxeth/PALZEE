@@ -15,7 +15,12 @@ object VlogPreloader {
         scope.launch {
             val prefs = getVlogPrefs(context)
             val localPath = prefs.getString("local_path_$path", null)
-            val resolved = localPath ?: path
+            var resolved = localPath ?: path
+            if (resolved.startsWith("http")) {
+                if (resolved.contains("/PALS/", ignoreCase = true)) resolved = resolved.replace("/PALS/", "/pals/", ignoreCase = true)
+                if (resolved.contains("/PALS_VLOGS/", ignoreCase = true)) resolved = resolved.replace("/PALS_VLOGS/", "/pals_vlogs/", ignoreCase = true)
+                if (resolved.contains("/AVATARS/", ignoreCase = true)) resolved = resolved.replace("/AVATARS/", "/avatars/", ignoreCase = true)
+            }
             pathCache[path] = resolved
         }
     }

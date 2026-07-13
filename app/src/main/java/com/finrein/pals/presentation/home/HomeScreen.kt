@@ -968,21 +968,31 @@ object VlogPlayerManager {
     private val lruKeys = java.util.concurrent.CopyOnWriteArrayList<String>()
     private const val MAX_PLAYERS = 3
 
+    private fun normalizeUrl(url: String): String {
+        if (!url.startsWith("http")) return url
+        var res = url
+        if (res.contains("/PALS/", ignoreCase = true)) res = res.replace("/PALS/", "/pals/", ignoreCase = true)
+        if (res.contains("/PALS_VLOGS/", ignoreCase = true)) res = res.replace("/PALS_VLOGS/", "/pals_vlogs/", ignoreCase = true)
+        if (res.contains("/AVATARS/", ignoreCase = true)) res = res.replace("/AVATARS/", "/avatars/", ignoreCase = true)
+        return res
+    }
+
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun getOrCreatePlayer(context: android.content.Context, videoUrl: String): androidx.media3.exoplayer.ExoPlayer {
-        lruKeys.remove(videoUrl)
-        lruKeys.add(videoUrl)
+        val targetUrl = normalizeUrl(videoUrl)
+        lruKeys.remove(targetUrl)
+        lruKeys.add(targetUrl)
 
         while (lruKeys.size > MAX_PLAYERS) {
             val oldestKey = lruKeys.removeAt(0)
-            if (oldestKey != videoUrl) {
+            if (oldestKey != targetUrl) {
                 releasePlayer(oldestKey)
             }
         }
 
-        return playerCache.getOrPut(videoUrl) {
+        return playerCache.getOrPut(targetUrl) {
             com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context.applicationContext).apply {
-                setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUrl))
+                setMediaItem(androidx.media3.common.MediaItem.fromUri(targetUrl))
                 repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                 volume = 0f // Muted feed
                 prepare()
@@ -992,8 +1002,9 @@ object VlogPlayerManager {
     }
 
     fun releasePlayer(videoUrl: String) {
-        lruKeys.remove(videoUrl)
-        playerCache.remove(videoUrl)?.apply {
+        val targetUrl = normalizeUrl(videoUrl)
+        lruKeys.remove(targetUrl)
+        playerCache.remove(targetUrl)?.apply {
             try {
                 com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(this)
             } catch (e: Exception) {
@@ -2131,10 +2142,23 @@ fun UriImage(
 
     LaunchedEffect(uriString) {
         try {
+            var resolvedUri = uriString
+            if (resolvedUri.startsWith("http")) {
+                if (resolvedUri.contains("/AVATARS/", ignoreCase = true)) {
+                    resolvedUri = resolvedUri.replace("/AVATARS/", "/avatars/", ignoreCase = true)
+                }
+                if (resolvedUri.contains("/PALS/", ignoreCase = true)) {
+                    resolvedUri = resolvedUri.replace("/PALS/", "/pals/", ignoreCase = true)
+                }
+                if (resolvedUri.contains("/PALS_VLOGS/", ignoreCase = true)) {
+                    resolvedUri = resolvedUri.replace("/PALS_VLOGS/", "/pals_vlogs/", ignoreCase = true)
+                }
+            }
+
             val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                if (uriString.startsWith("http")) {
+                if (resolvedUri.startsWith("http")) {
                     try {
-                        val url = java.net.URL(uriString)
+                        val url = java.net.URL(resolvedUri)
                         val connection = url.openConnection() as java.net.HttpURLConnection
                         connection.doInput = true
                         connection.connect()
@@ -2147,15 +2171,15 @@ fun UriImage(
                     }
                 } else {
                     val cleanPath = when {
-                        uriString.startsWith("file://") -> uriString.substring(7)
-                        else -> uriString
+                        resolvedUri.startsWith("file://") -> resolvedUri.substring(7)
+                        else -> resolvedUri
                     }
                     val file = java.io.File(cleanPath)
                     if (file.exists()) {
                         android.graphics.BitmapFactory.decodeFile(cleanPath)
                     } else {
                         try {
-                            val uri = android.net.Uri.parse(uriString)
+                            val uri = android.net.Uri.parse(resolvedUri)
                             context.contentResolver.openInputStream(uri).use { inputStream ->
                                 android.graphics.BitmapFactory.decodeStream(inputStream)
                             }
@@ -8888,11 +8912,21 @@ fun UnifiedPalPlayerBox(
     
     // Exact instance management used by the perfectly working Member/User boxes
     val player = remember(videoUri) {
+        val uriStr = videoUri.toString()
+        val targetUri = if (uriStr.startsWith("http")) {
+            var res = uriStr
+            if (res.contains("/PALS/", ignoreCase = true)) res = res.replace("/PALS/", "/pals/", ignoreCase = true)
+            if (res.contains("/PALS_VLOGS/", ignoreCase = true)) res = res.replace("/PALS_VLOGS/", "/pals_vlogs/", ignoreCase = true)
+            if (res.contains("/AVATARS/", ignoreCase = true)) res = res.replace("/AVATARS/", "/avatars/", ignoreCase = true)
+            android.net.Uri.parse(res)
+        } else {
+            videoUri
+        }
         DualEnginePlayerFactory.getPooledInstance(context).apply {
             this.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
             this.volume = 0f // Muted loop execution for zero-latency grid loads
             
-            this.setMediaItem(androidx.media3.common.MediaItem.fromUri(videoUri))
+            this.setMediaItem(androidx.media3.common.MediaItem.fromUri(targetUri))
             this.prepare()
             this.playWhenReady = true
         }
