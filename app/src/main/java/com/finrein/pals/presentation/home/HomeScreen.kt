@@ -5439,8 +5439,8 @@ fun HomeScreen(
                             capturedVideoZoomFactor = zoomFactor
                             isTransitioningToPreview = true
                             
-                            // Immediately unbind/shut down the camera to prevent pipeline contention
-                            isCameraActiveState = false
+                            // Keep the camera active during the activity launch transition to prevent visual black screen/flicker
+                            isCameraActiveState = true
                             
                             // Query absolute file path to ensure compatibility with feed file.exists() checks
                             coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -6678,12 +6678,8 @@ fun CameraScreenContent(
 
                             if (!finalizeEvent.hasError() && uriString.isNotEmpty()) {
                                 android.util.Log.d("PalPipeline", "Public MediaStore URI generated: $uriString")
-                                
-                                // Flush the camera buffers before closing the descriptor (500ms hardware settle delay)
-                                scope.launch {
-                                    kotlinx.coroutines.delay(500)
-                                    onCaptureSuccess(uriString, durationMs, 1.0f + (linearZoom * 0.5f))
-                                }
+                                // Call immediately to ensure an instantaneous transition
+                                onCaptureSuccess(uriString, durationMs, 1.0f + (linearZoom * 0.5f))
                             } else {
                                 android.util.Log.e("PalPipeline", "Recording finalize encountered error state: ${finalizeEvent.error}")
                                 recordingStarted.completeExceptionally(java.lang.RuntimeException("Recording path generation failed"))
@@ -6707,7 +6703,8 @@ fun CameraScreenContent(
                 while (true) {
                     val elapsed = System.currentTimeMillis() - startTime
                     val progress = (elapsed.toFloat() / durationMs).coerceIn(0f, 1f)
-                    recordingProgress = progress
+                    val easedProgress = 1f - (1f - progress) * (1f - progress)
+                    recordingProgress = easedProgress
                     if (progress >= 1f) break
                     delay(16)
                 }
@@ -7060,6 +7057,12 @@ fun CameraScreenContent(
             label = "ShutterScaleAnimation"
         )
 
+        val shutterAlpha by animateFloatAsState(
+            targetValue = if (isRecording) 1.0f else 0.6f,
+            animationSpec = tween(durationMillis = 300),
+            label = "ShutterAlpha"
+        )
+
         // Capture Button (R.drawable.capture_smile) centered on the bottom border of 9:16 frame exactly half-in, half-out
         Box(
             modifier = Modifier
@@ -7068,7 +7071,8 @@ fun CameraScreenContent(
                 .size(shutterSize)
                 .graphicsLayer(
                     scaleX = shutterScale,
-                    scaleY = shutterScale
+                    scaleY = shutterScale,
+                    alpha = shutterAlpha
                 )
                 .clip(CircleShape)
                 .background(currentInnerColor)
