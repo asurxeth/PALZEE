@@ -27,17 +27,21 @@ Palzee implements a modular framework engineered for predictable memory allocati
 
 The core user experience is delivered through dedicated native viewports optimized for real-time asset tracking and media controls.
 
-### 1. Material 3 Home Viewport Layout
-![1. Material 3 Home Viewport Layout](./assets/editorial_dashboard.png)
+### 1. Camera Viewport & Capture HUD
+Mockup detailing the active CameraX view, central preview framing, shutter button, zoom range selector (1x - 5x), 3s/timer control, front/back view switch, and flash toggle settings.
+![1. Camera Viewport & Capture HUD](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/camera_hud_1783941414263.png)
 
-### 2. CameraX Viewfinder HUD
-![2. CameraX Viewfinder HUD](./assets/camera_capture.png)
+### 2. Vlog Dashboard Viewport
+Mockup detailing the vlog screen feed layout, showing the centered 'vlog' header typography, active user video card playback container, back navigation, and chat room buttons.
+![2. Vlog Dashboard Viewport](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/vlog_menu_1783941462429.png)
 
-### 3. Native Playback Preview Frame
-![3. Native Playback Preview Frame](./assets/playback_preview.png)
+### 3. Pals Group Screen
+Mockup detailing the home dashboard group feed grid, containing the active user/member video loop containers, bottom navigation bar, export buttons, and chat launch pathways.
+![3. Pals Group Screen](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/pals_group_screen_1783941516085.png)
 
-### 4. Application Storage Metrics View
-![4. Application Storage Metrics View](./assets/storage_metrics.png)
+### 4. Video Export Control Panel
+Mockup detailing the export settings dialog, showing the central Pal video loop card, and four core system action buttons (Cancel, Share, Save to Gallery, Export Video).
+![4. Video Export Control Panel](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/export_menu_1783941570345.png)
 
 ---
 
