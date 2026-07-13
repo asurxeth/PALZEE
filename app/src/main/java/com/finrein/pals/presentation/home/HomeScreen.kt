@@ -14177,6 +14177,7 @@ fun ReplyPreviewOverlay(
         val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
 
         LaunchedEffect(activeReplyPreviewPath) {
+            @Suppress("KotlinConstantConditions")
             if (activeReplyPreviewPath != null) {
                 kotlinx.coroutines.delay(100)
                 focusRequester.requestFocus()
