@@ -29,7 +29,7 @@ class PalNotificationReceiver : BroadcastReceiver() {
             true
         }
 
-        // 1. Notifications are sent ONLY if the user is logged in
+        // Notifications are sent ONLY if the user is logged in
         if (sessionManager.getUser() == null || interval == "off" || interval.isBlank() || !hasPermission) {
             PalAlarmScheduler.cancelAlarm(context)
             return
@@ -38,59 +38,92 @@ class PalNotificationReceiver : BroadcastReceiver() {
         val calendar = Calendar.getInstance()
         val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
         
-        val scheduledHour = intent.getIntExtra("EXTRA_SCHEDULED_HOUR", -1)
-        val hourToUse = if (scheduledHour in 0..23) scheduledHour else currentHour
-
         val sharedPrefs = context.getSharedPreferences("palzee_prefs", Context.MODE_PRIVATE)
         val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
         val firstNotifiedKey = "first_pal_notified_$dateStamp"
 
-        // Check if user has sent any pal or been notified for any hour today
         var hasLoggedAnyToday = false
-        var hasNotifiedAnyToday = false
         for (h in 0..23) {
             if (sharedPrefs.getBoolean("pal_logged_${dateStamp}_$h", false)) {
                 hasLoggedAnyToday = true
-            }
-            if (sharedPrefs.getBoolean("pal_notified_${dateStamp}_$h", false)) {
-                hasNotifiedAnyToday = true
+                break
             }
         }
         val hasFirstPalOccurred = sharedPrefs.getBoolean(firstNotifiedKey, false) || hasLoggedAnyToday
 
-        // Night time sleep cycle cutoff (2 AM to 8 AM)
+        // Night time sleep cycle cutoff (2 AM to 7 AM)
         val isNightTime = currentHour in 2..7
 
         when (intent.action) {
-            "com.finrein.pals.ACTION_CHECK_FIRST_PAL" -> {
-                // First notification of the day is sent ONLY when the user opens the app after the sleep cycle
+            Intent.ACTION_BOOT_COMPLETED -> {
+                sharedPrefs.edit().putLong("device_boot_time", System.currentTimeMillis()).apply()
+                PalAlarmScheduler.scheduleBootAlarm(context)
+            }
+
+            "com.finrein.pals.ACTION_BOOT_15MIN_ALARM" -> {
                 if (!hasFirstPalOccurred && !isNightTime) {
                     showNativeNotification(context, currentHour, isFirstPal = true)
                     markAsNotifiedForHour(context, currentHour)
                     sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                    sharedPrefs.edit().putLong("last_notification_sent_time", System.currentTimeMillis()).apply()
+                    PalAlarmScheduler.updateScheduling(context, interval)
                 }
-                PalAlarmScheduler.updateScheduling(context, interval)
             }
 
-            PalAlarmScheduler.ACTION_PAL_ALARM, Intent.ACTION_BOOT_COMPLETED -> {
-                // Subsequent notifications are sent via alarms/boot irrespective of phone use.
-                // If the first pal notification of the day has not been triggered yet, trigger it now.
-                if (intent.action == PalAlarmScheduler.ACTION_PAL_ALARM) {
+            Intent.ACTION_USER_PRESENT -> {
+                val bootTime = sharedPrefs.getLong("device_boot_time", 0L)
+                if (System.currentTimeMillis() - bootTime < 15 * 60 * 1000L) {
+                    return
+                }
+
+                if (!hasFirstPalOccurred) {
                     if (!isNightTime) {
-                        if (!hasFirstPalOccurred) {
-                            showNativeNotification(context, hourToUse, isFirstPal = true)
-                            markAsNotifiedForHour(context, hourToUse)
-                            sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
-                        } else {
-                            if (!isPalSentOrNotifiedForHour(context, hourToUse)) {
-                                showNativeNotification(context, hourToUse, isFirstPal = false)
-                                markAsNotifiedForHour(context, hourToUse)
-                            }
+                        showNativeNotification(context, currentHour, isFirstPal = true)
+                        markAsNotifiedForHour(context, currentHour)
+                        sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                        sharedPrefs.edit().putLong("last_notification_sent_time", System.currentTimeMillis()).apply()
+                        PalAlarmScheduler.updateScheduling(context, interval)
+                    }
+                } else {
+                    if (interval == "every 1hr" || interval == "every 3hrs") {
+                        val lastSent = sharedPrefs.getLong("last_notification_sent_time", 0L)
+                        val intervalMs = if (interval == "every 1hr") 60 * 60 * 1000L else 3 * 60 * 60 * 1000L
+                        if (System.currentTimeMillis() - lastSent >= intervalMs) {
+                            showNativeNotification(context, currentHour, isFirstPal = false)
+                            markAsNotifiedForHour(context, currentHour)
+                            sharedPrefs.edit().putLong("last_notification_sent_time", System.currentTimeMillis()).apply()
+                            PalAlarmScheduler.updateScheduling(context, interval)
                         }
                     }
                 }
-                // Schedule the next hourly fallback window
-                PalAlarmScheduler.updateScheduling(context, interval)
+            }
+
+            "com.finrein.pals.ACTION_CHECK_FIRST_PAL" -> {
+                if (!hasFirstPalOccurred && !isNightTime) {
+                    showNativeNotification(context, currentHour, isFirstPal = true)
+                    markAsNotifiedForHour(context, currentHour)
+                    sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                    sharedPrefs.edit().putLong("last_notification_sent_time", System.currentTimeMillis()).apply()
+                    PalAlarmScheduler.updateScheduling(context, interval)
+                }
+            }
+
+            PalAlarmScheduler.ACTION_PAL_ALARM -> {
+                val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                if (powerManager.isInteractive && !isNightTime) {
+                    if (!hasFirstPalOccurred) {
+                        showNativeNotification(context, currentHour, isFirstPal = true)
+                        markAsNotifiedForHour(context, currentHour)
+                        sharedPrefs.edit().putBoolean(firstNotifiedKey, true).apply()
+                    } else {
+                        if (!isPalSentOrNotifiedForHour(context, currentHour)) {
+                            showNativeNotification(context, currentHour, isFirstPal = false)
+                            markAsNotifiedForHour(context, currentHour)
+                        }
+                    }
+                    sharedPrefs.edit().putLong("last_notification_sent_time", System.currentTimeMillis()).apply()
+                    PalAlarmScheduler.updateScheduling(context, interval)
+                }
             }
         }
     }

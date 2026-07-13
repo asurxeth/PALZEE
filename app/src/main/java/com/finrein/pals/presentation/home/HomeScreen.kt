@@ -7426,34 +7426,38 @@ fun VideoPlayerWithThumbnail(
 
     var isVideoReady by remember { mutableStateOf(false) }
     var isScaleApplied by remember { mutableStateOf(false) }
+    var isBuffering by remember { mutableStateOf(true) }
 
     LaunchedEffect(videoPath) {
         isVideoReady = false
         isScaleApplied = false
+        isBuffering = true
     }
 
     DisposableEffect(exoPlayer, videoPath) {
         val listener = object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                super.onPlaybackStateChanged(playbackState)
+                isBuffering = (playbackState == androidx.media3.common.Player.STATE_BUFFERING || 
+                               playbackState == androidx.media3.common.Player.STATE_IDLE)
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                super.onIsPlayingChanged(isPlaying)
+                if (isPlaying) {
+                    isBuffering = false
+                }
+            }
             override fun onRenderedFirstFrame() {
                 super.onRenderedFirstFrame()
                 isVideoReady = true
+                isBuffering = false
                 onFirstFrameRendered?.invoke()
-            }
-            override fun onPlaybackStateChanged(state: Int) {
-                super.onPlaybackStateChanged(state)
-                if (state == androidx.media3.common.Player.STATE_READY) {
-                    isVideoReady = true
-                    onFirstFrameRendered?.invoke()
-                }
             }
         }
         exoPlayer.addListener(listener)
-        if (exoPlayer.playbackState == androidx.media3.common.Player.STATE_READY || exoPlayer.isPlaying) {
-            isVideoReady = true
-            onFirstFrameRendered?.invoke()
-        } else {
-            isVideoReady = false
-        }
+        isBuffering = (exoPlayer.playbackState == androidx.media3.common.Player.STATE_BUFFERING || 
+                       exoPlayer.playbackState == androidx.media3.common.Player.STATE_IDLE ||
+                       !isVideoReady)
         onDispose {
             exoPlayer.removeListener(listener)
         }
@@ -7501,7 +7505,7 @@ fun VideoPlayerWithThumbnail(
             }
         )
 
-        if (showProgressIndicator && !isSubsequentSlideshowVideo && !(isVideoReady && isScaleApplied)) {
+        if (showProgressIndicator && !isSubsequentSlideshowVideo && (isBuffering || !isVideoReady || !isScaleApplied)) {
             androidx.compose.material3.CircularProgressIndicator(
                 color = progressColor,
                 strokeWidth = 2.dp,
@@ -9034,6 +9038,37 @@ fun GroupMemberCard(
             }
         }
 
+        val groupSize = groupMembers.size
+        val avatarSize = when {
+            groupSize <= 2 -> 24.dp
+            groupSize <= 4 -> 20.dp
+            groupSize <= 6 -> 16.dp
+            else -> 13.dp
+        }
+        val nameFontSize = when {
+            groupSize <= 2 -> 15.sp
+            groupSize <= 4 -> 13.sp
+            groupSize <= 6 -> 11.sp
+            else -> 9.5.sp
+        }
+        val topPadding = when {
+            groupSize <= 2 -> 12.dp
+            groupSize <= 4 -> 8.dp
+            groupSize <= 6 -> 6.dp
+            else -> 4.dp
+        }
+        val startPadding = when {
+            groupSize <= 2 -> 16.dp
+            groupSize <= 4 -> 10.dp
+            groupSize <= 6 -> 8.dp
+            else -> 6.dp
+        }
+        val horizontalSpacing = when {
+            groupSize <= 4 -> 8.dp
+            groupSize <= 6 -> 5.dp
+            else -> 3.dp
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -9053,23 +9088,23 @@ fun GroupMemberCard(
             Row(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(top = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
+                    .padding(top = topPadding, start = startPadding),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(horizontalSpacing)
             ) {
                 val userAvatar = if (isUser) customAvatarUriString else memberAvatar
                 if (!userAvatar.isNullOrEmpty()) {
                     UriImage(
                         uriString = userAvatar,
                         modifier = Modifier
-                            .size(if (isGrid) 18.dp else 24.dp)
+                            .size(avatarSize)
                             .clip(CircleShape)
                             .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
                     )
                 } else {
                     Box(
                         modifier = Modifier
-                            .size(if (isGrid) 18.dp else 24.dp)
+                            .size(avatarSize)
                             .clip(CircleShape)
                             .background(accentColor),
                         contentAlignment = Alignment.Center
@@ -9087,7 +9122,7 @@ fun GroupMemberCard(
                 Text(
                     text = if (isUser) userFirstName else (memberName ?: ""),
                     fontFamily = FontFamily.SansSerif,
-                    fontSize = if (isGrid) 12.sp else 15.sp,
+                    fontSize = nameFontSize,
                     fontWeight = FontWeight.Normal,
                     color = Color.White
                 )
@@ -9229,11 +9264,32 @@ fun GroupMemberCard(
 
             // Overlay 5: Interaction row at the bottom
             if (!isUser) {
-                // 1. Reply Arrow Icon in the bottom right corner (shifted up slightly to stack above love icon)
+                val groupSize = groupMembers.size
+                val iconSize = when {
+                    groupSize <= 2 -> 28.dp
+                    groupSize <= 4 -> 24.dp
+                    groupSize <= 6 -> 20.dp
+                    groupSize <= 8 -> 16.dp
+                    else -> 12.dp
+                }
+                val endPadding = when {
+                    groupSize <= 2 -> 16.dp
+                    groupSize <= 4 -> 12.dp
+                    groupSize <= 6 -> 10.dp
+                    else -> 6.dp
+                }
+                val bottomPadding = when {
+                    groupSize <= 2 -> 12.dp
+                    groupSize <= 4 -> 10.dp
+                    groupSize <= 6 -> 8.dp
+                    else -> 5.dp
+                }
+
+                // 1. Reply Arrow Icon in the center right (vertically centered on the right boundary)
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(end = if (isGrid) 10.dp else 16.dp)
+                        .padding(end = endPadding)
                         .clickable { onReplyClick(videoPath) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -9241,7 +9297,7 @@ fun GroupMemberCard(
                         imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = "Reply",
                         tint = Color.White,
-                        modifier = Modifier.size(if (isGrid) 18.dp else 25.dp)
+                        modifier = Modifier.size(iconSize)
                     )
                 }
 
@@ -9249,21 +9305,26 @@ fun GroupMemberCard(
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
+                        .padding(bottom = bottomPadding, end = endPadding)
                         .clickable { showEmojiOverlay = true },
                     contentAlignment = Alignment.Center
                 ) {
                     if (latestReaction != null) {
                         Text(
                             text = latestReaction,
-                            fontSize = if (isGrid) 16.sp else 24.sp
+                            fontSize = when {
+                                groupSize <= 2 -> 26.sp
+                                groupSize <= 4 -> 22.sp
+                                groupSize <= 6 -> 18.sp
+                                else -> 14.sp
+                            }
                         )
                     } else {
                         Icon(
                             imageVector = Icons.Filled.FavoriteBorder,
                             contentDescription = "Love",
                             tint = Color.White,
-                            modifier = Modifier.size(if (isGrid) 18.dp else 25.dp)
+                            modifier = Modifier.size(iconSize)
                         )
                     }
                 }
@@ -10647,8 +10708,6 @@ fun VlogScreenContent(
                             }
                         }
 
-                        var hasLoadedHomescreenFirstPal by remember { mutableStateOf(false) }
-
                         // Buffer Strategy: Render Prev, Current, and Next indices to eliminate black-screen initialization stalls
                         val indicesToLoad = listOf(selectedPageIndex - 1, selectedPageIndex, selectedPageIndex + 1)
                             .filter { it >= 0 && it < capturedVlogsPaths.size }
@@ -10670,12 +10729,8 @@ fun VlogScreenContent(
                                                 path = path,
                                                 playerManager = playerManager,
                                                 isVisible = isVisible,
-                                                showProgressIndicator = (page == 0 && !hasLoadedHomescreenFirstPal),
-                                                onFirstFrameRendered = {
-                                                    if (page == 0) {
-                                                        hasLoadedHomescreenFirstPal = true
-                                                    }
-                                                }
+                                                showProgressIndicator = isVisible,
+                                                onFirstFrameRendered = null
                                             )
                                         }
                                     }
@@ -12205,10 +12260,10 @@ fun VlogScreenContent(
                                             videoPath = capturedVlogsPaths.reversed().getOrNull(exportActiveIndex),
                                             modifier = Modifier.fillMaxSize(),
                                             resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL,
-                                            showProgressIndicator = (exportActiveIndex == 0 && !hasLoadedExportFirstPal),
+                                            isSubsequentSlideshowVideo = exportActiveIndex > 0 || hasLoadedExportFirstPal,
                                             onFirstFrameRendered = {
                                                 if (exportActiveIndex == 0) {
-                                                     hasLoadedExportFirstPal = true
+                                                    hasLoadedExportFirstPal = true
                                                 }
                                             }
                                         )
@@ -14035,6 +14090,16 @@ fun ReplyPreviewOverlay(
     ) {
         var replyInput by remember { mutableStateOf("") }
         val context = LocalContext.current
+        val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+
+        LaunchedEffect(activeReplyPreviewPath) {
+            if (activeReplyPreviewPath != null) {
+                kotlinx.coroutines.delay(100)
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            }
+        }
 
         // 1. Top Header
         Box(
@@ -14120,7 +14185,7 @@ fun ReplyPreviewOverlay(
                     ),
                     singleLine = true,
                     cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                     decorationBox = { innerTextField ->
                         if (replyInput.isEmpty()) {
                             Text(
@@ -15977,8 +16042,8 @@ fun PalChatOverlay(
                                                 .fillMaxWidth()
                                                 .padding(horizontal = 24.dp, vertical = 8.dp)
                                                 .clip(RoundedCornerShape(12.dp))
-                                                .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFF5F3EB))
-                                                .border(1.dp, selectedProfileColor, RoundedCornerShape(12.dp))
+                                                .background(Color.Transparent)
+                                                .border(1.dp, if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA), RoundedCornerShape(12.dp))
                                                 .clickable {
                                                     onShowExportDialogChange(true)
                                                 }
@@ -18918,6 +18983,7 @@ private fun GroupExportMemberSlot(
     ) {
         if (videoPaths.isNotEmpty()) {
             var resolvedPathsState by remember(videoPaths) { mutableStateOf<List<String>>(emptyList()) }
+            var hasLoadedFirstSlotPal by remember(videoPaths) { mutableStateOf(false) }
             var localPlayerIndex by remember { mutableStateOf(0) }
             @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
             val localPlayer = remember(videoPaths) {
@@ -18970,7 +19036,12 @@ private fun GroupExportMemberSlot(
                 videoPath = resolvedPathsState.getOrNull(localPlayerIndex),
                 modifier = Modifier.fillMaxSize(),
                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL,
-                isSubsequentSlideshowVideo = localPlayerIndex > 0
+                isSubsequentSlideshowVideo = localPlayerIndex > 0 || hasLoadedFirstSlotPal,
+                onFirstFrameRendered = {
+                    if (localPlayerIndex == 0) {
+                        hasLoadedFirstSlotPal = true
+                    }
+                }
             )
             
             // Time text centered, size 20.sp, bold white Dela Gothic One

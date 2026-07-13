@@ -212,6 +212,7 @@ fun PalGroupGridScreen(
             if (vlogPal != null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     if (capturedVlogsPaths.isNotEmpty()) {
+                        var hasLoadedVlogFirstPal by remember(capturedVlogsPaths) { mutableStateOf(false) }
                         val activeIndex = currentPlayingIndex.coerceIn(0, capturedVlogsPaths.lastIndex.coerceAtLeast(0))
                         val currentCaption = capturedVlogsCaptions.getOrNull(activeIndex) ?: ""
                         val currentTime = capturedVlogsTimes.getOrNull(activeIndex) ?: ""
@@ -234,7 +235,12 @@ fun PalGroupGridScreen(
                                     videoPath = capturedVlogsPaths.getOrNull(currentPlayingIndex),
                                     modifier = Modifier.fillMaxSize(),
                                     resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL,
-                                    isSubsequentSlideshowVideo = currentPlayingIndex > 0
+                                    isSubsequentSlideshowVideo = currentPlayingIndex > 0 || hasLoadedVlogFirstPal,
+                                    onFirstFrameRendered = {
+                                        if (currentPlayingIndex == 0) {
+                                            hasLoadedVlogFirstPal = true
+                                        }
+                                    }
                                 )
 
 
