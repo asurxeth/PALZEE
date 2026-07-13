@@ -1,20 +1,19 @@
-# 🎥 Palzee
-### _Instrument Serif_ Premium Typography Hierarchy paired with _Bricolage Grotesque_ Structure
+# Palzee 🎥
+### High-Performance Local-First Vlogging Engine & Jetpack Compose Media Pipeline
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
 [![Design-System](https://img.shields.io/badge/Design_System-Material_3-6750A4?logo=materialdesign&logoColor=white)](https://m3.material.io/)
 [![Framework](https://img.shields.io/badge/Framework-Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack-compose)
+[![Backend](https://img.shields.io/badge/Backend-Supabase-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
-_Palzee_ is a high-performance Android application redefining micro-vlogging through a ultra-low-latency, local-first media architecture. Built completely on the native **Material 3 Design System**, it implements an editorial visual engine pairing the expressive geometry of _Bricolage Grotesque_ for system controls with the classic elegance of _Instrument Serif_ for high-impact content displays. 
-
-By avoiding network-first blocking pipelines, Palzee achieves instantaneous video processing, frame-accurate slideshow transitions, and sub-millisecond perceived interface latency.
+Palzee is a native Android application engineering micro-vlogging through a low-latency, local-first media architecture. Built completely around standard system components and the Android Material 3 Design framework, Palzee achieves instantaneous video processing, frame-accurate slideshow transitions, and sub-millisecond perceived interface responsiveness without relying on network-first blocking actions.
 
 ---
 
 ## 🛠 Tech Stack & Workspace Architecture
 
-Palzee implements a modular framework engineered for predictable memory allocation, native Android integrations, and zero UI-thread blocking.
+Palzee implements a modular framework engineered for predictable memory allocation, native Android system optimizations, and zero UI-thread blocking.
 
-*   **Design Typography Scale:** Custom UI theme binding utilizing _Instrument Serif_ for large, dramatic display headers and _Bricolage Grotesque_ for tracking interactive states, labels, buttons, and numeric readouts.
+*   **Design Framework:** Pure Material 3 (M3) component patterns, responsive token systems, and system icons running over standard device Android layouts.
 *   **Media Processing Layer:** Google Media3 Ecosystem (`ExoPlayer`), CameraX API, and native hardware decoder configurations (`MediaCodec`).
 *   **Persistent & Cache Data Fabric:** 
     *   Jetpack DataStore (Proto-backed structural state isolation).
@@ -24,16 +23,16 @@ Palzee implements a modular framework engineered for predictable memory allocati
 
 ---
 
-## 📱 Interface Blueprints & Layout Architecture
+## 📱 Material Device Viewports & App Mockups
 
-The application interface utilizes explicit Material 3 containers to structure full-screen video capture and dashboard contexts seamlessly.
+The core user experience is delivered through dedicated native viewports optimized for real-time asset tracking and media controls.
 
 <Carousel>
-{/* Reason: Displays the 4 distinct, high-performance mockups of Palzee's user experience flows using standard Android interfaces. */}
-  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/editorial_dashboard_1783940242349.png" alt="Palzee Home Feed displaying Material 3 dynamic grids, Instrument Serif headers, Bricolage Grotesque controls, and media dashboard containers." caption="1. Editorial Material 3 Dashboard" />
-  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/camera_capture_1783940256558.png" alt="CameraX viewport overlay on Android displaying raw video stream bounding layout boxes and Material 3 control overlays." caption="2. CameraX Video Capture HUD" />
-  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/playback_preview_1783940271262.png" alt="Palzee low-latency Preview Screen with an instant thumbnail image overlay and integrated custom surface controls." caption="3. 0ms Playback Preview Screen" />
-  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/storage_metrics_1783940292767.png" alt="Android system storage information panel showing clear storage metrics after safe cache garbage collector execution." caption="4. System Storage Cache Footprint" />
+{/* Reason: Renders the 4 core interactive views of Palzee inside native Android Material mockups to showcase full-system rendering. */}
+  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/editorial_dashboard_1783940242349.png" alt="Palzee Home Dashboard displaying responsive grid viewports, structural card containers, and native Material 3 user interaction layouts." caption="1. Material 3 Home Viewport Layout" />
+  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/camera_capture_1783940256558.png" alt="CameraX capture viewfinder layout displaying clear framing boundaries, ratio lines, and core recording state controls." caption="2. CameraX Viewfinder HUD" />
+  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/playback_preview_1783940271262.png" alt="Native media player interface displaying low-latency playback frames mounted directly via ExoPlayer surface listeners." caption="3. Native Playback Preview Frame" />
+  <Image src="file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/storage_metrics_1783940292767.png" alt="Android settings display interface detailing the optimization profile and minimal storage footprint after garbage collection." caption="4. Application Storage Metrics View" />
 </Carousel>
 
 ---
@@ -67,8 +66,11 @@ To completely bypass Android's variable media-hardware warm-up latency, Palzee d
 
 ### 2. Algorithmic Cache Garbage Collector (GC)
 To protect the runtime system heap and maintain an optimal storage footprint in the Android settings menu, files generated during capture, filtering, and cross-screen sharing are systematically managed by a specialized lookup Garbage Collector:
-*   **Registry Verification:** Active processing files are cross-checked against a system-level preferences registry (`vlog_paths`).
+*   **Registry Verification:** Active processing files are check-checked against a system-level preferences registry (`vlog_paths`).
 *   **Orphan Cleanups:** On both app launch (`onCreate`) and termination (`onDestroy`), unreferenced temporary data variants (`temp_preview_save_*`, `cached_pal_*`) are wiped via standard low-level system execution. This keeps the reported **App Info Storage Size** at a minimal footprint.
+
+### 3. Asynchronous Sync Shifting
+Network uploads run detached from critical UI processing tracks. Database insert actions enforce distinct returned constraints (`.select("id")`), blocking heavy rows from sending unnecessary payloads back across the network, reducing data overhead.
 
 ---
 
