@@ -262,13 +262,7 @@ class PreviewActivity : ComponentActivity() {
                 }
             }
 
-            var isReady by remember { mutableStateOf(false) }
-
-            LaunchedEffect(capturedVideoPath) {
-                if (capturedVideoPath.isNotEmpty()) {
-                    isReady = true
-                }
-            }
+            val isReady = remember(capturedVideoPath) { capturedVideoPath.isNotEmpty() }
 
             PalTheme {
                 Surface(

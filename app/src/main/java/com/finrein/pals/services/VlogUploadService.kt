@@ -97,7 +97,7 @@ class VlogUploadService : Service() {
                             val uri = android.net.Uri.fromFile(java.io.File(cleanPath))
                             uploadPalVideoAndGetUrl(applicationContext, uri, currentUserId) ?: ""
                         } else {
-                            uploadFileToSupabase(applicationContext, localVideoPath, "PALS")
+                            uploadFileToSupabase(applicationContext, localVideoPath, "pals")
                         }
                     } else {
                         ""
@@ -145,7 +145,7 @@ class VlogUploadService : Service() {
                         if (checkAvatar.startsWith("http")) {
                             avatarUrl = checkAvatar
                         } else {
-                            val uploaded = uploadFileToSupabase(applicationContext, checkAvatar, "AVATARS")
+                            val uploaded = uploadFileToSupabase(applicationContext, checkAvatar, "avatars")
                             if (uploaded.startsWith("http")) {
                                 avatarUrl = uploaded
                                 sessionManager.saveAvatarUri(uploaded)

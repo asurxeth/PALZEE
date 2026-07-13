@@ -871,7 +871,7 @@ fun syncPendingSubmissions(
                     val rotation = imageParts.getOrNull(4)?.toIntOrNull() ?: 0
                     
                     val uploadedUrl = if (localPath.isNotEmpty()) {
-                        uploadFileToSupabase(context, localPath, "PALS")
+                        uploadFileToSupabase(context, localPath, "pals")
                     } else {
                         ""
                     }
@@ -1065,7 +1065,9 @@ suspend fun uploadFileToSupabase(context: android.content.Context, uriString: St
             return uriString
         }
         var bytes = inputStream.use { it.readBytes() }
-        val extension = if (bucketName.equals("pals", ignoreCase = true) || bucketName.equals("pals_vlogs", ignoreCase = true)) "mp4" else "jpg"
+        
+        val targetBucket = bucketName.lowercase(java.util.Locale.US)
+        val extension = if (targetBucket == "pals" || targetBucket == "pals_vlogs") "mp4" else "jpg"
         
         // Compress images to keep payload under 200 KB
         if (extension == "jpg") {
@@ -1076,18 +1078,10 @@ suspend fun uploadFileToSupabase(context: android.content.Context, uriString: St
         val originalName = java.io.File(cleanPathForName).name.ifEmpty { "file.$extension" }
         val sanitizedOriginalName = originalName.replace(" ", "_")
         val fileName = "${java.util.UUID.randomUUID()}_$sanitizedOriginalName"
-        val storageBucket = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+        val storageBucket = com.finrein.pals.PalApplication.supabase.storage.from(targetBucket)
         
-        val publicUrl = try {
-            storageBucket.upload(fileName, bytes, upsert = true)
-            storageBucket.publicUrl(fileName)
-        } catch (e: Exception) {
-            android.util.Log.w("SupabaseUpload", "Failed to upload to $bucketName, trying lowercase fallback: ${e.message}")
-            val lowercaseBucket = bucketName.lowercase(java.util.Locale.US)
-            val fallbackBucket = com.finrein.pals.PalApplication.supabase.storage.from(lowercaseBucket)
-            fallbackBucket.upload(fileName, bytes, upsert = true)
-            fallbackBucket.publicUrl(fileName)
-        }
+        storageBucket.upload(fileName, bytes, upsert = true)
+        val publicUrl = storageBucket.publicUrl(fileName)
         
         android.util.Log.d("SupabaseUpload", "Uploaded successfully! Public URL: $publicUrl")
         return publicUrl
@@ -1116,16 +1110,9 @@ suspend fun uploadPalVideoAndGetUrl(context: android.content.Context, localUri: 
             val sanitizedOriginalName = originalName.replace(" ", "_")
             val fileName = "${userId}_${System.currentTimeMillis()}_$sanitizedOriginalName"
             
-            val publicUrl = try {
-                val bucket = com.finrein.pals.PalApplication.supabase.storage.from("PALS_VLOGS")
-                bucket.upload(fileName, bytes, upsert = true)
-                bucket.publicUrl(fileName)
-            } catch (e: Exception) {
-                android.util.Log.w("VIDEO_STORAGE_ERR", "Failed to upload to PALS_VLOGS, trying lowercase pals_vlogs: ${e.message}")
-                val fallbackBucket = com.finrein.pals.PalApplication.supabase.storage.from("pals_vlogs")
-                fallbackBucket.upload(fileName, bytes, upsert = true)
-                fallbackBucket.publicUrl(fileName)
-            }
+            val bucket = com.finrein.pals.PalApplication.supabase.storage.from("pals_vlogs")
+            bucket.upload(fileName, bytes, upsert = true)
+            val publicUrl = bucket.publicUrl(fileName)
             
             return@withContext publicUrl
         } catch (e: Exception) {
@@ -1523,14 +1510,14 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
 
         if (videoPath.startsWith("http")) {
             var resolvedPath = videoPath
-            if (resolvedPath.contains("/pals/", ignoreCase = true)) {
-                resolvedPath = resolvedPath.replace("/pals/", "/PALS/")
+            if (resolvedPath.contains("/PALS/", ignoreCase = true)) {
+                resolvedPath = resolvedPath.replace("/PALS/", "/pals/", ignoreCase = true)
             }
-            if (resolvedPath.contains("/pals_vlogs/", ignoreCase = true)) {
-                resolvedPath = resolvedPath.replace("/pals_vlogs/", "/PALS_VLOGS/")
+            if (resolvedPath.contains("/PALS_VLOGS/", ignoreCase = true)) {
+                resolvedPath = resolvedPath.replace("/PALS_VLOGS/", "/pals_vlogs/", ignoreCase = true)
             }
-            if (resolvedPath.contains("/avatars/", ignoreCase = true)) {
-                resolvedPath = resolvedPath.replace("/avatars/", "/AVATARS/")
+            if (resolvedPath.contains("/AVATARS/", ignoreCase = true)) {
+                resolvedPath = resolvedPath.replace("/AVATARS/", "/avatars/", ignoreCase = true)
             }
 
             val fileName = resolvedPath.substringAfterLast("/")
@@ -1556,7 +1543,7 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
                             throw java.io.IOException("HTTP error ${connection.responseCode}")
                         }
                     } catch (httpEx: Exception) {
-                        val bucketName = if (resolvedPath.contains("pals_vlogs", ignoreCase = true)) "PALS_VLOGS" else "PALS"
+                        val bucketName = if (resolvedPath.contains("pals_vlogs", ignoreCase = true)) "pals_vlogs" else "pals"
                         val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
                         try {
                             storage.downloadPublic(fileName)
@@ -2019,17 +2006,8 @@ suspend fun deleteVlogPostPermanently(context: android.content.Context, userId: 
             deleteCachedVideo(context, videoUrl)
 
             val fileName = videoUrl.substringAfterLast("/")
-            val bucketName = if (palCode == "vlog") "PALS_VLOGS" else "PALS"
-            try {
-                com.finrein.pals.PalApplication.supabase.storage.from(bucketName).delete(fileName)
-            } catch (e: Exception) {
-                val altBucket = if (bucketName == "PALS_VLOGS") "pals_vlogs" else "pals"
-                try {
-                    com.finrein.pals.PalApplication.supabase.storage.from(altBucket).delete(fileName)
-                } catch (e2: Exception) {
-                    e2.printStackTrace()
-                }
-            }
+            val bucketName = if (palCode == "vlog") "pals_vlogs" else "pals"
+            com.finrein.pals.PalApplication.supabase.storage.from(bucketName).delete(fileName)
         } catch (e: Exception) {
             android.util.Log.e("PURGE_ERROR", "Failed to clear asset: ${e.localizedMessage}")
         }
@@ -2654,14 +2632,14 @@ fun getCachedVideoPathSync(context: android.content.Context, videoPath: String):
     }
     
     var resolvedPath = videoPath
-    if (resolvedPath.contains("/pals/", ignoreCase = true)) {
-        resolvedPath = resolvedPath.replace("/pals/", "/PALS/")
+    if (resolvedPath.contains("/PALS/", ignoreCase = true)) {
+        resolvedPath = resolvedPath.replace("/PALS/", "/pals/", ignoreCase = true)
     }
-    if (resolvedPath.contains("/pals_vlogs/", ignoreCase = true)) {
-        resolvedPath = resolvedPath.replace("/pals_vlogs/", "/PALS_VLOGS/")
+    if (resolvedPath.contains("/PALS_VLOGS/", ignoreCase = true)) {
+        resolvedPath = resolvedPath.replace("/PALS_VLOGS/", "/pals_vlogs/", ignoreCase = true)
     }
-    if (resolvedPath.contains("/avatars/", ignoreCase = true)) {
-        resolvedPath = resolvedPath.replace("/avatars/", "/AVATARS/")
+    if (resolvedPath.contains("/AVATARS/", ignoreCase = true)) {
+        resolvedPath = resolvedPath.replace("/AVATARS/", "/avatars/", ignoreCase = true)
     }
     val fileName = resolvedPath.substringAfterLast("/")
     val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
@@ -2913,7 +2891,7 @@ fun HomeScreen(
             // 2. Then Database
             avatarScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    val uploadedUrl = uploadFileToSupabase(context, uri.toString(), "AVATARS")
+                    val uploadedUrl = uploadFileToSupabase(context, uri.toString(), "avatars")
                     if (uploadedUrl.startsWith("http")) {
                         supabase.postgrest.from("user_pals")
                             .update(mapOf("user_avatar_url" to uploadedUrl)) {
@@ -4175,7 +4153,7 @@ fun HomeScreen(
                     if (uriStr.startsWith("http")) {
                         avatarUrl = uriStr
                     } else if (uriStr.isNotEmpty()) {
-                        val uploaded = uploadFileToSupabase(context, uriStr, "AVATARS")
+                        val uploaded = uploadFileToSupabase(context, uriStr, "avatars")
                         if (uploaded.startsWith("http")) {
                             avatarUrl = uploaded
                             sessionManager.saveAvatarUri(uploaded)
@@ -4615,7 +4593,7 @@ fun HomeScreen(
                                 val uri = android.net.Uri.fromFile(java.io.File(cleanPath))
                                 uploadPalVideoAndGetUrl(context, uri, currentUserId) ?: "dummy_image"
                             } else {
-                                uploadFileToSupabase(context, capturedVideoPath!!, "PALS")
+                                uploadFileToSupabase(context, capturedVideoPath!!, "pals")
                             }
                         } else {
                             "dummy_image"
@@ -4642,7 +4620,7 @@ fun HomeScreen(
                             if (uriStr.startsWith("http")) {
                                 avatarUrl = uriStr
                             } else if (uriStr.isNotEmpty()) {
-                                val uploaded = uploadFileToSupabase(context, uriStr, "AVATARS")
+                                val uploaded = uploadFileToSupabase(context, uriStr, "avatars")
                                 if (uploaded.startsWith("http")) {
                                     avatarUrl = uploaded
                                     sessionManager.saveAvatarUri(uploaded)
@@ -7057,12 +7035,6 @@ fun CameraScreenContent(
             label = "ShutterScaleAnimation"
         )
 
-        val shutterAlpha by animateFloatAsState(
-            targetValue = if (isRecording) 1.0f else 0.6f,
-            animationSpec = tween(durationMillis = 300),
-            label = "ShutterAlpha"
-        )
-
         // Capture Button (R.drawable.capture_smile) centered on the bottom border of 9:16 frame exactly half-in, half-out
         Box(
             modifier = Modifier
@@ -7072,7 +7044,7 @@ fun CameraScreenContent(
                 .graphicsLayer(
                     scaleX = shutterScale,
                     scaleY = shutterScale,
-                    alpha = shutterAlpha
+                    alpha = 1.0f
                 )
                 .clip(CircleShape)
                 .background(currentInnerColor)
