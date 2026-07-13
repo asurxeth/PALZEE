@@ -318,13 +318,13 @@ fun DynamicGlowScreenContainer(
     }
 
     val accentEdgeColor = when (selectedThemeColor) {
-        "yellow" -> Color(0xFFFFE600) // Neon Yellow
-        "orange" -> Color(0xFFFF6700) // Neon Orange
-        "pink" -> Color(0xFFFF007F)   // Neon Pink
-        "blue" -> Color(0xFF00F0FF)   // Neon Cyan/Blue
-        "purple" -> Color(0xFFB000FF) // Neon Purple
-        "red" -> Color(0xFFFF073A)    // Neon Red
-        else -> Color(0xFFFFE600)
+        "blue" -> Color(0xFF11D5F3)
+        "green" -> Color(0xFF65EA7B)
+        "orange" -> Color(0xFFFE9068)
+        "pink" -> Color(0xFFFE75F5)
+        "purple" -> Color(0xFFAA6DFE)
+        "cyan" -> Color(0xFF5D96FF)
+        else -> Color(0xFF11D5F3)
     }
 
     val effectiveRadius = if (cornerRadiusDp > 0.dp) cornerRadiusDp else 24.dp

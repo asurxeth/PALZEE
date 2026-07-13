@@ -118,7 +118,7 @@ class PreviewActivity : ComponentActivity() {
             val context = androidx.compose.ui.platform.LocalContext.current
             val isDark = isSystemInDarkTheme()
             val selectedThemeColor = remember { sessionManager.getThemeColor() }
-            val themeConfig = remember(selectedThemeColor) { PalThemes[selectedThemeColor] ?: PalThemes["yellow"]!! }
+            val themeConfig = remember(selectedThemeColor) { PalThemes[selectedThemeColor] ?: PalThemes["blue"]!! }
 
             val accentColor = themeConfig.accentColor
             val textColor = if (isDark) Color.White else Color.Black

@@ -2441,54 +2441,62 @@ class CardBoundsShape(
     }
 }
 
+fun Color.useDarkTextOnAccent(): Boolean {
+    return this == Color(0xFF11D5F3) || // blue
+           this == Color(0xFF65EA7B) || // green
+           this == Color(0xFFFE9068) || // orange
+           this == Color(0xFFFE75F5) || // pink
+           this == Color(0xFF5D96FF)    // cyan
+}
+
 val PalThemes = mapOf(
-    "yellow" to PalThemeConfig(
-        name = "yellow",
-        accentColor = Color(0xFFFBC02D),
-        logoColor = Color(0xFF007FFF), // Azure
-        lightGradient = listOf(Color(0xFFFFFFF0).copy(alpha = 1.0f), Color(0xFFFFF9C4).copy(alpha = 1.0f)),
-        darkGradient = listOf(Color(0xFF2D2D16).copy(alpha = 1.0f), Color(0xFF1E1E0E).copy(alpha = 1.0f)),
-        useDarkTextOnAccent = false
-    ),
-    "orange" to PalThemeConfig(
-        name = "orange",
-        accentColor = Color(0xFFFF8F00),
-        logoColor = Color(0xFF00E676), // Mint
-        lightGradient = listOf(Color(0xFFFFEBEE).copy(alpha = 1.0f), Color(0xFFFFCCBC).copy(alpha = 1.0f)),
-        darkGradient = listOf(Color(0xFF2D1E16).copy(alpha = 1.0f), Color(0xFF1E140E).copy(alpha = 1.0f)),
-        useDarkTextOnAccent = false
+    "blue" to PalThemeConfig(
+        name = "blue",
+        accentColor = Color(0xFF11D5F3),
+        logoColor = Color(0xFF310BED),
+        lightGradient = listOf(Color(0xFFE0F7FA).copy(alpha = 1.0f), Color(0xFFB2EBF2).copy(alpha = 1.0f)),
+        darkGradient = listOf(Color(0xFF0A2B32).copy(alpha = 1.0f), Color(0xFF061B20).copy(alpha = 1.0f)),
+        useDarkTextOnAccent = true
     ),
     "green" to PalThemeConfig(
         name = "green",
-        accentColor = Color(0xFF00E676),
-        logoColor = Color(0xFFFF8F00), // Tangerine
-        lightGradient = listOf(Color(0xFFE8F5E9).copy(alpha = 1.0f), Color(0xFFC8E6C9).copy(alpha = 1.0f)),
-        darkGradient = listOf(Color(0xFF162D1C).copy(alpha = 1.0f), Color(0xFF0E1E12).copy(alpha = 1.0f)),
-        useDarkTextOnAccent = false
+        accentColor = Color(0xFF65EA7B),
+        logoColor = Color(0xFFFF530A),
+        lightGradient = listOf(Color(0xFFE8F8F5).copy(alpha = 1.0f), Color(0xFFD1F2EB).copy(alpha = 1.0f)),
+        darkGradient = listOf(Color(0xFF0B2D19).copy(alpha = 1.0f), Color(0xFF071E10).copy(alpha = 1.0f)),
+        useDarkTextOnAccent = true
     ),
-    "blue" to PalThemeConfig(
-        name = "blue",
-        accentColor = Color(0xFF007FFF),
-        logoColor = Color(0xFFFBC02D), // Sunflower Yellow
-        lightGradient = listOf(Color(0xFFE3F2FD).copy(alpha = 1.0f), Color(0xFFBBDEFB).copy(alpha = 1.0f)),
-        darkGradient = listOf(Color(0xFF16242D).copy(alpha = 1.0f), Color(0xFF0E181E).copy(alpha = 1.0f)),
-        useDarkTextOnAccent = false
+    "orange" to PalThemeConfig(
+        name = "orange",
+        accentColor = Color(0xFFFE9068),
+        logoColor = Color(0xFF0BBEFF),
+        lightGradient = listOf(Color(0xFFFDF2E9).copy(alpha = 1.0f), Color(0xFFF5CBA7).copy(alpha = 1.0f)),
+        darkGradient = listOf(Color(0xFF2D160B).copy(alpha = 1.0f), Color(0xFF1E0E07).copy(alpha = 1.0f)),
+        useDarkTextOnAccent = true
+    ),
+    "pink" to PalThemeConfig(
+        name = "pink",
+        accentColor = Color(0xFFFE75F5),
+        logoColor = Color(0xFF38D4C2),
+        lightGradient = listOf(Color(0xFFFDEDEC).copy(alpha = 1.0f), Color(0xFFFADBD8).copy(alpha = 1.0f)),
+        darkGradient = listOf(Color(0xFF2D0B2B).copy(alpha = 1.0f), Color(0xFF1E071C).copy(alpha = 1.0f)),
+        useDarkTextOnAccent = true
     ),
     "purple" to PalThemeConfig(
         name = "purple",
-        accentColor = Color(0xFF8A2BE2),
-        logoColor = Color(0xFFEA4335), // Google Red
-        lightGradient = listOf(Color(0xFFF3E5F5).copy(alpha = 1.0f), Color(0xFFE1BEE7).copy(alpha = 1.0f)),
-        darkGradient = listOf(Color(0xFF1C1C2D).copy(alpha = 1.0f), Color(0xFF12121E).copy(alpha = 1.0f)),
+        accentColor = Color(0xFFAA6DFE),
+        logoColor = Color(0xFFFFA600),
+        lightGradient = listOf(Color(0xFFF5EEF8).copy(alpha = 1.0f), Color(0xFFEBDEF0).copy(alpha = 1.0f)),
+        darkGradient = listOf(Color(0xFF1E0B2D).copy(alpha = 1.0f), Color(0xFF14071E).copy(alpha = 1.0f)),
         useDarkTextOnAccent = false
     ),
-    "red" to PalThemeConfig(
-        name = "red",
-        accentColor = Color(0xFFEA4335),
-        logoColor = Color(0xFF8A2BE2), // Hyacinth
-        lightGradient = listOf(Color(0xFFFFEBEE).copy(alpha = 1.0f), Color(0xFFFFCDD2).copy(alpha = 1.0f)),
-        darkGradient = listOf(Color(0xFF2D1616).copy(alpha = 1.0f), Color(0xFF1E0E0E).copy(alpha = 1.0f)),
-        useDarkTextOnAccent = false
+    "cyan" to PalThemeConfig(
+        name = "cyan",
+        accentColor = Color(0xFF5D96FF),
+        logoColor = Color(0xFF77E4BE),
+        lightGradient = listOf(Color(0xFFEBF5FB).copy(alpha = 1.0f), Color(0xFFD4E6F1).copy(alpha = 1.0f)),
+        darkGradient = listOf(Color(0xFF0B192D).copy(alpha = 1.0f), Color(0xFF07101E).copy(alpha = 1.0f)),
+        useDarkTextOnAccent = true
     )
 )
 
@@ -3217,43 +3225,13 @@ fun HomeScreen(
                 }
         }
     }
-    val themeConfig = remember(selectedThemeColor) { PalThemes[selectedThemeColor] ?: PalThemes["yellow"]!! }
+    val themeConfig = remember(selectedThemeColor) { PalThemes[selectedThemeColor] ?: PalThemes["blue"]!! }
     val accentColor = themeConfig.accentColor
     val logoColor = themeConfig.logoColor
     val activeGradientColors = if (isDark) themeConfig.darkGradient else themeConfig.lightGradient
 
-    val selectedProfileColor = remember(selectedThemeColor) {
-        when (selectedThemeColor) {
-            "yellow" -> Color(0xFFFFE600) // Neon Yellow
-            "orange" -> Color(0xFFFF6700) // Neon Orange
-            "pink" -> Color(0xFFFF007F)   // Neon Pink
-            "blue" -> Color(0xFF00F0FF)   // Neon Cyan/Blue
-            "purple" -> Color(0xFFB000FF) // Neon Purple
-            "red" -> Color(0xFFFF073A)    // Neon Red
-            else -> Color(0xFFFFE600)
-        }
-    }
-
-    val palTextLogoColor = remember(selectedThemeColor) {
-        val mappedColorName = when (selectedThemeColor) {
-            "yellow" -> "blue"
-            "blue" -> "yellow"
-            "orange" -> "pink"
-            "pink" -> "orange"
-            "red" -> "purple"
-            "purple" -> "red"
-            else -> selectedThemeColor
-        }
-        when (mappedColorName) {
-            "yellow" -> Color(0xFFFFE600)
-            "blue" -> Color(0xFF00F0FF)
-            "orange" -> Color(0xFFFF6700)
-            "pink" -> Color(0xFFFF007F)
-            "red" -> Color(0xFFFF073A)
-            "purple" -> Color(0xFFB000FF)
-            else -> Color(0xFFFFE600)
-        }
-    }
+    val selectedProfileColor = themeConfig.accentColor
+    val palTextLogoColor = themeConfig.logoColor
 
     val infiniteTransition = rememberInfiniteTransition(label = "smiley_rotation")
     val rotationAngle by infiniteTransition.animateFloat(
@@ -6569,24 +6547,24 @@ fun CameraScreenContent(
     val scope = rememberCoroutineScope()
     val darkShadeColor = remember(selectedThemeColor) {
         when (selectedThemeColor) {
-            "yellow" -> Color(0xFF5E450A)
-            "orange" -> Color(0xFF5E0B00)
-            "green" -> Color(0xFF005E2B)
             "blue" -> Color(0xFF003366)
+            "green" -> Color(0xFF005E2B)
+            "orange" -> Color(0xFF5E2B00)
+            "pink" -> Color(0xFF5E0033)
             "purple" -> Color(0xFF3B0B66)
-            "red" -> Color(0xFF5E1B15)
-            else -> Color(0xFF5E450A)
+            "cyan" -> Color(0xFF004D40)
+            else -> Color(0xFF003366)
         }
     }
     val lighterShadeColor = remember(selectedThemeColor) {
         when (selectedThemeColor) {
-            "yellow" -> Color(0xFFFFF176)
-            "orange" -> Color(0xFFFFB74D)
-            "green" -> Color(0xFF81C784)
             "blue" -> Color(0xFF64B5F6)
+            "green" -> Color(0xFF81C784)
+            "orange" -> Color(0xFFFFB74D)
+            "pink" -> Color(0xFFF48FB1)
             "purple" -> Color(0xFFBA68C8)
-            "red" -> Color(0xFFE57373)
-            else -> Color(0xFFFFF176)
+            "cyan" -> Color(0xFF80DEEA)
+            else -> Color(0xFF64B5F6)
         }
     }
     var activeSlot by remember { mutableStateOf(1) }
@@ -6741,7 +6719,9 @@ fun CameraScreenContent(
 
         // Precise positioning constants for taller layout
         val shutterBottomMargin = 65.5.dp
-        val shutterSize = 59.dp * scale
+        val shutterSize0 = 59.dp
+        val shutterSize = shutterSize0 * scale
+        val outerRingSize = 67.dp * scale
         val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
         val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
 
@@ -6751,22 +6731,21 @@ fun CameraScreenContent(
 
         val danceInnerColors = remember {
             listOf(
-                Color(0xFFFF007F), // Neon Pink
-                Color(0xFF00F0FF), // Neon Cyan
-                Color(0xFF39FF14), // Neon Green
-                Color(0xFFFF073A), // Neon Red
-                Color(0xFFFFE600), // Neon Yellow
-                Color(0xFFFF6700), // Neon Orange
-                Color(0xFFB000FF)  // Neon Purple
+                Color(0xFF11D5F3), // blue
+                Color(0xFF65EA7B), // green
+                Color(0xFFFE9068), // orange
+                Color(0xFFFE75F5), // pink
+                Color(0xFFAA6DFE), // purple
+                Color(0xFF5D96FF)  // cyan
             )
         }
         val colorIndex = if (isRecording) {
             val absAngle = if (rotationAngle < 0f) -rotationAngle else rotationAngle
-            ((absAngle / 10f).toInt()) % 7
+            ((absAngle / 10f).toInt()) % 6
         } else {
             null
         }
-        val currentInnerColor = if (videoCaptureRef == null) lighterShadeColor.copy(alpha = 0.5f) else if (colorIndex != null) danceInnerColors[colorIndex] else lighterShadeColor
+        val currentInnerColor = if (videoCaptureRef == null) Color(0xFF11D5F3).copy(alpha = 0.5f) else if (colorIndex != null) danceInnerColors[colorIndex] else Color(0xFF11D5F3)
 
         val startCaptureAction = {
             if (!isRecording && countdownSeconds == 0 && videoCaptureRef != null) {
@@ -7124,34 +7103,17 @@ fun CameraScreenContent(
         Canvas(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = shutterBottomMargin + (shutterSize / 2f) - (67.dp * scale / 2f))
-                .size(67.dp * scale)
+                .padding(bottom = shutterBottomMargin + (shutterSize / 2f) - (outerRingSize / 2f))
+                .size(outerRingSize)
         ) {
-            val strokeWidth = (2.5.dp * scale).toPx()
-            val radius = (size.minDimension - strokeWidth) / 2
+            val strokeWidth = (4.dp * scale).toPx()
+            val innerVisualGap = (3.dp * scale).toPx()
+            val radius = (shutterSize / 2f).toPx() + innerVisualGap + (strokeWidth / 2f)
             drawCircle(
-                color = selectedProfileColor.copy(alpha = 0.2f),
+                color = Color(0xFF310BED),
                 radius = radius,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
             )
-            if (isRecording) {
-                drawArc(
-                    color = selectedProfileColor,
-                    startAngle = -90f,
-                    sweepAngle = 360f * animatedProgress,
-                    useCenter = false,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(
-                        width = strokeWidth,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                    )
-                )
-            } else {
-                drawCircle(
-                    color = selectedProfileColor,
-                    radius = radius,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
-                )
-            }
         }
 
         // Flash toggle (auto / off / on) positioned to the left of the capture button, centered on bottom border line
@@ -7774,12 +7736,12 @@ fun GroupMembersSmileysRow(
 ) {
     val displayCount = members.size.coerceIn(1, 10)
     val shufflingColors = listOf(
-        Color(0xFFFFE600), // Yellow
-        Color(0xFFFF6700), // Orange
-        Color(0xFFFF007F), // Pink
-        Color(0xFF00F0FF), // Blue
-        Color(0xFFB000FF), // Purple
-        Color(0xFFFF073A)  // Red
+        Color(0xFF11D5F3), // blue
+        Color(0xFF65EA7B), // green
+        Color(0xFFFE9068), // orange
+        Color(0xFFFE75F5), // pink
+        Color(0xFFAA6DFE), // purple
+        Color(0xFF5D96FF)  // cyan
     )
 
     // Pre-calculate which members are lit so we can filter them if showOnlyLit is true
@@ -7936,12 +7898,12 @@ fun GroupHoursSmileysRow(
     }
 
     val shufflingColors = listOf(
-        Color(0xFFFFE600), // Yellow
-        Color(0xFFFF6700), // Orange
-        Color(0xFFFF007F), // Pink
-        Color(0xFF00F0FF), // Blue
-        Color(0xFFB000FF), // Purple
-        Color(0xFFFF073A)  // Red
+        Color(0xFF11D5F3), // blue
+        Color(0xFF65EA7B), // green
+        Color(0xFFFE9068), // orange
+        Color(0xFFFE75F5), // pink
+        Color(0xFFAA6DFE), // purple
+        Color(0xFF5D96FF)  // cyan
     )
 
     Row(
@@ -8425,7 +8387,7 @@ fun CapturedPreviewScreen(
             }
             
             val sendButtonIconTint = if (isButtonEnabled) {
-                if (accentColor == Color(0xFF00F0FF) || accentColor == Color(0xFFFFE600) || accentColor == Color(0xFFFBC02D)) Color.Black else Color.White
+                if (accentColor.useDarkTextOnAccent()) Color.Black else Color.White
             } else {
                 accentColor.copy(alpha = 0.3f)
             }
@@ -8729,7 +8691,7 @@ fun CapturedPreviewScreen(
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = "Selected",
-                                tint = if (accentColor == Color(0xFF00F0FF) || accentColor == Color(0xFFFFE600) || accentColor == Color(0xFFFBC02D)) Color.Black else Color.White,
+                                tint = if (accentColor.useDarkTextOnAccent()) Color.Black else Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
@@ -10412,13 +10374,13 @@ fun VlogScreenContent(
 
     val selectedProfileColor = remember(palTextLogoColor) {
         when (palTextLogoColor) {
-            Color(0xFFFFE600) -> Color(0xFF00F0FF) // Yellow logo -> Blue profile
-            Color(0xFF00F0FF) -> Color(0xFFFFE600) // Blue logo -> Yellow profile
-            Color(0xFFFF6700) -> Color(0xFFFF007F) // Orange logo -> Pink profile
-            Color(0xFFFF007F) -> Color(0xFFFF6700) // Pink logo -> Orange profile
-            Color(0xFFFF073A) -> Color(0xFFB000FF) // Red logo -> Purple profile
-            Color(0xFFB000FF) -> Color(0xFFFF073A) // Purple logo -> Red profile
-            else -> Color(0xFFFFE600)
+            Color(0xFF310BED) -> Color(0xFF11D5F3) // blue
+            Color(0xFFFF530A) -> Color(0xFF65EA7B) // green
+            Color(0xFF0BBEFF) -> Color(0xFFFE9068) // orange
+            Color(0xFF38D4C2) -> Color(0xFFFE75F5) // pink
+            Color(0xFFFFA600) -> Color(0xFFAA6DFE) // purple
+            Color(0xFF77E4BE) -> Color(0xFF5D96FF) // cyan
+            else -> Color(0xFF11D5F3)
         }
     }
 
@@ -12237,7 +12199,8 @@ fun VlogScreenContent(
 
                 // Precise positioning and dimension logic matching the main camera frame exactly
                 val shutterBottomMargin = 67.5.dp
-                val shutterSize = 59.dp * scale
+                val shutterSize0 = 59.dp
+                val shutterSize = shutterSize0 * scale
                 val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
                 val isVlog = pal.isVlog
                 val exportShift = if (isVlog) 25.dp else 30.dp
@@ -14560,12 +14523,12 @@ fun FeedReactionsAndReplies(
                                             horizontalArrangement = Arrangement.spacedBy(1.5.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Box(modifier = Modifier.size(width = 1.5.dp, height = 6.dp).background(if (accentColor == Color(0xFF00F0FF) || accentColor == Color(0xFFFFE600) || accentColor == Color(0xFFFBC02D)) Color.Black else Color.White))
-                                            Box(modifier = Modifier.size(width = 1.5.dp, height = 6.dp).background(if (accentColor == Color(0xFF00F0FF) || accentColor == Color(0xFFFFE600) || accentColor == Color(0xFFFBC02D)) Color.Black else Color.White))
+                                            Box(modifier = Modifier.size(width = 1.5.dp, height = 6.dp).background(if (accentColor.useDarkTextOnAccent()) Color.Black else Color.White))
+                                            Box(modifier = Modifier.size(width = 1.5.dp, height = 6.dp).background(if (accentColor.useDarkTextOnAccent()) Color.Black else Color.White))
                                         }
                                     } else {
                                         PlayIcon(
-                                            tint = if (accentColor == Color(0xFF00F0FF) || accentColor == Color(0xFFFFE600) || accentColor == Color(0xFFFBC02D)) Color.Black else Color.White,
+                                            tint = if (accentColor.useDarkTextOnAccent()) Color.Black else Color.White,
                                             modifier = Modifier.size(7.dp)
                                         )
                                     }
@@ -14781,7 +14744,7 @@ fun MemeSoundPill(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(if (accentColor == Color(0xFF00F0FF) || accentColor == Color(0xFFFFE600) || accentColor == Color(0xFFFBC02D)) Color.Black else Color.White)
+                        .background(if (accentColor.useDarkTextOnAccent()) Color.Black else Color.White)
                 )
             }
         }
@@ -16748,7 +16711,7 @@ fun PalChatOverlay(
                                     ) {
                                         UpwardArrowIcon(
                                             tint = if (isSendActive) {
-                                                if (accentColor == Color(0xFF00F0FF) || accentColor == Color(0xFFFFE600) || accentColor == Color(0xFFFBC02D)) Color.Black else Color.White
+                                                if (accentColor.useDarkTextOnAccent()) Color.Black else Color.White
                                             } else {
                                                 textColor.copy(alpha = 0.3f)
                                             },
@@ -18143,12 +18106,12 @@ fun TripleDotMenuOverlay(
                             Spacer(modifier = Modifier.height(4.dp))
 
                             val colorOptions = listOf(
-                                "yellow" to Color(0xFFFFE600),
-                                "orange" to Color(0xFFFF6700),
-                                "pink" to Color(0xFFFF007F),
-                                "blue" to Color(0xFF00F0FF),
-                                "purple" to Color(0xFFB000FF),
-                                "red" to Color(0xFFFF073A)
+                                "blue" to Color(0xFF11D5F3),
+                                "green" to Color(0xFF65EA7B),
+                                "orange" to Color(0xFFFE9068),
+                                "pink" to Color(0xFFFE75F5),
+                                "purple" to Color(0xFFAA6DFE),
+                                "cyan" to Color(0xFF5D96FF)
                             )
 
                             colorOptions.forEach { (colorName, colorVal) ->
@@ -18727,12 +18690,12 @@ fun VlogEmptyStateContent(
 
                 val profileColors = remember {
                     listOf(
-                        Color(0xFFFFE600), // yellow
-                        Color(0xFFFF6700), // orange
-                        Color(0xFFFF007F), // pink
-                        Color(0xFF00F0FF), // blue
-                        Color(0xFFB000FF), // purple
-                        Color(0xFFFF073A)  // red
+                        Color(0xFF11D5F3), // blue
+                        Color(0xFF65EA7B), // green
+                        Color(0xFFFE9068), // orange
+                        Color(0xFFFE75F5), // pink
+                        Color(0xFFAA6DFE), // purple
+                        Color(0xFF5D96FF)  // cyan
                     )
                 }
 
@@ -19585,12 +19548,12 @@ fun VlogEmptyStateCard(
 
         val profileColors = remember {
             listOf(
-                Color(0xFFFFE600), // yellow
-                Color(0xFFFF6700), // orange
-                Color(0xFFFF007F), // pink
-                Color(0xFF00F0FF), // blue
-                Color(0xFFB000FF), // purple
-                Color(0xFFFF073A)  // red
+                Color(0xFF11D5F3), // blue
+                Color(0xFF65EA7B), // green
+                Color(0xFFFE9068), // orange
+                Color(0xFFFE75F5), // pink
+                Color(0xFFAA6DFE), // purple
+                Color(0xFF5D96FF)  // cyan
             )
         }
 

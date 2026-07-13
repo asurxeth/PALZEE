@@ -73,8 +73,8 @@ class SessionManager(context: Context) {
     }
 
     fun getThemeColor(): String {
-        return prefs.getString("selected_theme_color", "yellow") ?: "yellow"
-    }
+        return prefs.getString("selected_theme_color", "blue") ?: "blue"
+     }
 
     fun saveNotificationInterval(interval: String) {
         prefs.edit().putString("notification_interval", interval).apply()
