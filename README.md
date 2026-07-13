@@ -28,16 +28,16 @@ Palzee implements a modular framework engineered for predictable memory allocati
 The core user experience is delivered through dedicated native viewports optimized for real-time asset tracking and media controls.
 
 ### 1. Material 3 Home Viewport Layout
-![1. Material 3 Home Viewport Layout](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/editorial_dashboard_1783940242349.png)
+![1. Material 3 Home Viewport Layout](./assets/editorial_dashboard.png)
 
 ### 2. CameraX Viewfinder HUD
-![2. CameraX Viewfinder HUD](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/camera_capture_1783940256558.png)
+![2. CameraX Viewfinder HUD](./assets/camera_capture.png)
 
 ### 3. Native Playback Preview Frame
-![3. Native Playback Preview Frame](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/playback_preview_1783940271262.png)
+![3. Native Playback Preview Frame](./assets/playback_preview.png)
 
 ### 4. Application Storage Metrics View
-![4. Application Storage Metrics View](file:///Users/pratham/.gemini/antigravity-ide/brain/ae35c4b5-2fee-46f8-be8e-3465574a517a/storage_metrics_1783940292767.png)
+![4. Application Storage Metrics View](./assets/storage_metrics.png)
 
 ---
 
