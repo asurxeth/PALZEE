@@ -539,7 +539,7 @@ fun OnboardingScreen(
         // 3. OVERLAYS & STATE PRESENTATION (Loading & Error)
         // ----------------------------------------------------
         AnimatedVisibility(
-            visible = uiState is AuthUiState.Loading,
+            visible = uiState is AuthUiState.Loading && !showEmailOtpDialog,
             enter = fadeIn(),
             exit = fadeOut()
         ) {
@@ -713,15 +713,23 @@ fun OnboardingScreen(
                                 ),
                                 shape = RoundedCornerShape(12.dp),
                                 trailingIcon = {
-                                    val textVal = if (!isOtpSent) emailInput else otpInput
-                                    if (textVal.isNotEmpty()) {
-                                        IconButton(onClick = { if (!isOtpSent) emailInput = "" else otpInput = "" }) {
-                                            Icon(
-                                                imageVector = Icons.Default.Close,
-                                                contentDescription = "Clear",
-                                                tint = Color.Gray,
-                                                modifier = Modifier.size(16.dp)
-                                            )
+                                    if (uiState is AuthUiState.Loading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            color = if (isDark) PalWhite else Color.Black,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        val textVal = if (!isOtpSent) emailInput else otpInput
+                                        if (textVal.isNotEmpty()) {
+                                            IconButton(onClick = { if (!isOtpSent) emailInput = "" else otpInput = "" }) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Clear",
+                                                    tint = Color.Gray,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 },

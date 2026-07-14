@@ -36,23 +36,6 @@ object PalAlarmScheduler {
         }
 
         val sharedPrefs = context.getSharedPreferences("palzee_prefs", Context.MODE_PRIVATE)
-        val dateStamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-        
-        var hasLoggedAnyToday = false
-        for (h in 0..23) {
-            if (sharedPrefs.getBoolean("pal_logged_${dateStamp}_$h", false)) {
-                hasLoggedAnyToday = true
-                break
-            }
-        }
-        val firstNotifiedKey = "first_pal_notified_$dateStamp"
-        val hasFirstPalOccurred = sharedPrefs.getBoolean(firstNotifiedKey, false) || hasLoggedAnyToday
-
-        // If today's first pal hasn't been triggered yet, do not schedule subsequent hourly alarms.
-        // They will be scheduled once the first pal notification is delivered.
-        if (!hasFirstPalOccurred) {
-            return
-        }
 
         // Schedule next subsequent alarm
         if (interval == "every 1hr" || interval == "every 3hrs") {

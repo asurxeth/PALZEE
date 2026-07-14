@@ -109,8 +109,7 @@ class PalNotificationReceiver : BroadcastReceiver() {
             }
 
             PalAlarmScheduler.ACTION_PAL_ALARM -> {
-                val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-                if (powerManager.isInteractive && !isNightTime) {
+                if (!isNightTime) {
                     if (!hasFirstPalOccurred) {
                         showNativeNotification(context, currentHour, isFirstPal = true)
                         markAsNotifiedForHour(context, currentHour)
@@ -121,9 +120,10 @@ class PalNotificationReceiver : BroadcastReceiver() {
                             markAsNotifiedForHour(context, currentHour)
                         }
                     }
-                    sharedPrefs.edit().putLong("last_notification_sent_time", System.currentTimeMillis()).apply()
-                    PalAlarmScheduler.updateScheduling(context, interval)
                 }
+                // Unconditionally update last sent time and reschedule next alarm
+                sharedPrefs.edit().putLong("last_notification_sent_time", System.currentTimeMillis()).apply()
+                PalAlarmScheduler.updateScheduling(context, interval)
             }
         }
     }

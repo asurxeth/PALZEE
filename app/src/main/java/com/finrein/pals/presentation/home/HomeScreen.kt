@@ -13226,7 +13226,7 @@ fun NameInputScreen(
 
         Spacer(modifier = Modifier.height(36.dp))
 
-        val isFormValid = firstName.trim().isNotEmpty() && lastName.trim().isNotEmpty()
+        val isFormValid = firstName.trim().isNotEmpty()
         Text(
             text = "next →",
             fontFamily = FontFamily.Monospace,
@@ -18472,9 +18472,6 @@ fun TripleDotMenuOverlay(
                                 "log out" to {
                                     onShowTripleDotMenuChange(false)
                                     onSignOut()
-                                },
-                                "add backup email" to {
-                                    onShowTripleDotMenuChange(false)
                                 },
                                 "terms of service" to {
                                     onShowTripleDotMenuChange(false)
