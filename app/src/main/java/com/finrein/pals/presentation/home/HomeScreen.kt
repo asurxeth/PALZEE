@@ -9369,6 +9369,7 @@ fun GroupMemberCard(
                             color = Color.White,
                             modifier = Modifier.clickable { showDropdownMenu = true }
                         )
+                            val subIndex = filteredSubmissions.indexOf(activeSub)
                             androidx.compose.material3.DropdownMenu(
                                 expanded = showDropdownMenu,
                                 onDismissRequest = { showDropdownMenu = false }
@@ -9377,14 +9378,18 @@ fun GroupMemberCard(
                                     text = { Text("edit caption") },
                                     onClick = {
                                         showDropdownMenu = false
-                                        onEditCaptionClick(index)
+                                        if (subIndex != -1) {
+                                            onEditCaptionClick(subIndex)
+                                        }
                                     }
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
                                     text = { Text("delete pal") },
                                     onClick = {
                                         showDropdownMenu = false
-                                        onDeleteClick(index)
+                                        if (subIndex != -1) {
+                                            onDeleteClick(subIndex)
+                                        }
                                     }
                                 )
                             }
