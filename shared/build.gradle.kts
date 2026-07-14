@@ -7,6 +7,7 @@ plugins {
 }
 
 kotlin {
+    applyDefaultHierarchyTemplate()
     androidTarget {
         compilations.all {
             kotlinOptions {
@@ -15,12 +16,12 @@ kotlin {
         }
     }
     
-    listOf(
-        iosX64(),
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
+    iosX64()
+    iosArm64()
+    iosSimulatorArm64()
+
+    targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
+        binaries.framework {
             baseName = "shared"
             isStatic = true
         }
@@ -58,6 +59,21 @@ kotlin {
         val androidMain by getting {
             dependencies {
                 implementation(libs.androidx.core.ktx)
+                
+                // CameraX dependencies
+                val cameraVersion = "1.4.2"
+                implementation("androidx.camera:camera-core:$cameraVersion")
+                implementation("androidx.camera:camera-camera2:$cameraVersion")
+                implementation("androidx.camera:camera-lifecycle:$cameraVersion")
+                implementation("androidx.camera:camera-video:$cameraVersion")
+                implementation("androidx.camera:camera-view:$cameraVersion")
+                implementation("androidx.camera:camera-extensions:$cameraVersion")
+
+                // Media3 ExoPlayer dependencies
+                val media3Version = "1.4.0"
+                implementation("androidx.media3:media3-exoplayer:$media3Version")
+                implementation("androidx.media3:media3-ui:$media3Version")
+                implementation("androidx.media3:media3-common:$media3Version")
             }
         }
         
