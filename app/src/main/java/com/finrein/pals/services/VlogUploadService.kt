@@ -49,6 +49,7 @@ class VlogUploadService : Service() {
         val customAvatarUriString = intent.getStringExtra("CUSTOM_AVATAR_URI_STRING")
         val zoomFactor = intent.getFloatExtra("ZOOM_FACTOR", 1.0f)
         val rotation = intent.getIntExtra("ROTATION", 0)
+        val isMuted = intent.getBooleanExtra("IS_MUTED", false)
 
         if (!capturedVideoPath.isNullOrBlank()) {
             if (!activeUploads.add(capturedVideoPath)) {
@@ -155,7 +156,7 @@ class VlogUploadService : Service() {
                     }
 
                     val formattedName = if (avatarUrl.isNotEmpty()) "$firstName|||$avatarUrl" else firstName
-                    val delimiterString = "$uploadedVideoUrl|||${caption}|||${capturedVideoDuration}|||$zoomFactor|||$rotation"
+                    val delimiterString = "$uploadedVideoUrl|||${caption}|||${capturedVideoDuration}|||$zoomFactor|||$rotation|||$isMuted"
                     val cleanCode = targetPalCode.trim()
 
                     if (cleanCode.isBlank()) continue

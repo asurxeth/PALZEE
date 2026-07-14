@@ -31,6 +31,7 @@ class VideoProcessor {
             captionText: String,
             roundedCorners: Boolean,
             exportBackground: String = "black",
+            isMuted: Boolean = false,
             callback: (Boolean) -> Unit
         ) {
             processVideoList(
@@ -42,6 +43,7 @@ class VideoProcessor {
                 captionTexts = listOf(captionText),
                 roundedCorners = roundedCorners,
                 exportBackground = exportBackground,
+                isMutedList = listOf(isMuted),
                 callback = callback
             )
         }
@@ -55,6 +57,7 @@ class VideoProcessor {
             captionTexts: List<String>,
             roundedCorners: Boolean,
             exportBackground: String = "black",
+            isMutedList: List<Boolean>? = null,
             callback: (Boolean) -> Unit
         ) {
             Thread {
@@ -68,7 +71,8 @@ class VideoProcessor {
                         timeTexts = timeTexts,
                         captionTexts = captionTexts,
                         roundedCorners = roundedCorners,
-                        exportBackground = exportBackground
+                        exportBackground = exportBackground,
+                        isMutedList = isMutedList
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Error transcoding video list", e)
@@ -96,7 +100,7 @@ class VideoProcessor {
                 )
                 270 -> floatArrayOf(
                      1.0f, -1.0f, 0.0f, 0.0f, 0.0f, // BL vertex maps to Bottom-Right in screen space
-                     1.0f,  1.0f, 0.0f, 1.0f, 0.0f, // BR vertex maps to Top-Right in screen space
+                      1.0f,  1.0f, 0.0f, 1.0f, 0.0f, // BR vertex maps to Top-Right in screen space
                     -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, // TL vertex maps to Bottom-Left in screen space
                     -1.0f,  1.0f, 0.0f, 1.0f, 1.0f  // TR vertex maps to Top-Left in screen space
                 )
@@ -117,7 +121,8 @@ class VideoProcessor {
             timeTexts: List<String>,
             captionTexts: List<String>,
             roundedCorners: Boolean,
-            exportBackground: String = "black"
+            exportBackground: String = "black",
+            isMutedList: List<Boolean>? = null
         ): Boolean {
             if (inputPaths.isEmpty()) {
                 Log.e(TAG, "Input paths list is empty")
@@ -557,7 +562,11 @@ class VideoProcessor {
                                         videoOutputTrack = muxer.addTrack(videoEncoder.outputFormat)
                                         // Detect if audio track needs to be created
                                         var firstAudioFormat: MediaFormat? = null
-                                        for (input in validInputs) {
+                                        for (idx in validInputs.indices) {
+                                            if (isMutedList != null && isMutedList.getOrNull(idx) == true) {
+                                                continue
+                                            }
+                                            val input = validInputs[idx]
                                             val ext = MediaExtractor().apply { setDataSource(input.first) }
                                             for (j in 0 until ext.trackCount) {
                                                 val fmt = ext.getTrackFormat(j)
@@ -639,6 +648,19 @@ class VideoProcessor {
                         audioPtsOffsetUs += 2000000L + 33000L
                         continue
                     }
+                    if (isMutedList != null && isMutedList.getOrNull(vIndex) == true) {
+                        val durationUs = try {
+                            val retriever = MediaMetadataRetriever()
+                            retriever.setDataSource(inputPath)
+                            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 2000L
+                            retriever.release()
+                            durationMs * 1000L
+                        } catch (e: Exception) {
+                            2000000L
+                        }
+                        audioPtsOffsetUs += durationUs + 33000L
+                        continue
+                    }
                     val audioExtractor = MediaExtractor()
                     try {
                         audioExtractor.setDataSource(inputPath)
@@ -672,6 +694,17 @@ class VideoProcessor {
                                 audioExtractor.advance()
                             }
                             audioPtsOffsetUs += fileMaxAudioPtsUs + 33000L
+                        } else {
+                            val durationUs = try {
+                                val retriever = MediaMetadataRetriever()
+                                retriever.setDataSource(inputPath)
+                                val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 2000L
+                                retriever.release()
+                                durationMs * 1000L
+                            } catch (e: Exception) {
+                                2000000L
+                            }
+                            audioPtsOffsetUs += durationUs + 33000L
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error copying audio track for segment: $inputPath", e)

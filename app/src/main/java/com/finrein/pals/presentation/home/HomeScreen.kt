@@ -323,7 +323,8 @@ fun handleDeleteVlog(
     capturedVlogsCaptions: List<String>,
     capturedVlogsDurations: List<String>,
     capturedVlogsZoomed: List<Float>,
-    onUpdateVlogLists: (List<String>, List<String>, List<String>, List<String>, List<Float>) -> Unit,
+    capturedVlogsMuted: List<Boolean>,
+    onUpdateVlogLists: (List<String>, List<String>, List<String>, List<String>, List<Float>, List<Boolean>) -> Unit,
     vlogExoPlayer: androidx.media3.exoplayer.ExoPlayer,
     targetDate: java.time.LocalDate,
     onActiveVlogPalChange: (PalItem?) -> Unit,
@@ -417,16 +418,22 @@ fun handleDeleteVlog(
                 val updatedDurations = ArrayList(capturedVlogsDurations).apply { if (globalIndex < size) removeAt(globalIndex) }
                 val updatedZoomed = ArrayList(capturedVlogsZoomed).apply { if (globalIndex < size) removeAt(globalIndex) }
                 
+                val vlogMutedStr = getVlogPrefs(context).getString("vlog_muted", "") ?: ""
+                val mutedList = if (vlogMutedStr.isEmpty()) emptyList<String>() else vlogMutedStr.split(";;;")
+                val updatedMuted = ArrayList(mutedList).apply { if (globalIndex < size) removeAt(globalIndex) }
+                
                 getVlogPrefs(context).edit().apply {
                     putString("vlog_paths", updatedPaths.joinToString(";;;"))
                     putString("vlog_times", updatedTimes.joinToString(";;;"))
                     putString("vlog_captions", updatedCaptions.joinToString(";;;"))
                     putString("vlog_durations", updatedDurations.joinToString(";;;"))
                     putString("vlog_zoomed", updatedZoomed.map { it.toString() }.joinToString(";;;"))
+                    putString("vlog_muted", updatedMuted.joinToString(";;;"))
                     apply()
                 }
                 
-                onUpdateVlogLists(updatedPaths, updatedTimes, updatedCaptions, updatedDurations, updatedZoomed)
+                val finalMuted = updatedMuted.map { it.toBoolean() }
+                onUpdateVlogLists(updatedPaths, updatedTimes, updatedCaptions, updatedDurations, updatedZoomed, finalMuted)
                 
                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                     try {
@@ -573,7 +580,7 @@ fun handleVlogSubmission(
     capturedVlogsZoomed: List<Float>,
     allPalsSubmissions: MutableMap<String, List<SubmissionDbItem>>,
     palPalsCount: MutableMap<String, Int>,
-    onUpdateVlogLists: (List<String>, List<String>, List<String>, List<String>, List<Float>) -> Unit,
+    onUpdateVlogLists: (List<String>, List<String>, List<String>, List<String>, List<Float>, List<Boolean>) -> Unit,
     context: android.content.Context,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     supabaseClient: io.github.jan.supabase.SupabaseClient,
@@ -584,7 +591,8 @@ fun handleVlogSubmission(
     onShowingCapturedPreviewChange: (Boolean) -> Unit,
     onSelectedTabChange: (String) -> Unit,
     onUpdateAvatarUrl: (String) -> Unit,
-    zoomFactor: Float
+    zoomFactor: Float,
+    isMuted: Boolean = false
 ) {
     val localVideoPath = capturedVideoPath
     val formattedTime = capturedVideoTimeText
@@ -686,6 +694,11 @@ fun handleVlogSubmission(
                 updatedZoomed.add(0, zoomFactor)
                 currentZoomed = updatedZoomed
                 getVlogPrefs(context).edit().putString("vlog_zoomed", updatedZoomed.map { it.toString() }.joinToString(";;;")).apply()
+
+                val vlogMutedStr = getVlogPrefs(context).getString("vlog_muted", "") ?: ""
+                val updatedMuted = if (vlogMutedStr.isEmpty()) emptyList<String>().toMutableList() else vlogMutedStr.split(";;;").toMutableList()
+                updatedMuted.add(0, isMuted.toString())
+                getVlogPrefs(context).edit().putString("vlog_muted", updatedMuted.joinToString(";;;")).apply()
             }
         }
 
@@ -695,7 +708,7 @@ fun handleVlogSubmission(
                 palCode = targetPalCode,
                 userId = currentUserId,
                 userDisplayName = if (finalAvatarUrl.isNotEmpty()) "$firstName|||$finalAvatarUrl" else firstName,
-                imageUrl = "${finalLocalVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}|||$zoomFactor|||$calculatedRotation",
+                imageUrl = "${finalLocalVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}|||$zoomFactor|||$calculatedRotation|||$isMuted",
                 createdAt = capturedVideoInstant.toString()
             )
             val currentList = allPalsSubmissions[targetPalCode] ?: emptyList()
@@ -716,13 +729,16 @@ fun handleVlogSubmission(
         if (targetPalCode != "vlog") {
             val pendingPrefs = context.getSharedPreferences("pending_submissions_prefs", android.content.Context.MODE_PRIVATE)
             val localDisplayName = if (finalAvatarUrl.isNotEmpty()) "$firstName|||$finalAvatarUrl" else firstName
-            val pendingValue = "$targetPalCode;;;$currentUserId;;;$localDisplayName;;;${finalLocalVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}|||$zoomFactor|||$calculatedRotation;;;${capturedVideoInstant.toString()}"
+            val pendingValue = "$targetPalCode;;;$currentUserId;;;$localDisplayName;;;${finalLocalVideoPath ?: ""}|||${caption}|||${capturedVideoDuration}|||$zoomFactor|||$calculatedRotation|||$isMuted;;;${capturedVideoInstant.toString()}"
             pendingPrefs.edit().putString(uniqueKey, pendingValue).apply()
         }
     }
 
+    val vlogMutedStrLocal = getVlogPrefs(context).getString("vlog_muted", "") ?: ""
+    val currentMuted = if (vlogMutedStrLocal.isEmpty()) emptyList<Boolean>() else vlogMutedStrLocal.split(";;;").map { it.toBoolean() }
+
     // Call updates to refresh lists locally
-    onUpdateVlogLists(currentPaths, currentTimes, currentCaptions, currentDurations, currentZoomed)
+    onUpdateVlogLists(currentPaths, currentTimes, currentCaptions, currentDurations, currentZoomed, currentMuted)
     onShowingCapturedPreviewChange(false)
     onSelectedTabChange("pals")
 
@@ -741,6 +757,7 @@ fun handleVlogSubmission(
             putExtra("CUSTOM_AVATAR_URI_STRING", finalAvatarUrl)
             putExtra("ZOOM_FACTOR", zoomFactor)
             putExtra("ROTATION", calculatedRotation)
+            putExtra("IS_MUTED", isMuted)
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             context.applicationContext.startForegroundService(intent)
@@ -3316,6 +3333,18 @@ fun HomeScreen(
         }
         mutableStateOf(ArrayList(filteredZoomedList))
     }
+    var capturedVlogsMuted by remember(deletedVlogsKey, currentUserId) {
+        val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
+        val paths = if (savedPaths.isEmpty()) emptyList() else savedPaths.split(";;;")
+        val savedMuted = getVlogPrefs(context).getString("vlog_muted", "") ?: ""
+        val muted = if (savedMuted.isEmpty()) emptyList() else savedMuted.split(";;;")
+        val validIndices = paths.indices.filter { idx -> paths[idx] !in initialDeleted }
+        val filteredMutedList = validIndices.map { idx ->
+            val token = muted.getOrNull(idx) ?: "false"
+            token.trim().toBoolean()
+        }
+        mutableStateOf(ArrayList(filteredMutedList))
+    }
 
 
     var currentPlayingIndex by remember { mutableStateOf(0) }
@@ -5186,7 +5215,7 @@ fun HomeScreen(
                             onPlayerReady = {
                                 isTransitioningToPreview = false
                             },
-                            onSend = { caption, targetPals ->
+                            onSend = { caption, targetPals, isMuted ->
                                 capturedCaptionText = caption
 
                                 val finalTimeText = capturedVideoTimeText.ifEmpty {
@@ -5212,12 +5241,13 @@ fun HomeScreen(
                                     capturedVlogsZoomed = capturedVlogsZoomed,
                                     allPalsSubmissions = allPalsSubmissions,
                                     palPalsCount = palPalsCount,
-                                    onUpdateVlogLists = { paths, times, captions, durations, zoomed ->
+                                    onUpdateVlogLists = { paths, times, captions, durations, zoomed, muted ->
                                         capturedVlogsPaths = java.util.ArrayList(paths)
                                         capturedVlogsTimes = java.util.ArrayList(times)
                                         capturedVlogsCaptions = java.util.ArrayList(captions)
                                         capturedVlogsDurations = java.util.ArrayList(durations)
                                         capturedVlogsZoomed = java.util.ArrayList(zoomed)
+                                        capturedVlogsMuted = java.util.ArrayList(muted)
                                     },
                                     context = context,
                                     coroutineScope = coroutineScope,
@@ -5229,7 +5259,8 @@ fun HomeScreen(
                                     onShowingCapturedPreviewChange = { showingCapturedPreview = it },
                                     onSelectedTabChange = { selectedTab = it },
                                     onUpdateAvatarUrl = { customAvatarUriString = it },
-                                    zoomFactor = capturedVideoZoomFactor
+                                    zoomFactor = capturedVideoZoomFactor,
+                                    isMuted = isMuted
                                 )
                             },
                             currentUserId = currentUserId,
@@ -7959,7 +7990,7 @@ fun CapturedPreviewScreen(
     capturedVlogsPaths: List<String>,
     zoomFactor: Float = 1.0f,
     onClose: () -> Unit,
-    onSend: (String, List<PalItem>) -> Unit,
+    onSend: (String, List<PalItem>, Boolean) -> Unit,
     currentUserId: String,
     currentDisplayName: String,
     allPalsSubmissions: Map<String, List<SubmissionDbItem>>,
@@ -8466,7 +8497,8 @@ fun CapturedPreviewScreen(
                                         .ifEmpty { "vlog" },
                                     timeText = capturedTimeText,
                                     captionText = captionText,
-                                    roundedCorners = true
+                                    roundedCorners = true,
+                                    isMuted = isMuted
                                 ) { success ->
                                     if (success) {
                                         val saveSuccess = saveVideoToGallery(context, tempOut.absolutePath)
@@ -11114,15 +11146,25 @@ fun VlogScreenContent(
                                                     val tempOut = java.io.File(context.cacheDir, "temp_dropdown_save_${System.currentTimeMillis()}.mp4")
                                                     val caption = capturedVlogsCaptions.getOrNull(selectedPageIndex) ?: ""
                                                     val timeStr = capturedVlogsTimes.getOrNull(selectedPageIndex) ?: ""
+                                                    val vlogMutedStr = getVlogPrefs(context).getString("vlog_muted", "") ?: ""
+                                                    val vlogMutedList = if (vlogMutedStr.isEmpty()) emptyList() else vlogMutedStr.split(";;;")
+                                                    val isMuted = vlogMutedList.getOrNull(selectedPageIndex)?.toBoolean() ?: false
                                                     
-                                                    VideoProcessor.processVideo(
+                                                    val (captionsToProcess, vlogsToProcess, mutedToProcess) = rest
+                                                    val resolvedPaths = pathsToProcess.map { path ->
+                                                        if (path == "EMPTY_BOX") "EMPTY_BOX" else ensureVideoCached(context, path)
+                                                    }
+
+                                                    VideoProcessor.processVideoList(
                                                         context = context,
-                                                        inputPath = cleanPath,
+                                                        inputPaths = resolvedPaths,
                                                         outputPath = tempOut.absolutePath,
-                                                        vlogText = pal.name,
-                                                        timeText = timeStr,
-                                                        captionText = caption,
-                                                        roundedCorners = false
+                                                        vlogTexts = vlogsToProcess,
+                                                        timeTexts = timesToProcess,
+                                                        captionTexts = captionsToProcess,
+                                                        roundedCorners = false,
+                                                        exportBackground = exportBackground,
+                                                        isMutedList = mutedToProcess
                                                     ) { success ->
                                                         if (success) {
                                                             val saveSuccess = saveVideoToGallery(context, tempOut.absolutePath)
@@ -12042,12 +12084,22 @@ fun VlogScreenContent(
                 val timesToProcess = mutableListOf<String>()
                 val captionsToProcess = mutableListOf<String>()
                 val vlogsToProcess = mutableListOf<String>()
+                val mutedToProcess = mutableListOf<Boolean>()
 
                 if (pal.isVlog) {
                     pathsToProcess.addAll(capturedVlogsPaths.reversed())
                     timesToProcess.addAll(capturedVlogsTimes.reversed())
                     captionsToProcess.addAll(capturedVlogsCaptions.reversed())
                     vlogsToProcess.addAll(List(capturedVlogsPaths.size) { "vlog" })
+                    
+                    val vlogMutedStr = getVlogPrefs(context).getString("vlog_muted", "") ?: ""
+                    val vlogMutedList = if (vlogMutedStr.isEmpty()) {
+                        List(capturedVlogsPaths.size) { "false" }
+                    } else {
+                        vlogMutedStr.split(";;;")
+                    }
+                    val reversedMuted = vlogMutedList.reversed().map { it.toBoolean() }
+                    mutedToProcess.addAll(reversedMuted)
                 } else {
                     // Group export: loop through all hours in dayHoursList, then all slots
                     val totalSlots = maxOf(groupMembers.size, pal.size.toIntOrNull() ?: 4)
@@ -12127,18 +12179,21 @@ fun VlogScreenContent(
                                 timesToProcess.add(captureTime)
                                 captionsToProcess.add(firstSub!!.imageUrl.split("|||").getOrNull(1) ?: "")
                                 vlogsToProcess.add(memberName ?: "pal")
+                                val isMutedStr = firstSub!!.imageUrl.split("|||").getOrNull(5) ?: "false"
+                                mutedToProcess.add(isMutedStr.toBoolean())
                             } else {
                                 // Empty / missed box
                                 pathsToProcess.add("EMPTY_BOX")
                                 timesToProcess.add(displayTimeText)
                                 captionsToProcess.add(exportMissedText)
                                 vlogsToProcess.add("EMPTY_BOX_MISSED")
+                                mutedToProcess.add(true)
                             }
                         }
                     }
                 }
                 
-                Triple(pathsToProcess, timesToProcess, Triple(captionsToProcess, vlogsToProcess, Unit))
+                Triple(pathsToProcess, timesToProcess, Triple(captionsToProcess, vlogsToProcess, mutedToProcess))
             }
             
             
@@ -12548,7 +12603,7 @@ fun VlogScreenContent(
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_save_${System.currentTimeMillis()}.mp4")
                                         val (pathsToProcess, timesToProcess, rest) = buildExportLists()
-                                        val (captionsToProcess, vlogsToProcess, _) = rest
+                                        val (captionsToProcess, vlogsToProcess, mutedToProcess) = rest
                                         val resolvedPaths = pathsToProcess.map { path ->
                                             if (path == "EMPTY_BOX") "EMPTY_BOX" else ensureVideoCached(context, path)
                                         }
@@ -12561,7 +12616,8 @@ fun VlogScreenContent(
                                             timeTexts = timesToProcess,
                                             captionTexts = captionsToProcess,
                                             roundedCorners = false,
-                                            exportBackground = exportBackground
+                                            exportBackground = exportBackground,
+                                            isMutedList = mutedToProcess
                                         ) { success ->
                                             if (success) {
                                                 val saveSuccess = saveVideoToGallery(context, tempOut.absolutePath)

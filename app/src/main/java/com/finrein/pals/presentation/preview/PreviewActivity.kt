@@ -285,7 +285,7 @@ class PreviewActivity : ComponentActivity() {
                              onClose = {
                                  finish()
                              },
-                            onSend = { caption, targetPals ->
+                            onSend = { caption, targetPals, isMuted ->
                                 val time = java.time.LocalTime.now()
                                 val formattedTime = String.format(java.util.Locale.US, "%02d:%02d", time.hour, time.minute)
                                 val finalInstant = java.time.Instant.now()
@@ -327,7 +327,8 @@ class PreviewActivity : ComponentActivity() {
                                     onShowingCapturedPreviewChange = {},
                                     onSelectedTabChange = {},
                                     onUpdateAvatarUrl = {},
-                                    zoomFactor = capturedVideoZoomFactor
+                                    zoomFactor = capturedVideoZoomFactor,
+                                    isMuted = isMuted
                                 )
                             },
                             currentUserId = currentUserId,
