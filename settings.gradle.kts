@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Palzee"
 include(":app")
+include(":shared")
