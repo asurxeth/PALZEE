@@ -309,7 +309,7 @@ class PreviewActivity : ComponentActivity() {
                                     capturedVlogsZoomed = capturedVlogsZoomed,
                                     allPalsSubmissions = allPalsSubmissions.toMutableMap(),
                                     palPalsCount = palPalsCount.toMutableMap(),
-                                    onUpdateVlogLists = { _, _, _, _, _ ->
+                                    onUpdateVlogLists = { _, _, _, _, _, _ ->
                                         val intent = Intent(this@PreviewActivity, MainActivity::class.java).apply {
                                             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                                             putExtra("TARGET_TAB", "pals")
