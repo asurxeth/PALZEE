@@ -9178,6 +9178,42 @@ fun GroupMemberCard(
                 modifier = Modifier.fillMaxSize()
             )
 
+            if (sortedMemberSubs.size > 1) {
+                val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+                Row(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .weight(1f)
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                if (activeSubIndex > 0) {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    activeSubIndex--
+                                }
+                            }
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .weight(1f)
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                if (activeSubIndex < sortedMemberSubs.lastIndex) {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    activeSubIndex++
+                                }
+                            }
+                    )
+                }
+            }
+
             // Overlay 1: Avatar and Name (Top Left)
             Row(
                 modifier = Modifier
@@ -9274,7 +9310,7 @@ fun GroupMemberCard(
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.5f))
                         .clickable {
-                            val userSub = filteredSubmissions.firstOrNull { it.userId == currentUserId }
+                            val userSub = activeSub
                             if (userSub != null) {
                                 val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
                                 if (userPath.isNotEmpty()) {
