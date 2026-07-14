@@ -5083,12 +5083,14 @@ fun HomeScreen(
                                 capturedVlogsCaptions = capturedVlogsCaptions,
                                 capturedVlogsDurations = capturedVlogsDurations,
                                 capturedVlogsZoomed = capturedVlogsZoomed,
-                                onUpdateVlogLists = { paths, times, captions, durations, zoomed ->
+                                capturedVlogsMuted = capturedVlogsMuted,
+                                onUpdateVlogLists = { paths, times, captions, durations, zoomed, muted ->
                                     capturedVlogsPaths = java.util.ArrayList(paths)
                                     capturedVlogsTimes = java.util.ArrayList(times)
                                     capturedVlogsCaptions = java.util.ArrayList(captions)
                                     capturedVlogsDurations = java.util.ArrayList(durations)
                                     capturedVlogsZoomed = java.util.ArrayList(zoomed)
+                                    capturedVlogsMuted = java.util.ArrayList(muted)
                                 },
                                 vlogExoPlayer = vlogExoPlayer,
                                 targetDate = targetDate,
