@@ -334,6 +334,7 @@ fun handleDeleteVlog(
     if (indexToDelete in filteredPaths.indices) {
         val deletedPath = filteredPaths[indexToDelete]
         val palCode = activeVlogPal?.code ?: "vlog"
+        VlogPlayerManager.releasePlayer(context, deletedPath)
         
         val originalPaths = ArrayList(capturedVlogsPaths)
         val originalTimes = ArrayList(capturedVlogsTimes)
@@ -410,6 +411,22 @@ fun handleDeleteVlog(
             }
         } else {
             // STANDARD VLOG DELETION
+            val currentSubs = allPalsSubmissions["vlog"]
+            if (currentSubs != null) {
+                val updatedSubs = currentSubs.filterNot { 
+                    val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
+                    pathPart == deletedPath || it.imageUrl == deletedPath
+                }
+                allPalsSubmissions["vlog"] = updatedSubs
+                try {
+                    val jsonSubs = kotlinx.serialization.json.Json.encodeToString(allPalsSubmissions.toMap())
+                    getVlogPrefs(context)
+                        .edit().putString("cached_all_pals_submissions", jsonSubs).apply()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            
             val globalIndex = capturedVlogsPaths.indexOf(deletedPath)
             if (globalIndex != -1) {
                 val updatedPaths = ArrayList(capturedVlogsPaths).apply { removeAt(globalIndex) }
@@ -625,12 +642,16 @@ fun handleVlogSubmission(
         if (sourceFile.exists()) {
             val targetFile = java.io.File(context.filesDir, "PALzee_vlogs/" + sourceFile.name)
             targetFile.parentFile?.mkdirs()
-            try {
-                sourceFile.copyTo(targetFile, overwrite = true)
-                persistentVideoPath = targetFile.absolutePath
-            } catch (e: Exception) {
-                e.printStackTrace()
-                persistentVideoPath = cleanPath
+            if (sourceFile.absolutePath != targetFile.absolutePath) {
+                try {
+                    sourceFile.copyTo(targetFile, overwrite = true)
+                    persistentVideoPath = targetFile.absolutePath
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    persistentVideoPath = cleanPath
+                }
+            } else {
+                persistentVideoPath = sourceFile.absolutePath
             }
         }
     }
@@ -996,20 +1017,21 @@ object VlogPlayerManager {
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     fun getOrCreatePlayer(context: android.content.Context, videoUrl: String): androidx.media3.exoplayer.ExoPlayer {
-        val targetUrl = normalizeUrl(videoUrl)
+        val cachedPath = getCachedVideoPathSync(context, videoUrl)
+        val targetUrl = cachedPath ?: normalizeUrl(videoUrl)
         lruKeys.remove(targetUrl)
         lruKeys.add(targetUrl)
 
         while (lruKeys.size > MAX_PLAYERS) {
             val oldestKey = lruKeys.removeAt(0)
             if (oldestKey != targetUrl) {
-                releasePlayer(oldestKey)
+                releasePlayerWithKey(oldestKey)
             }
         }
 
         return playerCache.getOrPut(targetUrl) {
             com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context.applicationContext).apply {
-                setMediaItem(androidx.media3.common.MediaItem.fromUri(targetUrl))
+                setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(targetUrl)))
                 repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                 volume = 0f // Muted feed
                 prepare()
@@ -1018,8 +1040,7 @@ object VlogPlayerManager {
         }
     }
 
-    fun releasePlayer(videoUrl: String) {
-        val targetUrl = normalizeUrl(videoUrl)
+    private fun releasePlayerWithKey(targetUrl: String) {
         lruKeys.remove(targetUrl)
         playerCache.remove(targetUrl)?.apply {
             try {
@@ -1030,9 +1051,22 @@ object VlogPlayerManager {
         }
     }
 
+    fun releasePlayer(context: android.content.Context, videoUrl: String) {
+        val cachedPath = getCachedVideoPathSync(context, videoUrl)
+        val targetUrl = cachedPath ?: normalizeUrl(videoUrl)
+        releasePlayerWithKey(targetUrl)
+    }
+
     fun clearAll() {
         lruKeys.clear()
-        playerCache.keys.forEach { releasePlayer(it) }
+        playerCache.forEach { (_, player) ->
+            try {
+                com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(player)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        playerCache.clear()
     }
 }
 
@@ -1556,12 +1590,40 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
 
             return@withLock kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
+                    val sessionManager = com.finrein.pals.data.local.SessionManager(context)
+                    if (sessionManager.getUser() != null) {
+                        var retries = 0
+                        while (com.finrein.pals.PalApplication.supabase.auth.currentSessionOrNull() == null && retries < 30) {
+                            kotlinx.coroutines.delay(100)
+                            retries++
+                        }
+                    }
+
                     val bytes = try {
-                        val connection = java.net.URL(resolvedPath).openConnection() as java.net.HttpURLConnection
+                        val token = try {
+                            com.finrein.pals.PalApplication.supabase.auth.currentSessionOrNull()?.accessToken
+                        } catch (e: Exception) {
+                            null
+                        }
+
+                        var targetUrlStr = resolvedPath
+                        val isPrivateBucket = resolvedPath.contains("/pals/", ignoreCase = true) || resolvedPath.contains("/pals_vlogs/", ignoreCase = true)
+
+                        if (isPrivateBucket && !token.isNullOrEmpty()) {
+                            if (targetUrlStr.contains("/object/public/")) {
+                                targetUrlStr = targetUrlStr.replace("/object/public/", "/object/authenticated/")
+                            }
+                        }
+
+                        val connection = java.net.URL(targetUrlStr).openConnection() as java.net.HttpURLConnection
                         connection.connectTimeout = 5000
                         connection.readTimeout = 5000
                         connection.requestMethod = "GET"
                         connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
+                        if (isPrivateBucket && !token.isNullOrEmpty()) {
+                            connection.setRequestProperty("Authorization", "Bearer $token")
+                        }
+
                         if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
                             val resBytes = connection.inputStream.use { it.readBytes() }
                             connection.disconnect()
@@ -2028,7 +2090,7 @@ suspend fun deleteVlogPostPermanently(context: android.content.Context, userId: 
     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                VlogPlayerManager.releasePlayer(videoUrl)
+                VlogPlayerManager.releasePlayer(context, videoUrl)
             }
 
             deleteCachedVideo(context, videoUrl)
@@ -5489,6 +5551,19 @@ fun HomeScreen(
                                         kotlinx.coroutines.delay(100)
                                     }
                                 }
+
+                                if (isFileValid) {
+                                    val sourceFile = java.io.File(finalPath)
+                                    val targetDir = java.io.File(context.filesDir, "PALzee_vlogs")
+                                    targetDir.mkdirs()
+                                    val targetFile = java.io.File(targetDir, sourceFile.name)
+                                    try {
+                                        sourceFile.copyTo(targetFile, overwrite = true)
+                                        finalPath = targetFile.absolutePath
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
                                 
                                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                     val intent = android.content.Intent(context, com.finrein.pals.presentation.preview.PreviewActivity::class.java).apply {
@@ -7063,7 +7138,7 @@ fun CameraScreenContent(
         )
 
         val shutterScale by animateFloatAsState(
-            targetValue = if (isRecording) 1.15f else 1.0f,
+            targetValue = 1.0f,
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioMediumBouncy,
                 stiffness = Spring.StiffnessLow
@@ -8909,7 +8984,10 @@ fun UnifiedPalPlayerBox(
     // Exact instance management used by the perfectly working Member/User boxes
     val player = remember(videoUri) {
         val uriStr = videoUri.toString()
-        val targetUri = if (uriStr.startsWith("http")) {
+        val cachedPath = getCachedVideoPathSync(context, uriStr)
+        val targetUri = if (cachedPath != null) {
+            android.net.Uri.fromFile(java.io.File(cachedPath))
+        } else if (uriStr.startsWith("http")) {
             var res = uriStr
             if (res.contains("/PALS/", ignoreCase = true)) res = res.replace("/PALS/", "/pals/", ignoreCase = true)
             if (res.contains("/PALS_VLOGS/", ignoreCase = true)) res = res.replace("/PALS_VLOGS/", "/pals_vlogs/", ignoreCase = true)
@@ -8952,11 +9030,20 @@ fun UnifiedPalPlayerBox(
 @Composable
 fun SimultaneousPalThumbnail(
     videoUri: android.net.Uri,
-    onClick: () -> Unit,
+    onLeftClick: () -> Unit,
+    onRightClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = modifier.clickable { onClick() }
+        modifier = modifier.pointerInput(Unit) {
+            detectTapGestures { offset ->
+                if (offset.x < size.width / 2f) {
+                    onLeftClick()
+                } else {
+                    onRightClick()
+                }
+            }
+        }
     ) {
         UnifiedPalPlayerBox(
             videoUri = videoUri,
@@ -8999,7 +9086,8 @@ fun GroupMemberCard(
     onUpdateVlogCaption: (String, String) -> Unit = { _, _ -> },
     capturedVlogsPaths: List<String> = emptyList(),
     selectedDayOffset: Int = 0,
-    activeViewingHour: Int = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour
+    activeViewingHour: Int = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour,
+    onNavigateHour: (Boolean) -> Unit = {}
 ) {
     val isCurrentHourOnToday = selectedDayOffset == 0 && activeViewingHour == java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour
     val isActualMember = index < groupMembers.size
@@ -9174,8 +9262,11 @@ fun GroupMemberCard(
         ) {
             SimultaneousPalThumbnail(
                 videoUri = videoUri,
-                onClick = {
-                    onSelectedMemberIndexChange(index)
+                onLeftClick = {
+                    onNavigateHour(false)
+                },
+                onRightClick = {
+                    onNavigateHour(true)
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -9598,6 +9689,15 @@ fun GroupMemberCard(
                     color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
                     shape = cardShape
                 )
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        if (offset.x < size.width / 2f) {
+                            onNavigateHour(false)
+                        } else {
+                            onNavigateHour(true)
+                        }
+                    }
+                }
         ) {
             val widthPx = with(density) { maxWidth.toPx() }
             val heightPx = with(density) { maxHeight.toPx() }
@@ -9817,6 +9917,15 @@ fun GroupMemberCard(
                     color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.08f),
                     shape = cardShape
                 )
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        if (offset.x < size.width / 2f) {
+                            onNavigateHour(false)
+                        } else {
+                            onNavigateHour(true)
+                        }
+                    }
+                }
         ) {
             val widthPx = with(density) { maxWidth.toPx() }
             val heightPx = with(density) { maxHeight.toPx() }
@@ -10049,7 +10158,8 @@ fun GroupScreenContent(
     onEmojiReacted: (String, String) -> Unit = { _, _ -> },
     onReplyClick: (String) -> Unit = {},
     messages: List<MessageDbItem> = emptyList(),
-    activeViewingHour: Int = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour
+    activeViewingHour: Int = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour,
+    onNavigateHour: (Boolean) -> Unit = {}
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenHeightDp = maxHeight
@@ -10138,7 +10248,8 @@ fun GroupScreenContent(
                         onUpdateVlogCaption = onUpdateVlogCaption,
                         capturedVlogsPaths = capturedVlogsPaths,
                         selectedDayOffset = params.selectedDayOffset,
-                        activeViewingHour = activeViewingHour
+                        activeViewingHour = activeViewingHour,
+                        onNavigateHour = onNavigateHour
                     )
                 }
             } else {
@@ -10204,7 +10315,8 @@ fun GroupScreenContent(
                                     onUpdateVlogCaption = onUpdateVlogCaption,
                                     capturedVlogsPaths = capturedVlogsPaths,
                                     selectedDayOffset = params.selectedDayOffset,
-                                    activeViewingHour = activeViewingHour
+                                    activeViewingHour = activeViewingHour,
+                                    onNavigateHour = onNavigateHour
                                 )
                             }
                             Box(modifier = Modifier.weight(1f)) {
@@ -10259,7 +10371,8 @@ fun GroupScreenContent(
                                     onUpdateVlogCaption = onUpdateVlogCaption,
                                     capturedVlogsPaths = capturedVlogsPaths,
                                     selectedDayOffset = params.selectedDayOffset,
-                                    activeViewingHour = activeViewingHour
+                                    activeViewingHour = activeViewingHour,
+                                    onNavigateHour = onNavigateHour
                                 )
                             }
                         }
@@ -10320,7 +10433,8 @@ fun GroupScreenContent(
                                     onUpdateVlogCaption = onUpdateVlogCaption,
                                     capturedVlogsPaths = capturedVlogsPaths,
                                     selectedDayOffset = params.selectedDayOffset,
-                                    activeViewingHour = activeViewingHour
+                                    activeViewingHour = activeViewingHour,
+                                    onNavigateHour = onNavigateHour
                                 )
                             }
                         }
@@ -10637,6 +10751,7 @@ fun VlogScreenContent(
     var savedVlogPaths by remember { mutableStateOf(setOf<String>()) }
     var editCaptionText by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue("")) }
     val coroutineScope = rememberCoroutineScope()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     var isDropdownSaving by remember { mutableStateOf(false) }
     var isDropdownSaved by remember { mutableStateOf(false) }
 
@@ -10683,20 +10798,24 @@ fun VlogScreenContent(
                     if (offset.x < screenWidth / 2f) {
                         if (!pal.isVlog) {
                             if (currentHourIndex > 0) {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 currentHourIndex--
                             }
                         } else {
                             if (selectedPageIndex > 0) {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 selectedPageIndex--
                             }
                         }
                     } else {
                         if (!pal.isVlog) {
                             if (currentHourIndex < dayHoursList.lastIndex) {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 currentHourIndex++
                             }
                         } else {
                             if (selectedPageIndex < capturedVlogsPaths.lastIndex) {
+                                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
                                 selectedPageIndex++
                             }
                         }
@@ -10758,7 +10877,20 @@ fun VlogScreenContent(
                             onActiveReplyPreviewPathChange(path)
                         },
                         messages = messages,
-                        activeViewingHour = activeViewingHour
+                        activeViewingHour = activeViewingHour,
+                        onNavigateHour = { isNext ->
+                            if (isNext) {
+                                if (currentHourIndex < dayHoursList.lastIndex) {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    currentHourIndex++
+                                }
+                            } else {
+                                if (currentHourIndex > 0) {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    currentHourIndex--
+                                }
+                            }
+                        }
                     )
                 } else {
                     // main centered vlog video card
@@ -19260,7 +19392,7 @@ fun VideoVlogBoxItem(
 
     androidx.compose.runtime.DisposableEffect(videoUrl) {
         onDispose {
-            VlogPlayerManager.releasePlayer(videoUrl)
+            VlogPlayerManager.releasePlayer(context, videoUrl)
         }
     }
 
