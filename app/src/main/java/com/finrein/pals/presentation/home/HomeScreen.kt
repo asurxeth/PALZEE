@@ -11176,21 +11176,15 @@ fun VlogScreenContent(
                                                     val vlogMutedList = if (vlogMutedStr.isEmpty()) emptyList() else vlogMutedStr.split(";;;")
                                                     val isMuted = vlogMutedList.getOrNull(selectedPageIndex)?.toBoolean() ?: false
                                                     
-                                                    val (captionsToProcess, vlogsToProcess, mutedToProcess) = rest
-                                                    val resolvedPaths = pathsToProcess.map { path ->
-                                                        if (path == "EMPTY_BOX") "EMPTY_BOX" else ensureVideoCached(context, path)
-                                                    }
-
-                                                    VideoProcessor.processVideoList(
+                                                    VideoProcessor.processVideo(
                                                         context = context,
-                                                        inputPaths = resolvedPaths,
+                                                        inputPath = cleanPath,
                                                         outputPath = tempOut.absolutePath,
-                                                        vlogTexts = vlogsToProcess,
-                                                        timeTexts = timesToProcess,
-                                                        captionTexts = captionsToProcess,
+                                                        vlogText = pal.name,
+                                                        timeText = timeStr,
+                                                        captionText = caption,
                                                         roundedCorners = false,
-                                                        exportBackground = exportBackground,
-                                                        isMutedList = mutedToProcess
+                                                        isMuted = isMuted
                                                     ) { success ->
                                                         if (success) {
                                                             val saveSuccess = saveVideoToGallery(context, tempOut.absolutePath)
