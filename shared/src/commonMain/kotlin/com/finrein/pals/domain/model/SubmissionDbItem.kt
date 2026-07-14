@@ -15,18 +15,16 @@ data class SubmissionDbItem(
     fun getHourBucket(): Int {
         val dateStr = createdAt ?: return 0
         return try {
-            val instant = java.time.Instant.parse(dateStr)
-            instant.atZone(java.time.ZoneId.systemDefault()).hour
-        } catch (e: Exception) {
-            try {
-                java.time.ZonedDateTime.parse(dateStr).withZoneSameInstant(java.time.ZoneId.systemDefault()).hour
-            } catch (e2: Exception) {
-                try {
-                    java.time.LocalDateTime.parse(dateStr).hour
-                } catch (e3: Exception) {
-                    0
-                }
+            val timePart = when {
+                dateStr.contains('T') -> dateStr.substringAfter('T')
+                dateStr.contains(' ') -> dateStr.substringAfter(' ')
+                dateStr.length >= 19 -> dateStr.substring(11)
+                else -> return 0
             }
+            val hourStr = timePart.take(2)
+            hourStr.toIntOrNull() ?: 0
+        } catch (e: Exception) {
+            0
         }
     }
 }

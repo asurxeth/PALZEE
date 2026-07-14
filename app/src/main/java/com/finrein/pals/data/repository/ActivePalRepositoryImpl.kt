@@ -131,8 +131,9 @@ class ActivePalRepositoryImpl @Inject constructor(
                             val localAvatar = if (currentAvatarUrl?.startsWith("http") == true) currentAvatarUrl else null
                             Pair(userFirstName, localAvatar)
                         } else {
-                            if (!mapping.userDisplayName.isNullOrEmpty()) {
-                                val parsed = parseUserDisplayName(mapping.userDisplayName)
+                            val dispName = mapping.userDisplayName
+                            if (!dispName.isNullOrEmpty()) {
+                                val parsed = parseUserDisplayName(dispName)
                                 Pair(parsed.first, parsed.second ?: mapping.userAvatarUrl)
                             } else {
                                 Pair("Pal", null)

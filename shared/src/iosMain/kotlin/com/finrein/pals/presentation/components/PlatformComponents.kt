@@ -3,10 +3,11 @@ package com.finrein.pals.presentation.components
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
-import platform.AVFoundation.AVPlayer
-import platform.AVKit.AVPlayerViewController
-import platform.Foundation.NSURL
+import platform.AVFoundation.*
+import platform.AVKit.*
+import platform.Foundation.*
 
+@OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 @Composable
 actual fun PlatformVideoPlayer(
     modifier: Modifier,
@@ -15,8 +16,8 @@ actual fun PlatformVideoPlayer(
     onVideoEnded: () -> Unit
 ) {
     val nsUrl = NSURL.URLWithString(videoUrl) ?: return
-    val player = AVPlayer.playerWithURL(nsUrl).apply {
-        muted = isMuted
+    val player = AVPlayer(uRL = nsUrl).apply {
+        this.muted = isMuted
     }
     player.play()
 

@@ -1,9 +1,8 @@
 package com.finrein.pals.data.local
 
 import com.finrein.pals.domain.model.User
-import com.russhwolf.multiplatform.settings.Settings
 
-class SessionManager(private val settings: Settings) {
+class SessionManager(private val settings: Settings = Settings()) {
 
     fun saveUser(user: User) {
         settings.putString("user_id", user.id)

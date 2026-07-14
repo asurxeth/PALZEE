@@ -43,10 +43,6 @@ kotlin {
                 implementation(libs.supabase.storage)
                 implementation(libs.supabase.realtime)
                 
-                // Multiplatform Settings
-                implementation(libs.multiplatform.settings)
-                implementation(libs.multiplatform.settings.no.arg)
-                
                 // Ktor Multiplatform Client
                 implementation(libs.ktor.client.core)
                 implementation(libs.ktor.client.content.negotiation)

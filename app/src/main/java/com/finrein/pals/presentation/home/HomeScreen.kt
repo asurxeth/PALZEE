@@ -396,10 +396,11 @@ fun handleDeleteVlog(
                         val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
                         pathPart == deletedPath || it.imageUrl == deletedPath 
                     }
-                    if (targetSub != null && targetSub.id != null) {
-                        locallyDeletedSubmissions[targetSub.id] = true
-                        addPermanentlyDeletedSubmission(context, targetSub.id)
-                        authRepository.deleteSpecificPalItem(targetSub.id)
+                    val targetSubId = targetSub?.id
+                    if (targetSubId != null) {
+                        locallyDeletedSubmissions[targetSubId] = true
+                        addPermanentlyDeletedSubmission(context, targetSubId)
+                        authRepository.deleteSpecificPalItem(targetSubId)
                     }
                     deleteVlogPostPermanently(context, currentUserId, deletedPath, palCode)
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -466,12 +467,13 @@ fun handleDeleteVlog(
                             val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
                             pathPart == deletedPath || it.imageUrl == deletedPath 
                         }
-                        if (targetSub != null && targetSub.id != null) {
-                            locallyDeletedSubmissions[targetSub.id] = true
-                            addPermanentlyDeletedSubmission(context, targetSub.id)
+                        val targetSubId = targetSub?.id
+                        if (targetSubId != null) {
+                            locallyDeletedSubmissions[targetSubId] = true
+                            addPermanentlyDeletedSubmission(context, targetSubId)
                             supabaseClient.postgrest.from("submissions").delete {
                                 filter {
-                                    eq("id", targetSub.id)
+                                    eq("id", targetSubId)
                                 }
                             }
                         }
@@ -556,11 +558,12 @@ fun handleUpdateVlogCaption(
                     val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
                     pathPart == targetPath || it.imageUrl == targetPath
                 }
-                if (targetSub != null && targetSub.id != null) {
+                val targetSubId = targetSub?.id
+                if (targetSub != null && targetSubId != null) {
                     val updatedDelimited = "$targetPath|||$newCaption|||$targetDuration"
                     supabaseClient.postgrest.from("submissions").update(
                         value = SubmissionDbItem(
-                            id = targetSub.id,
+                            id = targetSubId,
                             palCode = targetSub.palCode,
                             userId = targetSub.userId,
                             userDisplayName = targetSub.userDisplayName,
@@ -569,7 +572,7 @@ fun handleUpdateVlogCaption(
                         )
                     ) {
                         filter {
-                            eq("id", targetSub.id)
+                            eq("id", targetSubId)
                         }
                     }
                 }
@@ -3852,13 +3855,14 @@ fun HomeScreen(
 
     val filteredTimes = remember(filteredSubmissions) {
         filteredSubmissions.map { sub ->
-            if (!sub.createdAt.isNullOrEmpty()) {
+            val createdAt = sub.createdAt
+            if (!createdAt.isNullOrEmpty()) {
                 try {
-                    val instant = safeParseInstant(sub.createdAt)
+                    val instant = safeParseInstant(createdAt)
                     val zonedDateTime = instant?.atZone(java.time.ZoneId.systemDefault())
                     zonedDateTime?.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US)) ?: "12:00"
                 } catch (e: Exception) {
-                    sub.createdAt.substringAfter("T").substringBefore(".").take(5)
+                    createdAt.substringAfter("T").substringBefore(".").take(5)
                 }
             } else {
                 "12:00"
@@ -4144,13 +4148,14 @@ fun HomeScreen(
                     }
                     if (!isAlreadyAdded) {
                         paths.add(path)
-                        val timePart = if (!sub.createdAt.isNullOrEmpty()) {
+                        val createdAt = sub.createdAt
+                        val timePart = if (!createdAt.isNullOrEmpty()) {
                             try {
-                                val instant = safeParseInstant(sub.createdAt)
+                                val instant = safeParseInstant(createdAt)
                                 val zonedDateTime = instant?.atZone(java.time.ZoneId.systemDefault())
                                 zonedDateTime?.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US)) ?: "12:00"
                             } catch (e: Exception) {
-                                sub.createdAt.substringAfter("T").substringBefore(".").take(5)
+                                createdAt.substringAfter("T").substringBefore(".").take(5)
                             }
                         } else {
                             "12:00"
@@ -10711,13 +10716,14 @@ fun VlogScreenContent(
     }
     val filteredTimes = remember(filteredSubmissions) {
         filteredSubmissions.map { sub ->
-            if (!sub.createdAt.isNullOrEmpty()) {
+            val createdAt = sub.createdAt
+            if (!createdAt.isNullOrEmpty()) {
                 try {
-                    val instant = java.time.Instant.parse(sub.createdAt)
+                    val instant = java.time.Instant.parse(createdAt)
                     val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
                     zonedDateTime.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US))
                 } catch (e: Exception) {
-                    sub.createdAt.substringAfter("T").substringBefore(".").take(5)
+                    createdAt.substringAfter("T").substringBefore(".").take(5)
                 }
             } else {
                 "12:00"
