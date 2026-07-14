@@ -8438,7 +8438,7 @@ fun CapturedPreviewScreen(
                                 if (!isSendClicked) {
                                     isSendClicked = true
                                     val targets = createdPals.filter { selectedPals.contains(it.code) }
-                                    onSend(captionText, targets)
+                                    onSend(captionText, targets, isMuted)
                                 }
                             }
                         } else {
