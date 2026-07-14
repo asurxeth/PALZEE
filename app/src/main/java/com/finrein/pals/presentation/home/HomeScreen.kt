@@ -9052,6 +9052,10 @@ fun GroupMemberCard(
         .map { it.first }
     }
 
+    var activeSubIndex by remember(sortedMemberSubs) { mutableStateOf(0) }
+    LaunchedEffect(sortedMemberSubs) {
+        activeSubIndex = 0
+    }
     val hasSubmission = sortedMemberSubs.isNotEmpty()
     var showDropdownMenu by remember { mutableStateOf(false) }
     var showEmojiOverlay by remember { mutableStateOf(false) }
@@ -9059,8 +9063,11 @@ fun GroupMemberCard(
     var currentEmojis by remember { mutableStateOf(defaultEmojis.take(5)) }
 
     if (hasSubmission) {
-        val firstSub = sortedMemberSubs.first()
-        val videoPath = remember(sortedMemberSubs) { sortedMemberSubs.map { it.imageUrl.split("|||").firstOrNull() ?: "" }.firstOrNull { it.isNotEmpty() } ?: "" }
+        val activeSub = sortedMemberSubs.getOrNull(activeSubIndex) ?: sortedMemberSubs.first()
+        val videoPath = remember(sortedMemberSubs, activeSubIndex) {
+            val sub = sortedMemberSubs.getOrNull(activeSubIndex) ?: sortedMemberSubs.firstOrNull()
+            sub?.imageUrl?.split("|||")?.firstOrNull() ?: ""
+        }
         val videoUri = remember(videoPath) {
             if (videoPath.startsWith("content://") || videoPath.startsWith("http")) {
                 android.net.Uri.parse(videoPath)
@@ -9072,7 +9079,7 @@ fun GroupMemberCard(
                 android.net.Uri.fromFile(java.io.File(cleanPath))
             }
         }
-        val caption = firstSub.imageUrl.split("|||").getOrNull(1) ?: ""
+        val caption = activeSub.imageUrl.split("|||").getOrNull(1) ?: ""
         val videoPaths = remember(sortedMemberSubs) { sortedMemberSubs.map { it.imageUrl.split("|||").firstOrNull() ?: "" }.filter { it.isNotEmpty() } }
         val latestReaction = palReactions[videoPath]
         val memberReplies = remember(messages, videoPath) {
