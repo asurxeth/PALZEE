@@ -10102,19 +10102,13 @@ fun GroupScreenContent(
                         selectedMemberIndex = selectedMemberIndex,
                         onSelectedMemberIndexChange = onSelectedMemberIndexChange,
                         onNavigateToCamera = onNavigateToCamera,
-                        onEditCaptionClick = {
-                            val userIndex = filteredSubmissions.indexOfFirst { it.userId == currentUserId }
-                            if (userIndex != -1) {
-                                onSelectedPageIndexChange(userIndex)
-                                onIsEditingCaptionChange(true)
-                            }
+                        onEditCaptionClick = { targetIndex ->
+                            onSelectedPageIndexChange(targetIndex)
+                            onIsEditingCaptionChange(true)
                         },
-                        onDeleteClick = {
-                            val userIndex = filteredSubmissions.indexOfFirst { it.userId == currentUserId }
-                            if (userIndex != -1) {
-                                onSelectedPageIndexChange(userIndex)
-                                onShowDeleteVlogConfirmationChange(true)
-                            }
+                        onDeleteClick = { targetIndex ->
+                            onSelectedPageIndexChange(targetIndex)
+                            onShowDeleteVlogConfirmationChange(true)
                         },
                         onInviteClick = {
                             try {
@@ -10174,19 +10168,13 @@ fun GroupScreenContent(
                                     selectedMemberIndex = selectedMemberIndex,
                                     onSelectedMemberIndexChange = onSelectedMemberIndexChange,
                                     onNavigateToCamera = onNavigateToCamera,
-                                    onEditCaptionClick = {
-                                        val userIndex = filteredSubmissions.indexOfFirst { it.userId == currentUserId }
-                                        if (userIndex != -1) {
-                                            onSelectedPageIndexChange(userIndex)
-                                            onIsEditingCaptionChange(true)
-                                        }
+                                    onEditCaptionClick = { targetIndex ->
+                                        onSelectedPageIndexChange(targetIndex)
+                                        onIsEditingCaptionChange(true)
                                     },
-                                    onDeleteClick = {
-                                        val userIndex = filteredSubmissions.indexOfFirst { it.userId == currentUserId }
-                                        if (userIndex != -1) {
-                                            onSelectedPageIndexChange(userIndex)
-                                            onShowDeleteVlogConfirmationChange(true)
-                                        }
+                                    onDeleteClick = { targetIndex ->
+                                        onSelectedPageIndexChange(targetIndex)
+                                        onShowDeleteVlogConfirmationChange(true)
                                     },
                                     onInviteClick = {
                                         try {
@@ -10235,19 +10223,13 @@ fun GroupScreenContent(
                                     selectedMemberIndex = selectedMemberIndex,
                                     onSelectedMemberIndexChange = onSelectedMemberIndexChange,
                                     onNavigateToCamera = onNavigateToCamera,
-                                    onEditCaptionClick = {
-                                        val userIndex = filteredSubmissions.indexOfFirst { it.userId == currentUserId }
-                                        if (userIndex != -1) {
-                                            onSelectedPageIndexChange(userIndex)
-                                            onIsEditingCaptionChange(true)
-                                        }
+                                    onEditCaptionClick = { targetIndex ->
+                                        onSelectedPageIndexChange(targetIndex)
+                                        onIsEditingCaptionChange(true)
                                     },
-                                    onDeleteClick = {
-                                        val userIndex = filteredSubmissions.indexOfFirst { it.userId == currentUserId }
-                                        if (userIndex != -1) {
-                                            onSelectedPageIndexChange(userIndex)
-                                            onShowDeleteVlogConfirmationChange(true)
-                                        }
+                                    onDeleteClick = { targetIndex ->
+                                        onSelectedPageIndexChange(targetIndex)
+                                        onShowDeleteVlogConfirmationChange(true)
                                     },
                                     onInviteClick = {
                                         try {
@@ -10302,19 +10284,13 @@ fun GroupScreenContent(
                                     selectedMemberIndex = selectedMemberIndex,
                                     onSelectedMemberIndexChange = onSelectedMemberIndexChange,
                                     onNavigateToCamera = onNavigateToCamera,
-                                    onEditCaptionClick = {
-                                        val userIndex = filteredSubmissions.indexOfFirst { it.userId == currentUserId }
-                                        if (userIndex != -1) {
-                                            onSelectedPageIndexChange(userIndex)
-                                            onIsEditingCaptionChange(true)
-                                        }
+                                    onEditCaptionClick = { targetIndex ->
+                                        onSelectedPageIndexChange(targetIndex)
+                                        onIsEditingCaptionChange(true)
                                     },
-                                    onDeleteClick = {
-                                        val userIndex = filteredSubmissions.indexOfFirst { it.userId == currentUserId }
-                                        if (userIndex != -1) {
-                                            onSelectedPageIndexChange(userIndex)
-                                            onShowDeleteVlogConfirmationChange(true)
-                                        }
+                                    onDeleteClick = { targetIndex ->
+                                        onSelectedPageIndexChange(targetIndex)
+                                        onShowDeleteVlogConfirmationChange(true)
                                     },
                                     onInviteClick = {
                                         try {
