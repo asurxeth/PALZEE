@@ -32,7 +32,7 @@ struct ContentView: View {
                 // Top Doodle Area
                 ZStack {
                     // Cloud character in the center
-                    Image("onboarding_logo")
+                    Image("pal_circular_logo")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 140, height: 140)
