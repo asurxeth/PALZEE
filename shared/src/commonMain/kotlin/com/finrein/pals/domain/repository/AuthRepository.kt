@@ -7,6 +7,10 @@ enum class UserRouteState { NEW_USER, RETURNING_USER, ERROR }
 interface AuthRepository {
     suspend fun signInWithGoogle(idToken: String): Result<User>
     
+    suspend fun signInWithIdToken(idToken: String, provider: String, nonce: String? = null): Result<User>
+    
+    suspend fun authenticateAndRouteUserIdToken(idToken: String, provider: String, nonce: String? = null): UserRouteState
+    
     suspend fun sendEmailOtp(email: String): Result<Unit>
     
     suspend fun verifyEmailOtp(email: String, token: String): Result<User>
