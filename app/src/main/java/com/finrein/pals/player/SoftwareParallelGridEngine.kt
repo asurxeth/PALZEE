@@ -1,4 +1,4 @@
-package com.finrein.pals.presentation.home
+package com.finrein.pals.player
 
 import android.content.Context
 import androidx.media3.common.C

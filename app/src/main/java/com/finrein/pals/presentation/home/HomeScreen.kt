@@ -11,6 +11,8 @@ import com.finrein.pals.domain.model.ActivePalState
 import com.finrein.pals.domain.model.PalDbInsertionItem
 import com.finrein.pals.domain.model.PalDbItemResponse
 import kotlinx.coroutines.Dispatchers
+import com.finrein.pals.player.VlogPreloader
+import com.finrein.pals.player.FeedPlayerManager
 import kotlinx.coroutines.flow.collectLatest
 import android.os.Build
 import kotlinx.coroutines.sync.withLock
@@ -10542,7 +10544,7 @@ fun VlogScreenContent(
     val onActiveReactionPreviewChange = params.onActiveReactionPreviewChange
     val onDeleteMessageLocal = params.onDeleteMessageLocal
 
-    val playerManager = remember(context) { com.finrein.pals.presentation.home.FeedPlayerManager(context) }
+    val playerManager = remember(context) { com.finrein.pals.player.FeedPlayerManager(context) }
     DisposableEffect(playerManager) {
         onDispose {
             playerManager.releaseAll()
@@ -19684,7 +19686,7 @@ class PlayerView(context: android.content.Context) : androidx.media3.ui.PlayerVi
 fun RenderVlogPlayer(
     index: Int,
     path: String,
-    playerManager: com.finrein.pals.presentation.home.FeedPlayerManager,
+    playerManager: com.finrein.pals.player.FeedPlayerManager,
     isVisible: Boolean,
     showProgressIndicator: Boolean = true,
     onFirstFrameRendered: (() -> Unit)? = null

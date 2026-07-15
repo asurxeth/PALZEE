@@ -79,7 +79,7 @@
         </receiver>
 
         <service
-            android:name=".BackgroundSyncService"
+            android:name=".services.BackgroundSyncService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />

@@ -1,4 +1,4 @@
-package com.finrein.pals
+package com.finrein.pals.services
 
 import android.app.Service
 import android.content.Intent
