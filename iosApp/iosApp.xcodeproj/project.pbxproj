@@ -10,6 +10,12 @@
 		7540F11E2C12D3A30048F19E /* iosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7540F11D2C12D3A30048F19E /* iosApp.swift */; };
 		7540F1202C12D3A30048F19E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7540F11F2C12D3A30048F19E /* ContentView.swift */; };
 		7540F12D2C12D3A30048F19E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7540F12C2C12D3A30048F19E /* Assets.xcassets */; };
+		F0A0F0112C12D3A30048F19E /* bricolage_grotesque_variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A0F0012C12D3A30048F19E /* bricolage_grotesque_variable.ttf */; };
+		F0A0F0122C12D3A30048F19E /* dela_gothic_one_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A0F0022C12D3A30048F19E /* dela_gothic_one_regular.ttf */; };
+		F0A0F0132C12D3A30048F19E /* google_sans_regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A0F0032C12D3A30048F19E /* google_sans_regular.ttf */; };
+		F0A0F0142C12D3A30048F19E /* ownglyph.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A0F0042C12D3A30048F19E /* ownglyph.ttf */; };
+		F0A0F0152C12D3A30048F19E /* roboto_medium_numbers.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A0F0052C12D3A30048F19E /* roboto_medium_numbers.ttf */; };
+		F0A0F0162C12D3A30048F19E /* unpack.otf in Resources */ = {isa = PBXBuildFile; fileRef = F0A0F0062C12D3A30048F19E /* unpack.otf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -17,6 +23,12 @@
 		7540F11D2C12D3A30048F19E /* iosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = source.swift; name = iosApp.swift; path = iosApp/iosApp.swift; sourceTree = "<group>"; };
 		7540F11F2C12D3A30048F19E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = source.swift; name = ContentView.swift; path = iosApp/ContentView.swift; sourceTree = "<group>"; };
 		7540F12C2C12D3A30048F19E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = iosApp/Assets.xcassets; sourceTree = "<group>"; };
+		F0A0F0012C12D3A30048F19E /* bricolage_grotesque_variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = bricolage_grotesque_variable.ttf; path = iosApp/Fonts/bricolage_grotesque_variable.ttf; sourceTree = "<group>"; };
+		F0A0F0022C12D3A30048F19E /* dela_gothic_one_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = dela_gothic_one_regular.ttf; path = iosApp/Fonts/dela_gothic_one_regular.ttf; sourceTree = "<group>"; };
+		F0A0F0032C12D3A30048F19E /* google_sans_regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = google_sans_regular.ttf; path = iosApp/Fonts/google_sans_regular.ttf; sourceTree = "<group>"; };
+		F0A0F0042C12D3A30048F19E /* ownglyph.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = ownglyph.ttf; path = iosApp/Fonts/ownglyph.ttf; sourceTree = "<group>"; };
+		F0A0F0052C12D3A30048F19E /* roboto_medium_numbers.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = roboto_medium_numbers.ttf; path = iosApp/Fonts/roboto_medium_numbers.ttf; sourceTree = "<group>"; };
+		F0A0F0062C12D3A30048F19E /* unpack.otf */ = {isa = PBXFileReference; lastKnownFileType = file; name = unpack.otf; path = iosApp/Fonts/unpack.otf; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +64,12 @@
 				7540F11D2C12D3A30048F19E /* iosApp.swift */,
 				7540F11F2C12D3A30048F19E /* ContentView.swift */,
 				7540F12C2C12D3A30048F19E /* Assets.xcassets */,
+				F0A0F0012C12D3A30048F19E /* bricolage_grotesque_variable.ttf */,
+				F0A0F0022C12D3A30048F19E /* dela_gothic_one_regular.ttf */,
+				F0A0F0032C12D3A30048F19E /* google_sans_regular.ttf */,
+				F0A0F0042C12D3A30048F19E /* ownglyph.ttf */,
+				F0A0F0052C12D3A30048F19E /* roboto_medium_numbers.ttf */,
+				F0A0F0062C12D3A30048F19E /* unpack.otf */,
 			);
 			name = iosApp;
 			sourceTree = "<group>";
@@ -116,6 +134,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				7540F12D2C12D3A30048F19E /* Assets.xcassets in Resources */,
+				F0A0F0112C12D3A30048F19E /* bricolage_grotesque_variable.ttf in Resources */,
+				F0A0F0122C12D3A30048F19E /* dela_gothic_one_regular.ttf in Resources */,
+				F0A0F0132C12D3A30048F19E /* google_sans_regular.ttf in Resources */,
+				F0A0F0142C12D3A30048F19E /* ownglyph.ttf in Resources */,
+				F0A0F0152C12D3A30048F19E /* roboto_medium_numbers.ttf in Resources */,
+				F0A0F0162C12D3A30048F19E /* unpack.otf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -138,7 +162,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH\"\nif [ -d \"$HOME/.sdkman/candidates/java/current/bin\" ]; then\n  export PATH=\"$HOME/.sdkman/candidates/java/current/bin:$PATH\"\nfi\ncd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode -Pcompose.ios.resources.platform=\"$PLATFORM_NAME\" -Pcompose.ios.resources.archs=\"$ARCHS\"\n";
+			shellScript = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH\"\nexport JAVA_HOME=$(/usr/libexec/java_home -v 21)\ncd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode --no-daemon -Pcompose.ios.resources.platform=\"$PLATFORM_NAME\" -Pcompose.ios.resources.archs=\"$ARCHS\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -290,6 +314,15 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Palzee;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
+				INFOPLIST_KEY_UILaunchScreen = "{}";
+				INFOPLIST_KEY_UIAppFonts = (
+					bricolage_grotesque_variable.ttf,
+					dela_gothic_one_regular.ttf,
+					google_sans_regular.ttf,
+					ownglyph.ttf,
+					roboto_medium_numbers.ttf,
+					unpack.otf,
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -322,6 +355,15 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Palzee;
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
+				INFOPLIST_KEY_UILaunchScreen = "{}";
+				INFOPLIST_KEY_UIAppFonts = (
+					bricolage_grotesque_variable.ttf,
+					dela_gothic_one_regular.ttf,
+					google_sans_regular.ttf,
+					ownglyph.ttf,
+					roboto_medium_numbers.ttf,
+					unpack.otf,
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

@@ -88,11 +88,11 @@ struct ContentView: View {
                 // Title Area
                 VStack(spacing: 8) {
                     Text("Pal")
-                        .font(.system(size: 34, weight: .black, design: .rounded))
+                        .font(.custom("Ownglyph_smartiam-Rg", size: 38))
                         .foregroundColor(.black)
                     
                     Text("new moment every hour,\nvlog it with your friends.")
-                        .font(.system(size: 17, weight: .semibold, design: .default))
+                        .font(.custom("BricolageGrotesque-96ptExtraBold", size: 16))
                         .foregroundColor(.black.opacity(0.8))
                         .multilineTextAlignment(.center)
                         .lineSpacing(4)
@@ -137,7 +137,7 @@ struct ContentView: View {
                             Image(systemName: "person.badge.key.fill")
                                 .font(.system(size: 18))
                             Text("Connect with Passkey")
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.custom("BricolageGrotesque-96ptExtraBold", size: 17))
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -155,7 +155,7 @@ struct ContentView: View {
                             Image(systemName: "apple.logo")
                                 .font(.system(size: 19))
                             Text("Connect with Apple")
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.custom("BricolageGrotesque-96ptExtraBold", size: 17))
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -317,8 +317,8 @@ struct ContentView: View {
                         Task {
                             do {
                                 IOSPlatformSDK.shared.initialize(
-                                    url: "https://your-project.supabase.co",
-                                    anonKey: "your-anon-key"
+                                    url: "https://ufxwbuxixdlxmuwvrdxz.supabase.co",
+                                    anonKey: "sb_publishable_rDUV2lsgdNJ8VlLFZRUYYQ_EhpqbUc0"
                                 )
                                 try await IOSPlatformSDK.shared.authRepository.sendEmailOtp(email: emailInput)
                             } catch {
@@ -400,7 +400,7 @@ struct ContentView: View {
                 // Form Fields
                 VStack(alignment: .leading, spacing: 10) {
                     Text(title)
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.custom("BricolageGrotesque-96ptExtraBold", size: 26))
                         .foregroundColor(.black)
                         .lineSpacing(2)
                     
@@ -439,7 +439,7 @@ struct ContentView: View {
                             Image(systemName: "paperplane.fill")
                                 .font(.system(size: 15))
                             Text("Send code")
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.custom("BricolageGrotesque-96ptExtraBold", size: 17))
                         }
                         .foregroundColor(input.wrappedValue.isEmpty ? .gray : .white)
                         .frame(maxWidth: .infinity)
