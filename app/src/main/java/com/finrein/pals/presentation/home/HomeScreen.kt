@@ -7,6 +7,7 @@ import com.finrein.pals.player.VideoProcessor
 import com.finrein.pals.player.SoftwareParallelGridEngine
 import com.finrein.pals.player.VideoCache
 
+import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.finrein.pals.domain.model.PalItem
 import com.finrein.pals.domain.model.MessageDbItem
@@ -17,9 +18,6 @@ import com.finrein.pals.domain.model.VlogRecord
 import com.finrein.pals.domain.model.ActivePalState
 import com.finrein.pals.domain.model.PalDbInsertionItem
 import com.finrein.pals.domain.model.PalDbItemResponse
-import kotlinx.coroutines.Dispatchers
-import com.finrein.pals.player.VlogPreloader
-import com.finrein.pals.player.FeedPlayerManager
 import kotlinx.coroutines.flow.collectLatest
 import android.os.Build
 import kotlinx.coroutines.sync.withLock

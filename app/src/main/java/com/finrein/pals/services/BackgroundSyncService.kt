@@ -3,6 +3,7 @@ package com.finrein.pals.services
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import com.finrein.pals.PalApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

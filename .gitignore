@@ -28,3 +28,6 @@ Palls.jks
 # Release artifacts
 /release/
 *.apk
+
+# Customizations
+.agent/
