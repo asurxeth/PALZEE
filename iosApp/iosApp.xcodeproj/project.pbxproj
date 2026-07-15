@@ -9,12 +9,14 @@
 /* Begin PBXBuildFile section */
 		7540F11E2C12D3A30048F19E /* iosApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7540F11D2C12D3A30048F19E /* iosApp.swift */; };
 		7540F1202C12D3A30048F19E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7540F11F2C12D3A30048F19E /* ContentView.swift */; };
+		7540F12D2C12D3A30048F19E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7540F12C2C12D3A30048F19E /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		7540F11A2C12D3A20048F19E /* iosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7540F11D2C12D3A30048F19E /* iosApp.swift */ = {isa = PBXFileReference; lastKnownFileType = source.swift; name = iosApp.swift; path = iosApp/iosApp.swift; sourceTree = "<group>"; };
 		7540F11F2C12D3A30048F19E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = source.swift; name = ContentView.swift; path = iosApp/ContentView.swift; sourceTree = "<group>"; };
+		7540F12C2C12D3A30048F19E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = iosApp/Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,6 +51,7 @@
 			children = (
 				7540F11D2C12D3A30048F19E /* iosApp.swift */,
 				7540F11F2C12D3A30048F19E /* ContentView.swift */,
+				7540F12C2C12D3A30048F19E /* Assets.xcassets */,
 			);
 			name = iosApp;
 			sourceTree = "<group>";
@@ -112,6 +115,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7540F12D2C12D3A30048F19E /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
