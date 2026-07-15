@@ -21,7 +21,7 @@ class PalApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        com.finrein.pals.data.local.SharedContextRegistry.context = this
+        com.finrein.pals.core.data.local.SharedContextRegistry.context = this
         
         // Force critical path tracing directly on startup 
         // to stabilize Compose view trees

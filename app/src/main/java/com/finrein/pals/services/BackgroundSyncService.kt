@@ -23,7 +23,7 @@ class BackgroundSyncService : Service() {
             while (true) {
                 try {
                     val supabase = PalApplication.supabase
-                    val sessionManager = com.finrein.pals.data.local.SessionManager(applicationContext)
+                    val sessionManager = com.finrein.pals.core.data.local.SessionManager(applicationContext)
                     val currentUser = sessionManager.getUser()
                     if (currentUser != null) {
                         val currentUserId = currentUser.id

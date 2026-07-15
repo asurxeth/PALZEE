@@ -17,19 +17,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
-import com.finrein.pals.presentation.auth.OnboardingScreen
-import com.finrein.pals.presentation.auth.AuthViewModel
-import com.finrein.pals.presentation.home.HomeScreen
-import com.finrein.pals.presentation.home.HomeViewModel
+import com.finrein.pals.feature.auth.OnboardingScreen
+import com.finrein.pals.feature.auth.AuthViewModel
+import com.finrein.pals.feature.home.HomeScreen
+import com.finrein.pals.feature.home.HomeViewModel
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import io.github.jan.supabase.gotrue.auth
-import com.finrein.pals.presentation.theme.PalTheme
+import com.finrein.pals.core.ui.theme.PalTheme
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.credentials.CredentialManager
 import androidx.credentials.ClearCredentialStateRequest
 import javax.inject.Inject
-import com.finrein.pals.domain.repository.AuthRepository
+import com.finrein.pals.core.domain.repository.AuthRepository
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -75,19 +75,19 @@ class MainActivity : ComponentActivity() {
         }
         super.onCreate(savedInstanceState)
         try {
-            com.finrein.pals.presentation.home.pruneOrphanedAppCache(applicationContext)
+            com.finrein.pals.feature.home.pruneOrphanedAppCache(applicationContext)
         } catch (e: Exception) {
             e.printStackTrace()
         }
         
-        val sessionManager = com.finrein.pals.data.local.SessionManager(applicationContext)
+        val sessionManager = com.finrein.pals.core.data.local.SessionManager(applicationContext)
         val interval = sessionManager.getNotificationInterval()
-        com.finrein.pals.notification.PalAlarmScheduler.updateScheduling(
+        com.finrein.pals.push.PalAlarmScheduler.updateScheduling(
             applicationContext,
             interval
         )
         if (sessionManager.getUser() != null && interval != "off" && interval.isNotEmpty()) {
-            val checkIntent = android.content.Intent(applicationContext, com.finrein.pals.notification.PalNotificationReceiver::class.java).apply {
+            val checkIntent = android.content.Intent(applicationContext, com.finrein.pals.push.PalNotificationReceiver::class.java).apply {
                 action = "com.finrein.pals.ACTION_CHECK_FIRST_PAL"
             }
             applicationContext.sendBroadcast(checkIntent)
@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
             DisposableEffect(Unit) {
                 onDispose {
                     try {
-                        com.finrein.pals.presentation.home.pruneOrphanedAppCache(context)
+                        com.finrein.pals.feature.home.pruneOrphanedAppCache(context)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -129,12 +129,12 @@ class MainActivity : ComponentActivity() {
 
             PalTheme {
                 var currentUser by remember { 
-                    mutableStateOf<com.finrein.pals.domain.model.User?>(sessionManager.getUser()) 
+                    mutableStateOf<com.finrein.pals.core.domain.model.User?>(sessionManager.getUser()) 
                 }
 
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = com.finrein.pals.presentation.theme.PalBackground
+                    color = com.finrein.pals.core.ui.theme.PalBackground
                 ) {
                     if (currentUser == null) {
                         OnboardingScreen(
@@ -143,12 +143,12 @@ class MainActivity : ComponentActivity() {
                                 sessionManager.saveUser(user)
                                 currentUser = user
                                 val currentInterval = sessionManager.getNotificationInterval()
-                                com.finrein.pals.notification.PalAlarmScheduler.updateScheduling(
+                                com.finrein.pals.push.PalAlarmScheduler.updateScheduling(
                                     applicationContext,
                                     currentInterval
                                 )
                                 if (currentInterval != "off" && currentInterval.isNotEmpty()) {
-                                    val checkIntent = android.content.Intent(applicationContext, com.finrein.pals.notification.PalNotificationReceiver::class.java).apply {
+                                    val checkIntent = android.content.Intent(applicationContext, com.finrein.pals.push.PalNotificationReceiver::class.java).apply {
                                         action = "com.finrein.pals.ACTION_CHECK_FIRST_PAL"
                                     }
                                     applicationContext.sendBroadcast(checkIntent)
@@ -257,7 +257,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         try {
-            com.finrein.pals.presentation.home.pruneOrphanedAppCache(applicationContext)
+            com.finrein.pals.feature.home.pruneOrphanedAppCache(applicationContext)
         } catch (e: Exception) {
             e.printStackTrace()
         }

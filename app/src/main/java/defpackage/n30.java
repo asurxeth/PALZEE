@@ -2,7 +2,7 @@ package defpackage;
 
 import android.net.Uri;
 import android.util.Log;
-import com.finrein.pals.presentation.collections.CollectionEditPlaybackView;
+import com.finrein.pals.feature.collections.CollectionEditPlaybackView;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.common.PlaybackException;
 
