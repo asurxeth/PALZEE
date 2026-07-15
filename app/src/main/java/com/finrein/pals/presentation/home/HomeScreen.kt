@@ -1,5 +1,12 @@
 package com.finrein.pals.presentation.home
 
+import com.finrein.pals.player.VlogPreloader
+import com.finrein.pals.player.FeedPlayerManager
+import com.finrein.pals.player.DualEnginePlayerFactory
+import com.finrein.pals.player.VideoProcessor
+import com.finrein.pals.player.SoftwareParallelGridEngine
+import com.finrein.pals.player.VideoCache
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.finrein.pals.domain.model.PalItem
 import com.finrein.pals.domain.model.MessageDbItem
@@ -1035,7 +1042,7 @@ object VlogPlayerManager {
         }
 
         return playerCache.getOrPut(targetUrl) {
-            com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context.applicationContext).apply {
+            com.finrein.pals.player.DualEnginePlayerFactory.getPooledInstance(context.applicationContext).apply {
                 setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.parse(targetUrl)))
                 repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                 volume = 0f // Muted feed
@@ -1049,7 +1056,7 @@ object VlogPlayerManager {
         lruKeys.remove(targetUrl)
         playerCache.remove(targetUrl)?.apply {
             try {
-                com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(this)
+                com.finrein.pals.player.DualEnginePlayerFactory.releaseIntoPool(this)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -1066,7 +1073,7 @@ object VlogPlayerManager {
         lruKeys.clear()
         playerCache.forEach { (_, player) ->
             try {
-                com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(player)
+                com.finrein.pals.player.DualEnginePlayerFactory.releaseIntoPool(player)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -3886,7 +3893,7 @@ fun HomeScreen(
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     val vlogExoPlayer = remember {
-        com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context).apply {
+        com.finrein.pals.player.DualEnginePlayerFactory.getPooledInstance(context).apply {
             repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
             volume = 0f
             playWhenReady = false
@@ -3974,7 +3981,7 @@ fun HomeScreen(
 
     DisposableEffect(vlogExoPlayer) {
         onDispose {
-            com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(vlogExoPlayer)
+            com.finrein.pals.player.DualEnginePlayerFactory.releaseIntoPool(vlogExoPlayer)
         }
     }
 
@@ -8196,7 +8203,7 @@ fun CapturedPreviewScreen(
     }
 
     val exoPlayer = remember(capturedVideoPath) {
-        com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context).apply {
+        com.finrein.pals.player.DualEnginePlayerFactory.getPooledInstance(context).apply {
             videoScalingMode = androidx.media3.common.C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
             repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
             playWhenReady = true
@@ -8280,7 +8287,7 @@ fun CapturedPreviewScreen(
         onDispose {
             exoPlayer.playWhenReady = false
             exoPlayer.stop()
-            com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(exoPlayer)
+            com.finrein.pals.player.DualEnginePlayerFactory.releaseIntoPool(exoPlayer)
         }
     }
 
@@ -12461,7 +12468,7 @@ fun VlogScreenContent(
                                     )
                                 } else {
                                     val exportLocalPlayer = remember(capturedVlogsPaths) {
-                                        com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context).apply {
+                                        com.finrein.pals.player.DualEnginePlayerFactory.getPooledInstance(context).apply {
                                             repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                                             volume = 0f
                                         }
@@ -12469,7 +12476,7 @@ fun VlogScreenContent(
 
                                     DisposableEffect(exportLocalPlayer) {
                                         onDispose {
-                                            com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(exportLocalPlayer)
+                                            com.finrein.pals.player.DualEnginePlayerFactory.releaseIntoPool(exportLocalPlayer)
                                         }
                                     }
 
@@ -13975,7 +13982,7 @@ fun VideoPlayerItem(
     }
 
     val localPlayer = remember(context) {
-        com.finrein.pals.presentation.home.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
+        com.finrein.pals.player.DualEnginePlayerFactory.createMultiStreamSoftwarePlayer(context).apply {
             repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
             volume = 0f
         }
@@ -13983,7 +13990,7 @@ fun VideoPlayerItem(
 
     DisposableEffect(localPlayer) {
         onDispose {
-            com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(localPlayer)
+            com.finrein.pals.player.DualEnginePlayerFactory.releaseIntoPool(localPlayer)
         }
     }
 
@@ -19259,7 +19266,7 @@ private fun GroupExportMemberSlot(
             var localPlayerIndex by remember { mutableStateOf(0) }
             @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
             val localPlayer = remember(videoPaths) {
-                com.finrein.pals.presentation.home.DualEnginePlayerFactory.getPooledInstance(context).apply {
+                com.finrein.pals.player.DualEnginePlayerFactory.getPooledInstance(context).apply {
                     repeatMode = androidx.media3.common.Player.REPEAT_MODE_OFF
                     volume = 0f
                 }
@@ -19273,7 +19280,7 @@ private fun GroupExportMemberSlot(
                 localPlayer.addListener(listener)
                 onDispose {
                     localPlayer.removeListener(listener)
-                    com.finrein.pals.presentation.home.DualEnginePlayerFactory.releaseIntoPool(localPlayer)
+                    com.finrein.pals.player.DualEnginePlayerFactory.releaseIntoPool(localPlayer)
                 }
             }
             LaunchedEffect(videoPaths, localPlayer) {
