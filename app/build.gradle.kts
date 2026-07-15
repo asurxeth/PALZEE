@@ -123,7 +123,6 @@ android {
 
 
 dependencies {
-    implementation(project(":shared"))
     // Core AndroidX
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

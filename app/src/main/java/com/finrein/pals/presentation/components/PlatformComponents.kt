@@ -11,7 +11,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
 @Composable
-actual fun PlatformVideoPlayer(
+fun PlatformVideoPlayer(
     modifier: Modifier,
     videoUrl: String,
     isMuted: Boolean,
@@ -46,7 +46,7 @@ actual fun PlatformVideoPlayer(
 }
 
 @Composable
-actual fun PlatformCameraCapture(
+fun PlatformCameraCapture(
     modifier: Modifier,
     isRecording: Boolean,
     onRecordingChange: (Boolean) -> Unit,
