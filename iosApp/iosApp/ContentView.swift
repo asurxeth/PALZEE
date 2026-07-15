@@ -32,7 +32,7 @@ struct ContentView: View {
                 // Top Doodle Area
                 ZStack {
                     // Cloud character in the center
-                    Image("blob_light")
+                    Image("onboarding_logo")
                         .resizable()
                         .scaledToFit()
                         .frame(width: 140, height: 140)
@@ -87,7 +87,7 @@ struct ContentView: View {
                 
                 // Title Area
                 VStack(spacing: 8) {
-                    Text("SETLOG")
+                    Text("Pal")
                         .font(.system(size: 34, weight: .black, design: .rounded))
                         .foregroundColor(.black)
                     
