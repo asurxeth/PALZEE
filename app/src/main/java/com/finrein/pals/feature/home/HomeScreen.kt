@@ -6764,11 +6764,13 @@ fun CameraScreenContent(
 
             val mainExecutor = ContextCompat.getMainExecutor(context)
             var session: Recording? = null
+            var actualRecordStart = 0L
             val recordingStarted = kotlinx.coroutines.CompletableDeferred<Unit>()
             try {
                 session = recording.start(mainExecutor) { recordEvent ->
                     when (recordEvent) {
                         is VideoRecordEvent.Start -> {
+                            actualRecordStart = System.currentTimeMillis()
                             recordingStarted.complete(Unit)
                         }
                         is VideoRecordEvent.Finalize -> {
@@ -6797,17 +6799,26 @@ fun CameraScreenContent(
             }
 
             try {
-                recordingStarted.await()
                 recordingProgress = 0.0f
-                val startTime = System.currentTimeMillis()
+                val progressStartTime = System.currentTimeMillis()
                 while (true) {
-                    val elapsed = System.currentTimeMillis() - startTime
+                    val elapsed = System.currentTimeMillis() - progressStartTime
                     val progress = (elapsed.toFloat() / durationMs).coerceIn(0f, 1f)
                     val easedProgress = 1f - (1f - progress) * (1f - progress)
                     recordingProgress = easedProgress
                     if (progress >= 1f) break
                     delay(16)
                 }
+
+                // Visual progress is complete. Ensure hardware recording has run for full durationMs.
+                try {
+                    recordingStarted.await()
+                } catch (e: Exception) {}
+
+                val recordStart = if (actualRecordStart > 0L) actualRecordStart else System.currentTimeMillis()
+                val elapsedRecord = System.currentTimeMillis() - recordStart
+                val remainingRecordMs = (durationMs - elapsedRecord + 400L).coerceAtLeast(400L)
+                delay(remainingRecordMs)
             } catch (e: Exception) {
                 android.util.Log.e("ProductionCamera", "Error during recording progress", e)
             } finally {
@@ -7227,7 +7238,7 @@ fun CameraScreenContent(
                 .size(outerRingSize)
         ) {
             val strokeWidth = (4.dp * scale).toPx()
-            val innerVisualGap = (3.dp * scale).toPx()
+            val innerVisualGap = (2.dp * scale).toPx()
             val radius = (shutterSize / 2f).toPx() + innerVisualGap + (strokeWidth / 2f)
             drawCircle(
                 color = Color(0xFF310BED),
@@ -9415,12 +9426,9 @@ fun GroupMemberCard(
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.5f))
                         .clickable {
-                            val userSub = activeSub
-                            if (userSub != null) {
-                                val userPath = userSub.imageUrl.split("|||").firstOrNull() ?: ""
-                                if (userPath.isNotEmpty()) {
-                                    onUpdateVlogCaption(userPath, editCaptionText.text.trim())
-                                }
+                            val userPath = activeSub.imageUrl.split("|||").firstOrNull() ?: ""
+                            if (userPath.isNotEmpty()) {
+                                onUpdateVlogCaption(userPath, editCaptionText.text.trim())
                             }
                             onIsEditingCaptionChange(false)
                         },
@@ -14371,12 +14379,9 @@ fun ReplyPreviewOverlay(
         val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
 
         LaunchedEffect(activeReplyPreviewPath) {
-            @Suppress("KotlinConstantConditions")
-            if (activeReplyPreviewPath != null) {
-                kotlinx.coroutines.delay(100)
-                focusRequester.requestFocus()
-                keyboardController?.show()
-            }
+            kotlinx.coroutines.delay(100)
+            focusRequester.requestFocus()
+            keyboardController?.show()
         }
 
         // 1. Top Header
