@@ -49,14 +49,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         )
 
         val publicNotification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(com.finrein.pals.R.drawable.pal_logo)
+            .setSmallIcon(com.finrein.pals.R.drawable.ic_notification)
             .setContentTitle("Palzee")
             .setContentText("Notification")
             .setAutoCancel(true)
             .build()
 
         val notificationBuilder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(com.finrein.pals.R.drawable.pal_logo)
+            .setSmallIcon(com.finrein.pals.R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

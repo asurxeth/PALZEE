@@ -20,9 +20,9 @@
     <application
         android:name=".PalApplication"
         android:allowBackup="false"
-        android:icon="@drawable/pal_logo"
+        android:icon="@mipmap/ic_launcher"
         android:label="Palzee"
-        android:roundIcon="@drawable/pal_circular_logo"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
         
