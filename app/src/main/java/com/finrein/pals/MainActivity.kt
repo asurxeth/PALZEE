@@ -86,12 +86,6 @@ class MainActivity : ComponentActivity() {
             applicationContext,
             interval
         )
-        if (sessionManager.getUser() != null && interval != "off" && interval.isNotEmpty()) {
-            val checkIntent = android.content.Intent(applicationContext, com.finrein.pals.push.PalNotificationReceiver::class.java).apply {
-                action = "com.finrein.pals.ACTION_CHECK_FIRST_PAL"
-            }
-            applicationContext.sendBroadcast(checkIntent)
-        }
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         val packageName = packageName
 
@@ -147,12 +141,6 @@ class MainActivity : ComponentActivity() {
                                     applicationContext,
                                     currentInterval
                                 )
-                                if (currentInterval != "off" && currentInterval.isNotEmpty()) {
-                                    val checkIntent = android.content.Intent(applicationContext, com.finrein.pals.push.PalNotificationReceiver::class.java).apply {
-                                        action = "com.finrein.pals.ACTION_CHECK_FIRST_PAL"
-                                    }
-                                    applicationContext.sendBroadcast(checkIntent)
-                                }
                             }
                         )
                     } else {

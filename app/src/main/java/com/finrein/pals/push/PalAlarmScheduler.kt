@@ -1,124 +1,78 @@
 package com.finrein.pals.push
 
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import android.os.Build
-import com.finrein.pals.core.data.local.SessionManager
 import com.google.firebase.messaging.FirebaseMessaging
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 
 object PalAlarmScheduler {
-    private const val REQUEST_CODE = 1001
-    private const val BOOT_REQUEST_CODE = 1002
     
     const val ACTION_PAL_ALARM = "com.finrein.pals.ACTION_HOURLY_PAL_ALARM"
 
     fun updateScheduling(context: Context, interval: String) {
-        cancelAlarm(context)
-
-        // Make sure we unsubscribe from FCM pub-sub topics since we handle notifications locally now
+        // Cancel any legacy local AlarmManager alarms first
         try {
-            val messaging = FirebaseMessaging.getInstance()
+            cancelAlarm(context)
+        } catch (e: Exception) {
+            // ignore
+        }
+
+        val messaging = FirebaseMessaging.getInstance()
+
+        // Unsubscribe from all topics first to clean up state
+        try {
             messaging.unsubscribeFromTopic("pals_first_time")
             messaging.unsubscribeFromTopic("pals_hourly")
             messaging.unsubscribeFromTopic("pals_three_hourly")
+            android.util.Log.d("PalAlarmScheduler", "Unsubscribed from FCM topics")
         } catch (e: Exception) {
-            // ignore
+            android.util.Log.e("PalAlarmScheduler", "Error unsubscribing: ${e.message}")
         }
 
         if (interval == "off" || interval.isBlank()) {
             return
         }
 
-        val sharedPrefs = context.getSharedPreferences("palzee_prefs", Context.MODE_PRIVATE)
-
-        // Schedule next subsequent alarm
-        if (interval == "every 1hr" || interval == "every 3hrs") {
-            val intervalMs = if (interval == "every 1hr") 60 * 60 * 1000L else 3 * 60 * 60 * 1000L
-            val lastSent = sharedPrefs.getLong("last_notification_sent_time", 0L)
-            
-            val nextTrigger = if (lastSent == 0L) {
-                System.currentTimeMillis() + intervalMs
-            } else {
-                lastSent + intervalMs
+        try {
+            if (interval == "every 1hr") {
+                messaging.subscribeToTopic("pals_hourly")
+                messaging.subscribeToTopic("pals_first_time")
+                android.util.Log.d("PalAlarmScheduler", "Subscribed to pals_hourly and pals_first_time FCM topics")
+            } else if (interval == "every 3hrs") {
+                messaging.subscribeToTopic("pals_three_hourly")
+                messaging.subscribeToTopic("pals_first_time")
+                android.util.Log.d("PalAlarmScheduler", "Subscribed to pals_three_hourly and pals_first_time FCM topics")
             }
-            
-            // Fallback: if nextTrigger is in the past, schedule for 10 seconds from now
-            val finalTrigger = if (nextTrigger < System.currentTimeMillis()) {
-                System.currentTimeMillis() + 10 * 1000L
-            } else {
-                nextTrigger
-            }
+        } catch (e: Exception) {
+            android.util.Log.e("PalAlarmScheduler", "Error subscribing to FCM topics: ${e.message}")
+        }
+    }
 
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val intent = Intent(context, PalNotificationReceiver::class.java).apply {
+    fun cancelAlarm(context: Context) {
+        // Stub: cancel actual AlarmManager alarm if it was scheduled previously
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            val intent = android.content.Intent().apply {
+                component = android.content.ComponentName(context, "com.finrein.pals.push.PalNotificationReceiver")
                 action = ACTION_PAL_ALARM
             }
-            val pendingIntent = PendingIntent.getBroadcast(
+            val pendingIntent = android.app.PendingIntent.getBroadcast(
                 context,
-                REQUEST_CODE,
+                1001,
                 intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                android.app.PendingIntent.FLAG_NO_CREATE or android.app.PendingIntent.FLAG_IMMUTABLE
             )
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (alarmManager.canScheduleExactAlarms()) {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, finalTrigger, pendingIntent)
-                } else {
-                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, finalTrigger, pendingIntent)
-                }
-            } else {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, finalTrigger, pendingIntent)
+            if (pendingIntent != null) {
+                alarmManager.cancel(pendingIntent)
+                pendingIntent.cancel()
+                android.util.Log.d("PalAlarmScheduler", "Cancelled existing client-side AlarmManager alarm")
             }
-            android.util.Log.d("PalAlarmScheduler", "Scheduled next local alarm at: $finalTrigger")
+        } catch (e: Exception) {
+            // ignore
         }
     }
 
     fun scheduleBootAlarm(context: Context) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, PalNotificationReceiver::class.java).apply {
-            action = "com.finrein.pals.ACTION_BOOT_15MIN_ALARM"
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            BOOT_REQUEST_CODE,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val triggerAt = System.currentTimeMillis() + 15 * 60 * 1000L
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (alarmManager.canScheduleExactAlarms()) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-            } else {
-                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-            }
-        } else {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-        }
-        android.util.Log.d("PalAlarmScheduler", "Scheduled 15-minute boot alarm")
-    }
-
-    fun cancelAlarm(context: Context) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(context, PalNotificationReceiver::class.java).apply {
-            action = ACTION_PAL_ALARM
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            REQUEST_CODE,
-            intent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-        )
-        if (pendingIntent != null) {
-            alarmManager.cancel(pendingIntent)
-            pendingIntent.cancel()
-            android.util.Log.d("PalAlarmScheduler", "Cancelled existing client-side AlarmManager alarm")
-        }
+        // No-op for server-side notification model
     }
 }
+
 

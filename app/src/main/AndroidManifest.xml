@@ -67,16 +67,7 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <receiver
-            android:name=".push.PalNotificationReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.finrein.pals.ACTION_HOURLY_PAL_ALARM" />
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.USER_PRESENT" />
-            </intent-filter>
-        </receiver>
+
 
         <service
             android:name=".services.BackgroundSyncService"

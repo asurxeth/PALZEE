@@ -63,7 +63,7 @@ serve(async (req) => {
           },
           android: {
             notification: {
-              icon: "ic_launcher_custom",
+              icon: "pal_logo",
               color: "#A882D0"
             }
           }
