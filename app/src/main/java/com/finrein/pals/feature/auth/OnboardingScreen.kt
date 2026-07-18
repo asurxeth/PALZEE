@@ -303,7 +303,7 @@ fun OnboardingScreen(
 
             // 2. Title Section (using OwnglyphFontFamily for thin line weight)
             Text(
-                text = "PAL",
+                text = "Palzee",
                 fontFamily = OwnglyphFontFamily,
                 fontSize = 36.sp,
                 fontWeight = FontWeight.Normal,

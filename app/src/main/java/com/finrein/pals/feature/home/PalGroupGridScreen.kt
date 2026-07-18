@@ -107,7 +107,7 @@ fun PalGroupGridScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Pal",
+                        text = "Palzee",
                         fontFamily = OwnglyphFontFamily,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
