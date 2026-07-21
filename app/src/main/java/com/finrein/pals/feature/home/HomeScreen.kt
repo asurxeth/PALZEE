@@ -4704,7 +4704,7 @@ fun HomeScreen(
                         palCode = pal.code,
                         userId = currentUserId,
                         userDisplayName = if (!customAvatarUriString.isNullOrEmpty()) "$firstName|||$customAvatarUriString" else firstName,
-                        imageUrl = "$capturedVideoPath|||||2000",
+                        imageUrl = "$capturedVideoPath|||$capturedCaptionText|||2000",
                         createdAt = java.time.Instant.now().toString()
                     )
                     val currentList = allPalsSubmissions[pal.code] ?: emptyList()
@@ -4767,11 +4767,7 @@ fun HomeScreen(
                             android.util.Log.e("SubmissionError", "Aborting upload: pal_code is empty.")
                             return@launch
                         }
-                        val delimiterString = if (cleanCode == "vlog") {
-                            "$uploadedVideoUrl|||$capturedCaptionText|||$capturedVideoDuration"
-                        } else {
-                            "$uploadedVideoUrl|||||2000"
-                        }
+                        val delimiterString = "$uploadedVideoUrl|||$capturedCaptionText|||$capturedVideoDuration"
                         val newSubmission = SubmissionDbItem(
                             palCode = cleanCode,
                             userId = currentUserId,
@@ -9501,8 +9497,8 @@ fun GroupMemberCard(
             // Overlay 4: Options menu trailing dots (Only shown if user has submission)
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (isUser && !isEditingCaption) {
@@ -9520,7 +9516,13 @@ fun GroupMemberCard(
                                 onDismissRequest = { showDropdownMenu = false }
                             ) {
                                 androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("edit caption") },
+                                    text = {
+                                        Text(
+                                            text = "edit caption",
+                                            fontFamily = FontFamily.SansSerif,
+                                            fontSize = 15.sp
+                                        )
+                                    },
                                     onClick = {
                                         showDropdownMenu = false
                                         if (subIndex != -1) {
@@ -9529,7 +9531,13 @@ fun GroupMemberCard(
                                     }
                                 )
                                 androidx.compose.material3.DropdownMenuItem(
-                                    text = { Text("delete pal") },
+                                    text = {
+                                        Text(
+                                            text = "delete pal",
+                                            fontFamily = FontFamily.SansSerif,
+                                            fontSize = 15.sp
+                                        )
+                                    },
                                     onClick = {
                                         showDropdownMenu = false
                                         if (subIndex != -1) {
