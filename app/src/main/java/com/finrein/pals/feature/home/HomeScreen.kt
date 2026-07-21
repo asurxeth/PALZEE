@@ -5508,7 +5508,7 @@ fun HomeScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 12.dp)
+                    .padding(bottom = 16.dp)
                     .background(navBarBgColor, RoundedCornerShape(24.dp))
                     .border(1.dp, navBarBorderColor, RoundedCornerShape(24.dp))
                     .padding(3.dp)
@@ -6947,8 +6947,13 @@ fun CameraScreenContent(
         val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
 
         // Dynamically calculate camera frame size to be exactly 7.5dp spaced from both ends of the screen
+        val maxCameraHeight = screenHeight - cameraFrameBottomPadding - 16.dp
         var cameraWidth = screenWidth - 11.dp
         var cameraHeight = cameraWidth * (16f / 9f)
+        if (cameraHeight > maxCameraHeight) {
+            cameraHeight = maxCameraHeight
+            cameraWidth = cameraHeight * (9f / 16f)
+        }
 
         val danceInnerColors = remember {
             listOf(
@@ -7403,7 +7408,7 @@ fun CameraScreenContent(
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(start = 24.dp * scale, bottom = 12.dp * scale)
+                .padding(start = 24.dp * scale, bottom = maxOf(16.dp * scale, 16.dp))
         ) {
             Box(
                 modifier = Modifier
@@ -7439,7 +7444,7 @@ fun CameraScreenContent(
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 24.dp * scale, bottom = 12.dp * scale)
+                .padding(end = 24.dp * scale, bottom = maxOf(16.dp * scale, 16.dp))
         ) {
             Box(
                 modifier = Modifier
@@ -9217,6 +9222,20 @@ fun GroupMemberCard(
     }
     val isUser = if (memberId != null) memberId == currentUserId else (memberName != null && (memberName.contains("(You)") || memberName == userFirstName))
 
+    val captionFontSize = remember(isGrid, groupMembers.size) {
+        if (!isGrid) {
+            22.sp
+        } else {
+            val totalSlots = maxOf(groupMembers.size, 4)
+            when {
+                totalSlots <= 6 -> 18.sp
+                totalSlots <= 8 -> 15.sp
+                totalSlots <= 10 -> 13.sp
+                else -> 11.sp
+            }
+        }
+    }
+
 
 
     val memberSubs = if (isActualMember) {
@@ -9476,7 +9495,7 @@ fun GroupMemberCard(
                     onValueChange = onEditCaptionTextChange,
                     textStyle = TextStyle(
                         fontFamily = RobotoFontFamily,
-                        fontSize = if (isGrid) 12.sp else 16.sp,
+                        fontSize = captionFontSize,
                         fontWeight = FontWeight.Normal,
                         color = Color.White,
                         textAlign = TextAlign.Center,
@@ -9497,7 +9516,7 @@ fun GroupMemberCard(
                                 Text(
                                     text = "write caption...",
                                     fontFamily = RobotoFontFamily,
-                                    fontSize = if (isGrid) 12.sp else 16.sp,
+                                    fontSize = captionFontSize,
                                     color = Color.White.copy(alpha = 0.5f),
                                     textAlign = TextAlign.Center
                                 )
@@ -9541,7 +9560,7 @@ fun GroupMemberCard(
                         Text(
                             text = caption,
                             fontFamily = RobotoFontFamily,
-                            fontSize = if (isGrid) 11.sp else 14.sp,
+                            fontSize = captionFontSize,
                             fontWeight = FontWeight.Normal,
                             color = Color.White,
                             style = TextStyle(
@@ -9572,61 +9591,51 @@ fun GroupMemberCard(
                             color = Color.White,
                             modifier = Modifier.clickable { showDropdownMenu = true }
                         )
-                        if (showDropdownMenu) {
-                            androidx.compose.ui.window.Popup(
-                                onDismissRequest = { showDropdownMenu = false },
-                                properties = androidx.compose.ui.window.PopupProperties(focusable = true)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .offset(x = (-165).dp, y = (-75).dp)
-                                        .width(180.dp)
-                                        .background(if (isDark) Color(0xFF1E1D22) else Color(0xFFF5F3EB), RoundedCornerShape(4.dp))
-                                        .padding(vertical = 8.dp)
-                                        .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                                ) {
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        val subIndex = filteredSubmissions.indexOf(activeSub)
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    showDropdownMenu = false
-                                                    if (subIndex != -1) {
-                                                        onEditCaptionClick(subIndex)
-                                                    }
-                                                }
-                                                .padding(horizontal = 16.dp, vertical = 7.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "edit caption",
-                                                fontFamily = FontFamily.SansSerif,
-                                                fontSize = 15.sp,
-                                                color = if (isDark) Color.White else Color.Black
-                                            )
-                                        }
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    showDropdownMenu = false
-                                                    if (subIndex != -1) {
-                                                        onDeleteClick(subIndex)
-                                                    }
-                                                }
-                                                .padding(horizontal = 16.dp, vertical = 7.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "delete",
-                                                fontFamily = FontFamily.SansSerif,
-                                                fontSize = 15.sp,
-                                                color = if (isDark) Color.White else Color.Black
-                                            )
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = showDropdownMenu,
+                            onDismissRequest = { showDropdownMenu = false },
+                            modifier = Modifier
+                                .background(if (isDark) Color(0xFF1E1D22) else Color(0xFFF5F3EB))
+                                .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                        ) {
+                            val subIndex = filteredSubmissions.indexOf(activeSub)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showDropdownMenu = false
+                                        if (subIndex != -1) {
+                                            onEditCaptionClick(subIndex)
                                         }
                                     }
-                                }
+                                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "edit caption",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 15.sp,
+                                    color = if (isDark) Color.White else Color.Black
+                                )
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showDropdownMenu = false
+                                        if (subIndex != -1) {
+                                            onDeleteClick(subIndex)
+                                        }
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "delete",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 15.sp,
+                                    color = if (isDark) Color.White else Color.Black
+                                )
                             }
                         }
                     }
@@ -10745,7 +10754,7 @@ fun VlogScreenContent(
 
     val density = androidx.compose.ui.platform.LocalDensity.current
     var selectedMemberIndex by remember(pal.code) { mutableStateOf(0) }
-    val activePalSubmissions = remember(pal.code, params.allPalsSubmissions, params.allCapturedVlogsPaths) {
+    val activePalSubmissions = remember(pal.code, params.allPalsSubmissions.toMap(), params.allCapturedVlogsPaths) {
         if (pal.isVlog) {
             val dbSubs = params.allPalsSubmissions["vlog"] ?: emptyList()
             val localSubs = params.allCapturedVlogsPaths.map { path ->
@@ -12801,6 +12810,7 @@ fun VlogScreenContent(
                                                             cardHeightDp = cardHeightDp,
                                                             isGrid = isGrid,
                                                             activeHour = activeExportHour,
+                                                            isLastHour = activeExportHour == (dayHoursList.lastOrNull() ?: -1),
                                                             onPlaybackEnded = onPlaybackEnded
                                                         )
                                                     }
@@ -19302,6 +19312,7 @@ private fun GroupExportMemberSlot(
     cardHeightDp: Dp,
     isGrid: Boolean,
     activeHour: Int,
+    isLastHour: Boolean,
     onPlaybackEnded: () -> Unit
 ) {
     val memberInfo = groupMembers.getOrNull(index)
@@ -19320,6 +19331,20 @@ private fun GroupExportMemberSlot(
                  (memberNameClean != null && (memberNameClean.contains("(You)") || memberNameClean == userFirstName))
     
     // Find all submissions for this member captured during the active hour
+    val captionFontSize = remember(isGrid, groupMembers.size) {
+        if (!isGrid) {
+            22.sp
+        } else {
+            val totalSlots = maxOf(groupMembers.size, 4)
+            when {
+                totalSlots <= 6 -> 18.sp
+                totalSlots <= 8 -> 15.sp
+                totalSlots <= 10 -> 13.sp
+                else -> 11.sp
+            }
+        }
+    }
+
     val memberSubs = if (isUser) {
         daySubmissions.filter { it.userId == currentUserId && it.getHourBucket() == activeHour }
     } else if (memberId != null && memberId != "legacy_id") {
@@ -19399,6 +19424,13 @@ private fun GroupExportMemberSlot(
             }
             DisposableEffect(localPlayer) {
                 val listener = object : androidx.media3.common.Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == androidx.media3.common.Player.STATE_ENDED) {
+                            if (!isLastHour) {
+                                onPlaybackEnded()
+                            }
+                        }
+                    }
                     override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
                         localPlayerIndex = localPlayer.currentMediaItemIndex
                     }
@@ -19409,7 +19441,8 @@ private fun GroupExportMemberSlot(
                     com.finrein.pals.core.player.DualEnginePlayerFactory.releaseIntoPool(localPlayer)
                 }
             }
-            LaunchedEffect(videoPaths, localPlayer) {
+            LaunchedEffect(videoPaths, localPlayer, isLastHour) {
+                localPlayer.repeatMode = if (isLastHour) androidx.media3.common.Player.REPEAT_MODE_ALL else androidx.media3.common.Player.REPEAT_MODE_OFF
                 localPlayer.stop()
                 localPlayer.clearMediaItems()
                 val resolved = videoPaths.map { path ->
@@ -19475,7 +19508,7 @@ private fun GroupExportMemberSlot(
                     Text(
                         text = caption,
                         fontFamily = RobotoFontFamily,
-                        fontSize = 11.sp,
+                        fontSize = captionFontSize,
                         fontWeight = FontWeight.Normal,
                         color = Color.White,
                         style = TextStyle(
