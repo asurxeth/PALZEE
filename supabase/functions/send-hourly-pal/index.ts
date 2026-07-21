@@ -1,11 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { GoogleAuth } from "https://deno.land/x/google_deno_auth@v1.2.1/mod.ts"
+import { GoogleAuth } from "npm:google-auth-library"
 
 serve(async (req) => {
   try {
-    const projectId = Deno.env.get("FIREBASE_PROJECT_ID")!
-    const clientEmail = Deno.env.get("FIREBASE_CLIENT_EMAIL")!
-    let privateKey = Deno.env.get("FIREBASE_PRIVATE_KEY")!
+    const projectId = Deno.env.get("FIREBASE_PROJECT_ID")
+    const clientEmail = Deno.env.get("FIREBASE_CLIENT_EMAIL")
+    const privateKeyRaw = Deno.env.get("FIREBASE_PRIVATE_KEY")
+
+    if (!projectId || !clientEmail || !privateKeyRaw) {
+      const missing = []
+      if (!projectId) missing.push("FIREBASE_PROJECT_ID")
+      if (!clientEmail) missing.push("FIREBASE_CLIENT_EMAIL")
+      if (!privateKeyRaw) missing.push("FIREBASE_PRIVATE_KEY")
+      throw new Error(`Missing required Firebase environment secrets: ${missing.join(", ")}. Please set them using: supabase secrets set <NAME>=<VALUE>`)
+    }
+
+    let privateKey = privateKeyRaw
     if (privateKey.includes("\\n")) {
       privateKey = privateKey.replace(/\\n/g, "\n")
     }
@@ -48,8 +58,10 @@ serve(async (req) => {
 
     // Authenticate with Google API endpoints to generate a bearer token
     const auth = new GoogleAuth({
-      email: clientEmail,
-      key: privateKey,
+      credentials: {
+        client_email: clientEmail,
+        private_key: privateKey,
+      },
       scopes: ["https://www.googleapis.com/auth/firebase.messaging"],
     })
     const accessToken = await auth.getAccessToken()
