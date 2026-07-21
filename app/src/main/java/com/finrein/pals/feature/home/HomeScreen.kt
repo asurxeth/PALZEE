@@ -1659,45 +1659,27 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
                         }
                     }
 
-                    val bytes = try {
-                        val token = try {
-                            com.finrein.pals.PalApplication.supabase.auth.currentSessionOrNull()?.accessToken
-                        } catch (e: Exception) {
-                            null
+                    val bucketName = if (resolvedPath.contains("/pals_vlogs/", ignoreCase = true)) {
+                        "pals_vlogs"
+                    } else if (resolvedPath.contains("/pals/", ignoreCase = true)) {
+                        "pals"
+                    } else if (resolvedPath.contains("/avatars/", ignoreCase = true)) {
+                        "avatars"
+                    } else {
+                        "pals"
+                    }
+                    val isPrivateBucket = bucketName == "pals" || bucketName == "pals_vlogs"
+                    val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+                    val bytes = if (isPrivateBucket) {
+                        try {
+                            storage.downloadAuthenticated(fileName)
+                        } catch (eAuth: Exception) {
+                            storage.downloadPublic(fileName)
                         }
-
-                        var targetUrlStr = resolvedPath
-                        val isPrivateBucket = resolvedPath.contains("/pals/", ignoreCase = true) || resolvedPath.contains("/pals_vlogs/", ignoreCase = true)
-
-                        if (isPrivateBucket && !token.isNullOrEmpty()) {
-                            if (targetUrlStr.contains("/object/public/")) {
-                                targetUrlStr = targetUrlStr.replace("/object/public/", "/object/authenticated/")
-                            }
-                        }
-
-                        val connection = java.net.URL(targetUrlStr).openConnection() as java.net.HttpURLConnection
-                        connection.connectTimeout = 5000
-                        connection.readTimeout = 5000
-                        connection.requestMethod = "GET"
-                        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36")
-                        if (isPrivateBucket && !token.isNullOrEmpty()) {
-                            connection.setRequestProperty("Authorization", "Bearer $token")
-                        }
-
-                        if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
-                            val resBytes = connection.inputStream.use { it.readBytes() }
-                            connection.disconnect()
-                            resBytes
-                        } else {
-                            connection.disconnect()
-                            throw java.io.IOException("HTTP error ${connection.responseCode}")
-                        }
-                    } catch (httpEx: Exception) {
-                        val bucketName = if (resolvedPath.contains("pals_vlogs", ignoreCase = true)) "pals_vlogs" else "pals"
-                        val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+                    } else {
                         try {
                             storage.downloadPublic(fileName)
-                        } catch (e1: Exception) {
+                        } catch (pubEx: Exception) {
                             storage.downloadAuthenticated(fileName)
                         }
                     }
@@ -2304,13 +2286,32 @@ fun UriImage(
             val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 if (resolvedUri.startsWith("http")) {
                     try {
-                        val url = java.net.URL(resolvedUri)
-                        val connection = url.openConnection() as java.net.HttpURLConnection
-                        connection.doInput = true
-                        connection.connect()
-                        connection.inputStream.use { inputStream ->
-                            android.graphics.BitmapFactory.decodeStream(inputStream)
+                        val fileName = resolvedUri.substringAfterLast("/")
+                        val bucketName = if (resolvedUri.contains("/pals_vlogs/", ignoreCase = true)) {
+                            "pals_vlogs"
+                        } else if (resolvedUri.contains("/pals/", ignoreCase = true)) {
+                            "pals"
+                        } else if (resolvedUri.contains("/avatars/", ignoreCase = true)) {
+                            "avatars"
+                        } else {
+                            "pals"
                         }
+                        val isPrivateBucket = bucketName == "pals" || bucketName == "pals_vlogs"
+                        val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+                        val bytes = if (isPrivateBucket) {
+                            try {
+                                storage.downloadAuthenticated(fileName)
+                            } catch (eAuth: Exception) {
+                                storage.downloadPublic(fileName)
+                            }
+                        } else {
+                            try {
+                                storage.downloadPublic(fileName)
+                            } catch (pubEx: Exception) {
+                                storage.downloadAuthenticated(fileName)
+                            }
+                        }
+                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     } catch (e: Exception) {
                         e.printStackTrace()
                         null
