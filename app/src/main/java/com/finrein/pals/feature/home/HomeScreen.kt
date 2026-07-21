@@ -3064,11 +3064,19 @@ fun HomeScreen(
     }
 
     val activity = context as? android.app.Activity
-    LaunchedEffect(activity?.intent) {
+    LaunchedEffect(activity?.intent, createdPals) {
         val targetTab = activity?.intent?.getStringExtra("TARGET_TAB")
         if (targetTab != null) {
             selectedTab = targetTab
             activity.intent.removeExtra("TARGET_TAB")
+        }
+        val targetPalCode = activity?.intent?.getStringExtra("TARGET_PAL_CODE")
+        if (targetPalCode != null) {
+            val matchingRealPal = createdPals.firstOrNull { it.code == targetPalCode }
+            if (matchingRealPal != null) {
+                activeVlogPal = matchingRealPal
+            }
+            activity.intent.removeExtra("TARGET_PAL_CODE")
         }
     }
 
@@ -3340,6 +3348,7 @@ fun HomeScreen(
 
     // Vlog and Group screen states
     var activeVlogPal by remember(currentUserId) { mutableStateOf<PalItem?>(null) }
+    var activePalCodeForCamera by remember(currentUserId) { mutableStateOf<String?>(null) }
     val isStateRestoredRef = remember(currentUserId) { mutableStateOf(false) }
     val saveGroupMutex = remember { Mutex() }
     var showingCapturedPreview by remember(currentUserId) { mutableStateOf(false) }
@@ -4372,6 +4381,18 @@ fun HomeScreen(
                                                                     .edit().putString("cached_all_pals_members", jsonMembers).apply()
                                                             } catch (e: Exception) {}
                                                         }
+                                                        
+                                                        // Clean up left member's submissions instantly from allPalsSubmissions
+                                                        val currentSubs = allPalsSubmissions[eventPalCode]
+                                                        if (currentSubs != null) {
+                                                            val updatedSubs = currentSubs.filterNot { it.userId == eventUserId }
+                                                            allPalsSubmissions[eventPalCode] = updatedSubs
+                                                            try {
+                                                                val jsonSubs = kotlinx.serialization.json.Json.encodeToString(allPalsSubmissions.toMap())
+                                                                getVlogPrefs(context)
+                                                                    .edit().putString("cached_all_pals_submissions", jsonSubs).apply()
+                                                            } catch (e: Exception) {}
+                                                        }
                                                     }
                                                 }
                                                 refreshPals()
@@ -5069,7 +5090,13 @@ fun HomeScreen(
                         isEditingLoading = isEditingPalLoading,
                         onStartSaveEdit = { isEditingPalLoading = true },
                         editDots = editPalDots,
-                        messages = palMessages[activeVlogPal!!.code] ?: emptyList(),
+                        messages = run {
+                            val currentPalCode = activeVlogPal!!.code
+                            val rawMsgs = palMessages[currentPalCode] ?: emptyList()
+                            val currentMembers = allPalsMembers[currentPalCode] ?: emptyList()
+                            val memberIds = currentMembers.map { it.split("|||").firstOrNull() ?: "" }.toSet() + currentUserId
+                            rawMsgs.filter { it.userId in memberIds }
+                        },
                         onSendMessage = { msg ->
                             val code = activeVlogPal!!.code
                             viewModel.sendMessage(code, currentUserId, msg)
@@ -5135,6 +5162,7 @@ fun HomeScreen(
                         vlogExoPlayer = vlogExoPlayer,
                         onNavigateToCamera = {
                             selectedTab = "camera"
+                            activePalCodeForCamera = activeVlogPal?.code
                             activeVlogPal = null
                             showVlogChatScreen = false
                         },
@@ -5435,6 +5463,7 @@ fun HomeScreen(
                             .background(if (selectedTab == "camera") selectedOptionBgColor else Color.Transparent)
                             .clickable {
                                 selectedTab = "camera"
+                                activePalCodeForCamera = null
                             }
                             .padding(horizontal = 11.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
@@ -5582,8 +5611,8 @@ fun HomeScreen(
                                         putExtra("VLOG_PATH", finalPath)
                                         putExtra("VLOG_DURATION", duration)
                                         putExtra("VLOG_ZOOM_FACTOR", zoomFactor)
-                                        putExtra("ACTIVE_PAL_CODE", activeVlogPal?.code)
-                                        putExtra("ACTIVE_PAL_NAME", activeVlogPal?.name)
+                                        putExtra("ACTIVE_PAL_CODE", activePalCodeForCamera)
+                                        putExtra("ACTIVE_PAL_NAME", createdPals.firstOrNull { it.code == activePalCodeForCamera }?.name ?: "Pals Group")
                                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     context.startActivity(intent)
@@ -12274,72 +12303,37 @@ fun VlogScreenContent(
                     val reversedMuted = vlogMutedList.reversed().map { it.toBoolean() }
                     mutedToProcess.addAll(reversedMuted)
                 } else {
-                    // Group export: loop through all hours in dayHoursList, then all slots
-                    val totalSlots = maxOf(groupMembers.size, pal.size.toIntOrNull() ?: 4)
+                    // Group export: loop through all hours in dayHoursList, then actual submissions of members in those hours
                     for (activeHour in dayHoursList) {
-                        for (index in 0 until totalSlots) {
-                            val memberInfo = groupMembers.getOrNull(index)
-                            val memberParts = memberInfo?.split("|||")
-                            val (memberId, memberNameClean, _) = if (memberParts != null && memberParts.size >= 2) {
-                                Triple(memberParts[0], memberParts[1], memberParts.getOrNull(2))
-                            } else {
-                                Triple(null, memberInfo, null)
-                            }
-                            val memberName = if (memberNameClean != null) {
-                                if (memberNameClean.contains("(You)")) userFirstName else memberNameClean
-                            } else {
-                                null
-                            }
-                            val isUser = memberId != null && memberId == currentUserId || 
-                                         (memberNameClean != null && (memberNameClean.contains("(You)") || memberNameClean == userFirstName))
-                            
-                            val memberSubs = if (isUser) {
-                                daySubmissions.filter { it.userId == currentUserId && it.getHourBucket() == activeHour }
-                            } else if (memberId != null && memberId != "legacy_id") {
-                                daySubmissions.filter { it.userId == memberId && it.getHourBucket() == activeHour }
-                            } else if (memberName != null) {
-                                daySubmissions.filter { 
-                                    val cleanSubName = parseUserDisplayName(it.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
-                                    cleanSubName == memberName && it.getHourBucket() == activeHour
-                                }
-                            } else {
-                                emptyList()
-                            }
-
-                            val sortedMemberSubs = memberSubs.mapNotNull { sub ->
-                                val parts = sub.imageUrl.split("|||")
-                                val path = parts.getOrNull(0) ?: ""
-                                if (path.isEmpty()) null else {
-                                    var hour = 12
+                        val hourSubs = daySubmissions.filter { it.getHourBucket() == activeHour }
+                        val currentMembers = groupMembers.map { it.split("|||").firstOrNull() ?: "" }.toSet()
+                        
+                        val activeHourSubs = hourSubs.filter { it.userId in currentMembers }
+                            .groupBy { it.userId }
+                            .mapValues { entry ->
+                                entry.value.maxByOrNull { sub ->
                                     if (!sub.createdAt.isNullOrEmpty()) {
-                                        try {
-                                            val instant = java.time.Instant.parse(sub.createdAt)
-                                            val localDateTime = instant.atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
-                                            val rawHour = localDateTime.hour
-                                            hour = (rawHour - 4 + 24) % 24
-                                        } catch (e: Exception) {}
-                                    }
-                                    val timestamp = if (!sub.createdAt.isNullOrEmpty()) {
                                         try { java.time.Instant.parse(sub.createdAt).toEpochMilli() } catch (e: Exception) { 0L }
                                     } else 0L
-                                    Triple(sub, hour, timestamp)
-                                }
+                                }!!
                             }
-                            .groupBy { it.second }
-                            .map { entry -> entry.value.maxByOrNull { it.third }!! }
-                            .sortedBy { it.third }
-                            .map { it.first }
-
-                            val firstSub = sortedMemberSubs.firstOrNull()
-                            val videoPath = firstSub?.imageUrl?.split("|||")?.firstOrNull() ?: ""
+                            .values
+                            .sortedBy { sub ->
+                                if (!sub.createdAt.isNullOrEmpty()) {
+                                    try { java.time.Instant.parse(sub.createdAt).toEpochMilli() } catch (e: Exception) { 0L }
+                                } else 0L
+                            }
                             
-                            val displayTimeText = String.format(java.util.Locale.US, "%02d:00", activeHour)
-                            
+                        for (sub in activeHourSubs) {
+                            val parts = sub.imageUrl.split("|||")
+                            val videoPath = parts.getOrNull(0) ?: ""
                             if (videoPath.isNotEmpty()) {
                                 pathsToProcess.add(videoPath)
-                                val captureTime = if (!firstSub!!.createdAt.isNullOrEmpty()) {
+                                
+                                val displayTimeText = String.format(java.util.Locale.US, "%02d:00", activeHour)
+                                val captureTime = if (!sub.createdAt.isNullOrEmpty()) {
                                     try {
-                                        val instant = java.time.Instant.parse(firstSub!!.createdAt)
+                                        val instant = java.time.Instant.parse(sub.createdAt)
                                         val zonedDateTime = instant.atZone(java.time.ZoneId.systemDefault())
                                         val hr = zonedDateTime.hour
                                         String.format(java.util.Locale.US, "%02d:00", hr)
@@ -12350,17 +12344,18 @@ fun VlogScreenContent(
                                     displayTimeText
                                 }
                                 timesToProcess.add(captureTime)
-                                captionsToProcess.add(firstSub!!.imageUrl.split("|||").getOrNull(1) ?: "")
-                                vlogsToProcess.add(memberName ?: "pal")
-                                val isMutedStr = firstSub!!.imageUrl.split("|||").getOrNull(5) ?: "false"
+                                captionsToProcess.add(parts.getOrNull(1) ?: "")
+                                
+                                val memberInfo = groupMembers.firstOrNull { it.startsWith(sub.userId) }
+                                val mNameClean = memberInfo?.split("|||")?.getOrNull(1)
+                                val memberName = if (mNameClean != null) {
+                                    if (mNameClean.contains("(You)")) userFirstName else mNameClean
+                                } else {
+                                    parseUserDisplayName(sub.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                }
+                                vlogsToProcess.add(memberName)
+                                val isMutedStr = parts.getOrNull(5) ?: "false"
                                 mutedToProcess.add(isMutedStr.toBoolean())
-                            } else {
-                                // Empty / missed box
-                                pathsToProcess.add("EMPTY_BOX")
-                                timesToProcess.add(displayTimeText)
-                                captionsToProcess.add(exportMissedText)
-                                vlogsToProcess.add("EMPTY_BOX_MISSED")
-                                mutedToProcess.add(true)
                             }
                         }
                     }
@@ -12625,7 +12620,30 @@ fun VlogScreenContent(
                                         .fillMaxSize()
                                         .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
                                 ) {
-                                    val totalSlots = maxOf(groupMembers.size, pal.size.toIntOrNull() ?: 4)
+                                    val activeHourMembers = remember(groupMembers, daySubmissions, activeExportHour) {
+                                        groupMembers.filter { member ->
+                                            val parts = member.split("|||")
+                                            val memberId = parts.getOrNull(0)
+                                            val memberNameClean = parts.getOrNull(1)
+                                            val isUser = memberId == currentUserId || memberNameClean == userFirstName || memberNameClean == "$userFirstName (You)"
+                                            
+                                            val memberSubs = if (isUser) {
+                                                daySubmissions.filter { it.userId == currentUserId && it.getHourBucket() == activeExportHour }
+                                            } else if (memberId != null && memberId != "legacy_id") {
+                                                daySubmissions.filter { it.userId == memberId && it.getHourBucket() == activeExportHour }
+                                            } else if (memberNameClean != null) {
+                                                val memberName = if (memberNameClean.contains("(You)")) userFirstName else memberNameClean
+                                                daySubmissions.filter { 
+                                                    val cleanSubName = parseUserDisplayName(it.userDisplayName).first.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
+                                                    cleanSubName == memberName && it.getHourBucket() == activeExportHour
+                                                }
+                                            } else {
+                                                emptyList()
+                                            }
+                                            memberSubs.isNotEmpty()
+                                        }
+                                    }
+                                    val totalSlots = activeHourMembers.size
                                     val isGrid = totalSlots > 5
                                     val columns = if (isGrid) 2 else 1
                                     val contentSpacingDp = 0.dp
@@ -12640,7 +12658,7 @@ fun VlogScreenContent(
                                     } else {
                                         val cardWidthDp = cameraWidth
                                         val maxCardHeight = cardWidthDp * (9f / 16f)
-                                        (availableHeight / totalSlots).coerceAtMost(maxCardHeight)
+                                        (availableHeight / totalSlots.coerceAtLeast(1)).coerceAtMost(maxCardHeight)
                                     }
 
                                     Column(
@@ -12666,7 +12684,7 @@ fun VlogScreenContent(
                                                     ) {
                                                         GroupExportMemberSlot(
                                                             index = index,
-                                                            groupMembers = groupMembers,
+                                                            groupMembers = activeHourMembers,
                                                             userFirstName = userFirstName,
                                                             daySubmissions = daySubmissions,
                                                             currentUserId = currentUserId,
