@@ -5,7 +5,13 @@ serve(async (req) => {
   try {
     const projectId = Deno.env.get("FIREBASE_PROJECT_ID")!
     const clientEmail = Deno.env.get("FIREBASE_CLIENT_EMAIL")!
-    const privateKey = Deno.env.get("FIREBASE_PRIVATE_KEY")!
+    let privateKey = Deno.env.get("FIREBASE_PRIVATE_KEY")!
+    if (privateKey.includes("\\n")) {
+      privateKey = privateKey.replace(/\\n/g, "\n")
+    }
+    if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+      privateKey = privateKey.slice(1, -1)
+    }
 
     // Compute the current system clock time in IST (GMT+5:30)
     const utcDate = new Date()
