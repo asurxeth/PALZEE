@@ -264,4 +264,9 @@ configurations.all {
     }
 }
 
+// Satisfy IDE test runner compilation queries
+tasks.register("unitTestClasses") {
+    dependsOn("compileDebugUnitTestSources")
+}
+
 

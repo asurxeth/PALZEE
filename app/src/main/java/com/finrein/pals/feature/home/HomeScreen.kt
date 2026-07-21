@@ -3039,10 +3039,8 @@ fun HomeScreen(
                 6
             } else if (sessionManager.hasLoggedInBefore()) {
                 4
-            } else if (sessionManager.isFirstLogin()) {
-                1
             } else {
-                -1
+                1
             }
         )
     }
@@ -3239,7 +3237,7 @@ fun HomeScreen(
         if (onboardingFlowStep == 3) {
             kotlinx.coroutines.delay(2000)
             onboardingFlowStep = 4
-        } else if ((onboardingFlowStep == -1 || onboardingFlowStep == 4) && currentUserId.isNotEmpty()) {
+        } else if ((onboardingFlowStep == 1 || onboardingFlowStep == 4) && currentUserId.isNotEmpty()) {
             try {
                 val savedDeleted = getVlogPrefs(context).getString(deletedVlogsKey, "") ?: ""
                 if (savedDeleted.isNotEmpty()) {
@@ -3325,19 +3323,12 @@ fun HomeScreen(
                     
                     sessionManager.setHasLoggedInBefore(true)
                     sessionManager.setFirstLogin(false)
-                    if (onboardingFlowStep == -1) {
+                    if (onboardingFlowStep == 1) {
                         onboardingFlowStep = 4
-                    }
-                } else {
-                    if (onboardingFlowStep == -1) {
-                        onboardingFlowStep = 1
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                if (onboardingFlowStep == -1) {
-                    onboardingFlowStep = 1
-                }
             }
         }
     }
