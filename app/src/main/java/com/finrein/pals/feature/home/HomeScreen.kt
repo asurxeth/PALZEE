@@ -3064,19 +3064,11 @@ fun HomeScreen(
     }
 
     val activity = context as? android.app.Activity
-    LaunchedEffect(activity?.intent, createdPals) {
+    LaunchedEffect(activity?.intent) {
         val targetTab = activity?.intent?.getStringExtra("TARGET_TAB")
         if (targetTab != null) {
             selectedTab = targetTab
             activity.intent.removeExtra("TARGET_TAB")
-        }
-        val targetPalCode = activity?.intent?.getStringExtra("TARGET_PAL_CODE")
-        if (targetPalCode != null) {
-            val matchingRealPal = createdPals.firstOrNull { it.code == targetPalCode }
-            if (matchingRealPal != null) {
-                activeVlogPal = matchingRealPal
-            }
-            activity.intent.removeExtra("TARGET_PAL_CODE")
         }
     }
 
@@ -3584,6 +3576,17 @@ fun HomeScreen(
     LaunchedEffect(createdPals.size) {
         val serialized = createdPals.joinToString(";;;") { "${it.name.replace(":", "\\:")}:${it.size}:${it.code}:${it.isVlog}:${it.isCreator}" }
         getVlogPrefs(context).edit().putString("created_pals", serialized).apply()
+    }
+
+    LaunchedEffect(activity?.intent, createdPals) {
+        val targetPalCode = activity?.intent?.getStringExtra("TARGET_PAL_CODE")
+        if (targetPalCode != null) {
+            val matchingRealPal = createdPals.firstOrNull { it.code == targetPalCode }
+            if (matchingRealPal != null) {
+                activeVlogPal = matchingRealPal
+            }
+            activity.intent.removeExtra("TARGET_PAL_CODE")
+        }
     }
 
     LaunchedEffect(createdPals.size, currentDisplayName, capturedVlogsPaths.size) {
