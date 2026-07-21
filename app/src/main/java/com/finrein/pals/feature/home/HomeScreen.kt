@@ -543,16 +543,59 @@ fun handleUpdateVlogCaption(
     coroutineScope: kotlinx.coroutines.CoroutineScope,
     context: android.content.Context
 ) {
-    val globalIndex = capturedVlogsPaths.indexOf(targetPath)
-    if (globalIndex != -1) {
-        val targetDuration = capturedVlogsDurations.getOrNull(globalIndex) ?: "2000"
-        val palCode = activeVlogPal?.code ?: "vlog"
-        
-        val updatedCaptions = ArrayList(capturedVlogsCaptions)
-        updatedCaptions[globalIndex] = newCaption
-        onUpdateCaptionsState(updatedCaptions)
-        getVlogPrefs(context).edit().putString("vlog_captions", updatedCaptions.joinToString(";;;")).apply()
+    val isVlog = activeVlogPal?.isVlog ?: true
+    val palCode = activeVlogPal?.code ?: "vlog"
     
+    if (isVlog) {
+        val globalIndex = capturedVlogsPaths.indexOf(targetPath)
+        if (globalIndex != -1) {
+            val targetDuration = capturedVlogsDurations.getOrNull(globalIndex) ?: "2000"
+            val updatedCaptions = ArrayList(capturedVlogsCaptions)
+            updatedCaptions[globalIndex] = newCaption
+            onUpdateCaptionsState(updatedCaptions)
+            getVlogPrefs(context).edit().putString("vlog_captions", updatedCaptions.joinToString(";;;")).apply()
+            
+            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val dbSubs = supabaseClient.postgrest.from("submissions").select {
+                        filter {
+                            eq("pal_code", palCode)
+                            eq("user_id", currentUserId)
+                        }
+                    }.decodeList<SubmissionDbItem>()
+                    val targetSub = dbSubs.firstOrNull { 
+                        val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
+                        pathPart == targetPath || it.imageUrl == targetPath
+                    }
+                    val targetSubId = targetSub?.id
+                    if (targetSub != null && targetSubId != null) {
+                        val parts = targetSub.imageUrl.split("|||")
+                        val targetDurationVal = parts.getOrNull(2) ?: targetDuration
+                        val zoom = parts.getOrNull(3) ?: "1.0"
+                        val rot = parts.getOrNull(4) ?: "0"
+                        val isMuted = parts.getOrNull(5) ?: "false"
+                        val updatedDelimited = "$targetPath|||$newCaption|||$targetDurationVal|||$zoom|||$rot|||$isMuted"
+                        supabaseClient.postgrest.from("submissions").update(
+                            value = SubmissionDbItem(
+                                id = targetSubId,
+                                palCode = targetSub.palCode,
+                                userId = targetSub.userId,
+                                userDisplayName = targetSub.userDisplayName,
+                                imageUrl = updatedDelimited,
+                                createdAt = targetSub.createdAt
+                            )
+                        ) {
+                            filter {
+                                eq("id", targetSubId)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    } else {
         coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val dbSubs = supabaseClient.postgrest.from("submissions").select {
@@ -567,7 +610,12 @@ fun handleUpdateVlogCaption(
                 }
                 val targetSubId = targetSub?.id
                 if (targetSub != null && targetSubId != null) {
-                    val updatedDelimited = "$targetPath|||$newCaption|||$targetDuration"
+                    val parts = targetSub.imageUrl.split("|||")
+                    val duration = parts.getOrNull(2) ?: "2000"
+                    val zoom = parts.getOrNull(3) ?: "1.0"
+                    val rot = parts.getOrNull(4) ?: "0"
+                    val isMuted = parts.getOrNull(5) ?: "false"
+                    val updatedDelimited = "$targetPath|||$newCaption|||$duration|||$zoom|||$rot|||$isMuted"
                     supabaseClient.postgrest.from("submissions").update(
                         value = SubmissionDbItem(
                             id = targetSubId,
@@ -1593,7 +1641,9 @@ suspend fun ensureVideoCached(context: android.content.Context, videoPath: Strin
             }
 
             val fileName = resolvedPath.substringAfterLast("/")
-            val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
+            val savedPalsDir = java.io.File(context.filesDir, "saved_pals")
+            savedPalsDir.mkdirs()
+            val cacheFile = java.io.File(savedPalsDir, "cached_pal_$fileName")
             if (cacheFile.exists() && cacheFile.length() > 0) {
                 return@withLock cacheFile.absolutePath
             }
@@ -2005,6 +2055,13 @@ fun deleteCachedVideo(context: android.content.Context, path: String) {
         val rawFile = java.io.File(cleanPath)
         if (rawFile.exists()) {
             rawFile.delete()
+        }
+
+        // Delete from saved_pals directory too
+        val fileName = path.substringAfterLast("/")
+        val savedFile = java.io.File(java.io.File(context.filesDir, "saved_pals"), "cached_pal_$fileName")
+        if (savedFile.exists()) {
+            savedFile.delete()
         }
         
         palPrefs.edit().remove("local_path_$path").apply()
@@ -2763,6 +2820,11 @@ fun getCachedVideoPathSync(context: android.content.Context, videoPath: String):
         resolvedPath = resolvedPath.replace("/AVATARS/", "/avatars/", ignoreCase = true)
     }
     val fileName = resolvedPath.substringAfterLast("/")
+    val savedPalsDir = java.io.File(context.filesDir, "saved_pals")
+    val savedFile = java.io.File(savedPalsDir, "cached_pal_$fileName")
+    if (savedFile.exists() && savedFile.length() > 0) {
+        return savedFile.absolutePath
+    }
     val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
     if (cacheFile.exists() && cacheFile.length() > 0) {
         return cacheFile.absolutePath
@@ -9510,42 +9572,63 @@ fun GroupMemberCard(
                             color = Color.White,
                             modifier = Modifier.clickable { showDropdownMenu = true }
                         )
-                            val subIndex = filteredSubmissions.indexOf(activeSub)
-                            androidx.compose.material3.DropdownMenu(
-                                expanded = showDropdownMenu,
-                                onDismissRequest = { showDropdownMenu = false }
+                        if (showDropdownMenu) {
+                            androidx.compose.ui.window.Popup(
+                                onDismissRequest = { showDropdownMenu = false },
+                                properties = androidx.compose.ui.window.PopupProperties(focusable = true)
                             ) {
-                                androidx.compose.material3.DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = "edit caption",
-                                            fontFamily = FontFamily.SansSerif,
-                                            fontSize = 15.sp
-                                        )
-                                    },
-                                    onClick = {
-                                        showDropdownMenu = false
-                                        if (subIndex != -1) {
-                                            onEditCaptionClick(subIndex)
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = (-165).dp, y = (-75).dp)
+                                        .width(180.dp)
+                                        .background(if (isDark) Color(0xFF1E1D22) else Color(0xFFF5F3EB), RoundedCornerShape(4.dp))
+                                        .padding(vertical = 8.dp)
+                                        .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        val subIndex = filteredSubmissions.indexOf(activeSub)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    showDropdownMenu = false
+                                                    if (subIndex != -1) {
+                                                        onEditCaptionClick(subIndex)
+                                                    }
+                                                }
+                                                .padding(horizontal = 16.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "edit caption",
+                                                fontFamily = FontFamily.SansSerif,
+                                                fontSize = 15.sp,
+                                                color = if (isDark) Color.White else Color.Black
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    showDropdownMenu = false
+                                                    if (subIndex != -1) {
+                                                        onDeleteClick(subIndex)
+                                                    }
+                                                }
+                                                .padding(horizontal = 16.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "delete",
+                                                fontFamily = FontFamily.SansSerif,
+                                                fontSize = 15.sp,
+                                                color = if (isDark) Color.White else Color.Black
+                                            )
                                         }
                                     }
-                                )
-                                androidx.compose.material3.DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = "delete pal",
-                                            fontFamily = FontFamily.SansSerif,
-                                            fontSize = 15.sp
-                                        )
-                                    },
-                                    onClick = {
-                                        showDropdownMenu = false
-                                        if (subIndex != -1) {
-                                            onDeleteClick(subIndex)
-                                        }
-                                    }
-                                )
+                                }
                             }
+                        }
                     }
                 }
             }
