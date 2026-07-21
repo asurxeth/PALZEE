@@ -89,7 +89,7 @@ class ActivePalRepositoryImpl @Inject constructor(
                             // Recreate group if deleted or missing using insert (no pre-check select)
                             try {
                                 supabaseClient.postgrest.from("pals")
-                                    .insert(PalDbItem(code = cleanCode, name = "Pals Group"))
+                                    .upsert(PalDbItem(code = cleanCode, name = "Pals Group"), onConflict = "pal_code")
                             } catch (e: Exception) {
                                 // Ignore conflict to preserve original group name
                             }
