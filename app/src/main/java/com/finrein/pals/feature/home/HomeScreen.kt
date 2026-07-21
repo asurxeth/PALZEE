@@ -4422,16 +4422,17 @@ fun HomeScreen(
                         try {
                             viewModel.globalSyncMutex.withLock {
                                 when (action) {
-                                    is PostgresAction.Insert, is PostgresAction.Delete -> {
+                                    is PostgresAction.Insert, is PostgresAction.Update, is PostgresAction.Delete -> {
                                         val record = when (action) {
                                             is PostgresAction.Insert -> action.record
+                                            is PostgresAction.Update -> action.record
                                             is PostgresAction.Delete -> action.oldRecord
                                             else -> null
                                         }
                                         val eventPalCode = record?.get("pal_code")?.jsonPrimitive?.content
                                         
                                         if (eventPalCode != null && eventPalCode != "vlog") {
-                                            if (action is PostgresAction.Insert) {
+                                            if (action is PostgresAction.Insert || action is PostgresAction.Update) {
                                                 val id = record.get("id")?.jsonPrimitive?.content
                                                 val userId = record.get("user_id")?.jsonPrimitive?.content ?: ""
                                                 val userDisplayName = record.get("user_display_name")?.jsonPrimitive?.content ?: ""
@@ -4456,14 +4457,13 @@ fun HomeScreen(
                                                 )
                                                 withContext(kotlinx.coroutines.Dispatchers.Main) {
                                                     val currentSubs = allPalsSubmissions[eventPalCode] ?: emptyList()
-                                                    if (!currentSubs.any { it.id == newSub.id || (it.imageUrl == newSub.imageUrl && newSub.imageUrl.isNotEmpty()) }) {
-                                                        allPalsSubmissions[eventPalCode] = currentSubs + newSub
-                                                        try {
-                                                            val jsonSubs = kotlinx.serialization.json.Json.encodeToString(allPalsSubmissions.toMap())
-                                                            getVlogPrefs(context)
-                                                                .edit().putString("cached_all_pals_submissions", jsonSubs).apply()
-                                                        } catch (e: Exception) {}
-                                                    }
+                                                    val updatedSubs = currentSubs.filterNot { it.id == newSub.id || (newSub.id != null && it.id == newSub.id) } + newSub
+                                                    allPalsSubmissions[eventPalCode] = updatedSubs
+                                                    try {
+                                                        val jsonSubs = kotlinx.serialization.json.Json.encodeToString(allPalsSubmissions.toMap())
+                                                        getVlogPrefs(context)
+                                                            .edit().putString("cached_all_pals_submissions", jsonSubs).apply()
+                                                    } catch (e: Exception) {}
                                                 }
                                             } else if (action is PostgresAction.Delete) {
                                                 val id = record.get("id")?.jsonPrimitive?.content
