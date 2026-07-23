@@ -15218,8 +15218,8 @@ fun SwipeableSoundMessageContainer(
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
-    val triggerThresholdPx = remember(isUser) { with(density) { 45.dp.toPx() } }
-    val maxDragPx = remember(isUser) { with(density) { 75.dp.toPx() } }
+    val triggerThresholdPx = remember(isUser) { with(density) { 35.dp.toPx() } }
+    val maxDragPx = remember(isUser) { with(density) { 60.dp.toPx() } }
     
     val offsetX = remember { androidx.compose.animation.core.Animatable(0f) }
     val scope = rememberCoroutineScope()
@@ -15227,12 +15227,8 @@ fun SwipeableSoundMessageContainer(
 
     var hasTriggeredHaptic by remember { mutableStateOf(false) }
 
-    val buttonBg = if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
-    val buttonIconTint = if (isDark) Color.White else Color.Black
-
     val currentOffset = offsetX.value
     val absOffset = kotlin.math.abs(currentOffset)
-    val progress = (absOffset / triggerThresholdPx).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
@@ -15244,7 +15240,7 @@ fun SwipeableSoundMessageContainer(
                     },
                     onDragEnd = {
                         scope.launch {
-                            if (absOffset >= triggerThresholdPx) {
+                            if (absOffset >= triggerThresholdPx && !hasTriggeredHaptic) {
                                 onReply()
                             }
                             offsetX.animateTo(
@@ -15272,6 +15268,7 @@ fun SwipeableSoundMessageContainer(
                         if (kotlin.math.abs(newOffset) >= triggerThresholdPx && !hasTriggeredHaptic) {
                             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                             hasTriggeredHaptic = true
+                            onReply()
                         }
 
                         scope.launch {
@@ -15281,36 +15278,6 @@ fun SwipeableSoundMessageContainer(
                 )
             }
     ) {
-        // Background Reply Icon Indicator (Instagram-style reveal on swipe side)
-        if (absOffset > 0f) {
-            Box(
-                modifier = Modifier
-                    .align(if (isUser) Alignment.CenterEnd else Alignment.CenterStart)
-                    .padding(horizontal = 12.dp)
-                    .graphicsLayer {
-                        alpha = progress
-                        scaleX = 0.5f + (progress * 0.6f)
-                        scaleY = 0.5f + (progress * 0.6f)
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(if (absOffset >= triggerThresholdPx) Color(0xFF007AFF) else buttonBg),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Reply,
-                        contentDescription = "Reply",
-                        tint = if (absOffset >= triggerThresholdPx) Color.White else buttonIconTint,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        }
-
         // Foreground Content
         Box(
             modifier = Modifier
