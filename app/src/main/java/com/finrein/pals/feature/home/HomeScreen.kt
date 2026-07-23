@@ -3862,6 +3862,21 @@ fun HomeScreen(
                             allPalsSubmissions[pal.code] = vlogSubmissions
                         }
                     } else {
+                        val matchedPalDb = try {
+                            com.finrein.pals.PalApplication.supabase.postgrest.from("pals")
+                                .select { filter { eq("pal_code", pal.code) } }
+                                .decodeSingleOrNull<PalDbItem>()
+                        } catch (e: Exception) {
+                            null
+                        }
+
+                        if (matchedPalDb != null && matchedPalDb.name.isNotBlank() && matchedPalDb.name != pal.name) {
+                            val updatedItem = pal.copy(name = matchedPalDb.name)
+                            withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                createdPals = createdPals.map { if (it.code == pal.code) updatedItem else it }
+                            }
+                        }
+
                         val dbSubs = com.finrein.pals.PalApplication.supabase.postgrest.from("submissions")
                             .select { filter { eq("pal_code", pal.code) } }
                             .decodeList<SubmissionDbItem>()

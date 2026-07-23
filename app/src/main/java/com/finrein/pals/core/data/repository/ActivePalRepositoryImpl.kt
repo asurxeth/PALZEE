@@ -86,12 +86,21 @@ class ActivePalRepositoryImpl @Inject constructor(
                     if (!syncMutex.isLocked) {
                         syncMutex.lock()
                         try {
-                            // Recreate group if deleted or missing using insert (no pre-check select)
-                            try {
+                            val existingPal = try {
                                 supabaseClient.postgrest.from("pals")
-                                    .upsert(PalDbItem(code = cleanCode, name = "Pals Group"), onConflict = "pal_code")
+                                    .select { filter { eq("pal_code", cleanCode) } }
+                                    .decodeSingleOrNull<PalDbItem>()
                             } catch (e: Exception) {
-                                // Ignore conflict to preserve original group name
+                                null
+                            }
+
+                            if (existingPal == null) {
+                                try {
+                                    supabaseClient.postgrest.from("pals")
+                                        .insert(PalDbItem(code = cleanCode, name = "Pals Group"))
+                                } catch (e: Exception) {
+                                    // Ignore conflict to preserve original group name
+                                }
                             }
                         } finally {
                             syncMutex.unlock()
