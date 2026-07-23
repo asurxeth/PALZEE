@@ -15185,109 +15185,94 @@ fun SwipeableSoundMessageContainer(
     content: @Composable () -> Unit
 ) {
     val density = LocalDensity.current
-    val maxOffsetPx = remember(isUser) { with(density) { (if (isUser) 100.dp else 50.dp).toPx() } }
-    var offsetX by remember { mutableStateOf(0f) }
+    val triggerThresholdPx = remember(isUser) { with(density) { 45.dp.toPx() } }
+    val maxDragPx = remember(isUser) { with(density) { 75.dp.toPx() } }
     
+    val offsetX = remember { androidx.compose.animation.core.Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+    var hasTriggeredHaptic by remember { mutableStateOf(false) }
+
     val buttonBg = if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
     val buttonIconTint = if (isDark) Color.White else Color.Black
-    
-    val isSwiped = offsetX != 0f
+
+    val currentOffset = offsetX.value
+    val absOffset = kotlin.math.abs(currentOffset)
+    val progress = (absOffset / triggerThresholdPx).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .pointerInput(isUser) {
                 detectHorizontalDragGestures(
+                    onDragStart = {
+                        hasTriggeredHaptic = false
+                    },
                     onDragEnd = {
-                        if (isUser) {
-                            offsetX = if (offsetX < -maxOffsetPx / 2) -maxOffsetPx else 0f
-                        } else {
-                            offsetX = if (offsetX > maxOffsetPx / 2) maxOffsetPx else 0f
+                        scope.launch {
+                            if (absOffset >= triggerThresholdPx) {
+                                onReply()
+                            }
+                            offsetX.animateTo(
+                                targetValue = 0f,
+                                animationSpec = androidx.compose.animation.core.spring(
+                                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                                )
+                            )
+                        }
+                    },
+                    onDragCancel = {
+                        scope.launch {
+                            offsetX.animateTo(0f)
                         }
                     },
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume()
-                        if (isUser) {
-                            offsetX = minOf(0f, maxOf(-maxOffsetPx, offsetX + dragAmount))
+                        val newOffset = if (isUser) {
+                            (offsetX.value + dragAmount).coerceIn(-maxDragPx, 0f)
                         } else {
-                            offsetX = maxOf(0f, minOf(maxOffsetPx, offsetX + dragAmount))
+                            (offsetX.value + dragAmount).coerceIn(0f, maxDragPx)
+                        }
+
+                        if (kotlin.math.abs(newOffset) >= triggerThresholdPx && !hasTriggeredHaptic) {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            hasTriggeredHaptic = true
+                        }
+
+                        scope.launch {
+                            offsetX.snapTo(newOffset)
                         }
                     }
                 )
             }
     ) {
-        // Background Options (Visible under shifted content)
-        Row(
-            modifier = Modifier
-                .align(if (isUser) Alignment.CenterEnd else Alignment.CenterStart)
-                .width(if (isUser) 100.dp else 50.dp)
-                .padding(horizontal = 8.dp)
-                .graphicsLayer {
-                    alpha = if (offsetX != 0f) 1f else 0f
-                },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (isUser) {
-                // For user: Delete button and Reply button on the right
-                // Delete Button
+        // Background Reply Icon Indicator (Instagram-style reveal on swipe side)
+        if (absOffset > 0f) {
+            Box(
+                modifier = Modifier
+                    .align(if (isUser) Alignment.CenterEnd else Alignment.CenterStart)
+                    .padding(horizontal = 12.dp)
+                    .graphicsLayer {
+                        alpha = progress
+                        scaleX = 0.5f + (progress * 0.6f)
+                        scaleY = 0.5f + (progress * 0.6f)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(buttonBg)
-                        .clickable(enabled = isSwiped) {
-                            onDelete()
-                            offsetX = 0f
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = buttonIconTint,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                // Reply Button
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(buttonBg)
-                        .clickable(enabled = isSwiped) {
-                            onReply()
-                            offsetX = 0f
-                        },
+                        .background(if (absOffset >= triggerThresholdPx) Color(0xFF007AFF) else buttonBg),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = "Reply",
-                        tint = buttonIconTint,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            } else {
-                // For member: Reply button only on the left (NO Delete button!)
-                // Reply Button
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(buttonBg)
-                        .clickable(enabled = isSwiped) {
-                            onReply()
-                            offsetX = 0f
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Reply,
-                        contentDescription = "Reply",
-                        tint = buttonIconTint,
-                        modifier = Modifier.size(18.dp)
+                        tint = if (absOffset >= triggerThresholdPx) Color.White else buttonIconTint,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -15296,7 +15281,7 @@ fun SwipeableSoundMessageContainer(
         // Foreground Content
         Box(
             modifier = Modifier
-                .offset { IntOffset(offsetX.toInt(), 0) }
+                .offset { androidx.compose.ui.unit.IntOffset(currentOffset.toInt(), 0) }
                 .fillMaxWidth(),
             contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
         ) {
