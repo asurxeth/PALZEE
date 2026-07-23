@@ -53,6 +53,8 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -2314,6 +2316,39 @@ fun UserSmileyAvatar(
             )
         }
     }
+}
+
+fun isPalSavedLocally(context: android.content.Context, videoPath: String): Boolean {
+    if (videoPath.isEmpty()) return false
+    val prefs = getVlogPrefs(context)
+    val savedSet = prefs.getStringSet("saved_pal_collection", emptySet()) ?: emptySet()
+    return savedSet.any { it.startsWith("$videoPath|||") }
+}
+
+fun savePalLocally(
+    context: android.content.Context,
+    palCode: String,
+    palName: String,
+    videoPath: String,
+    caption: String,
+    timeStr: String
+) {
+    if (videoPath.isEmpty()) return
+    val prefs = getVlogPrefs(context)
+    val savedSet = prefs.getStringSet("saved_pal_collection", emptySet())?.toMutableSet() ?: mutableSetOf()
+    val record = "$videoPath|||$palName|||$caption|||$timeStr|||${System.currentTimeMillis()}"
+    savedSet.add(record)
+    prefs.edit().putStringSet("saved_pal_collection", savedSet).apply()
+
+    ensureVideoCachedLocally(context, videoPath) {}
+}
+
+fun deleteSavedPalLocally(context: android.content.Context, videoPath: String) {
+    if (videoPath.isEmpty()) return
+    val prefs = getVlogPrefs(context)
+    val savedSet = prefs.getStringSet("saved_pal_collection", emptySet())?.toMutableSet() ?: mutableSetOf()
+    savedSet.removeAll { it.startsWith("$videoPath|||") }
+    prefs.edit().putStringSet("saved_pal_collection", savedSet).apply()
 }
 
 @Composable
@@ -9677,7 +9712,7 @@ fun GroupMemberCard(
                 val userAvatar = if (isUser) customAvatarUriString else memberAvatar
                 UserSmileyAvatar(
                     avatarUri = userAvatar,
-                    userId = memberId,
+                    userId = if (isUser) currentUserId else memberId,
                     index = index,
                     modifier = Modifier.size(avatarSize)
                 )
@@ -9689,6 +9724,57 @@ fun GroupMemberCard(
                     fontWeight = FontWeight.Normal,
                     color = Color.White
                 )
+            }
+
+            // Top Right Save Icon (Bookmark) for User & Member box
+            val topEndPadding = when {
+                groupSize <= 2 -> 16.dp
+                groupSize <= 4 -> 12.dp
+                groupSize <= 6 -> 10.dp
+                else -> 6.dp
+            }
+            val saveIconSize = when {
+                groupSize <= 2 -> 24.dp
+                groupSize <= 4 -> 20.dp
+                groupSize <= 6 -> 18.dp
+                groupSize <= 8 -> 14.dp
+                else -> 12.dp
+            }
+
+            var isPalSavedLocallyState by remember(videoPath) { mutableStateOf(isPalSavedLocally(context, videoPath)) }
+
+            if (!isEditingCaption) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = topPadding, end = topEndPadding)
+                        .clickable {
+                            if (!isPalSavedLocallyState) {
+                                savePalLocally(
+                                    context = context,
+                                    palCode = activeSub?.palCode ?: "",
+                                    palName = memberName ?: "Pal",
+                                    videoPath = videoPath,
+                                    caption = caption,
+                                    timeStr = activeSub?.createdAt ?: "${activeViewingHour}:00"
+                                )
+                                isPalSavedLocallyState = true
+                                android.widget.Toast.makeText(context, "Saved pal to your collection!", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                deleteSavedPalLocally(context, videoPath)
+                                isPalSavedLocallyState = false
+                                android.widget.Toast.makeText(context, "Removed pal from saved collection", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isPalSavedLocallyState) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = "Save Pal",
+                        tint = Color.White,
+                        modifier = Modifier.size(saveIconSize)
+                    )
+                }
             }
 
             // Overlays 2 & 3: Inline edit layout or Centered caption layout (with timestamp stripped out)
