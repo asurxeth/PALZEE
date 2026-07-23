@@ -2259,6 +2259,93 @@ val PalItemStateSaver = Saver<MutableState<PalItem?>, Any>(
 
 
 
+val SmileyAvatarColors = listOf(
+    Color(0xFFFFE600), // Vibrant Yellow
+    Color(0xFFFF6700), // Bright Orange
+    Color(0xFFFF073A), // Neon Red
+    Color(0xFFFF007F), // Hot Pink
+    Color(0xFFB000FF), // Deep Purple
+    Color(0xFF310BED), // Electric Violet
+    Color(0xFF00F0FF), // Bright Cyan
+    Color(0xFF00E676), // Spring Green
+    Color(0xFF76FF03), // Lime Green
+    Color(0xFFFFC400), // Amber Gold
+    Color(0xFFFF4081), // Rose Pink
+    Color(0xFF00B0FF)  // Deep Sky Blue
+)
+
+fun getSmileyColorForUser(userId: String?, index: Int = 0): Color {
+    val idx = if (!userId.isNullOrEmpty()) {
+        kotlin.math.abs(userId.hashCode()) % SmileyAvatarColors.size
+    } else {
+        index % SmileyAvatarColors.size
+    }
+    return SmileyAvatarColors[idx]
+}
+
+@Composable
+fun UserSmileyAvatar(
+    avatarUri: String?,
+    userId: String?,
+    index: Int = 0,
+    modifier: Modifier = Modifier.size(24.dp)
+) {
+    if (!avatarUri.isNullOrEmpty() && avatarUri != "PROFILE_AVATAR" && !avatarUri.startsWith("PROFILE_AVATAR")) {
+        UriImage(
+            uriString = avatarUri,
+            modifier = modifier
+                .clip(CircleShape)
+                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+        )
+    } else {
+        val bg = getSmileyColorForUser(userId, index)
+        Box(
+            modifier = modifier
+                .clip(CircleShape)
+                .background(bg),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.smile_medium),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .rotate(180f)
+            )
+        }
+    }
+}
+
+@Composable
+fun SeenBySmileyRow(
+    seenUsers: List<Pair<String, String?>>,
+    allGroupMembers: List<String> = emptyList(),
+    modifier: Modifier = Modifier
+) {
+    if (seenUsers.isEmpty()) return
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy((-4).dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        seenUsers.take(6).forEachIndexed { idx, (uId, avUri) ->
+            val memberIdx = if (allGroupMembers.isNotEmpty()) {
+                val found = allGroupMembers.indexOfFirst { it.startsWith("$uId|||") }
+                if (found != -1) found else idx
+            } else idx
+
+            UserSmileyAvatar(
+                avatarUri = avUri,
+                userId = uId,
+                index = memberIdx,
+                modifier = Modifier
+                    .size(16.dp)
+                    .border(1.dp, Color.Black.copy(alpha = 0.3f), CircleShape)
+            )
+        }
+    }
+}
+
 @Composable
 fun UriImage(
     uriString: String,
@@ -2284,6 +2371,15 @@ fun UriImage(
             }
 
             val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val cachedLocalPath = getCachedVideoPathSync(context, resolvedUri)
+                if (cachedLocalPath != null) {
+                    val file = java.io.File(cachedLocalPath)
+                    if (file.exists() && file.length() > 0) {
+                        val decoded = android.graphics.BitmapFactory.decodeFile(cachedLocalPath)
+                        if (decoded != null) return@withContext decoded
+                    }
+                }
+
                 if (resolvedUri.startsWith("http")) {
                     try {
                         val fileName = resolvedUri.substringAfterLast("/")
@@ -2311,6 +2407,20 @@ fun UriImage(
                                 storage.downloadAuthenticated(fileName)
                             }
                         }
+                        
+                        try {
+                            val savedPalsDir = java.io.File(context.filesDir, "saved_pals")
+                            savedPalsDir.mkdirs()
+                            val targetFile = java.io.File(savedPalsDir, "cached_pal_$fileName")
+                            targetFile.writeBytes(bytes)
+                            val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+                            val vlogPrefs = getVlogPrefs(context)
+                            palPrefs.edit().putString("local_path_$resolvedUri", targetFile.absolutePath).apply()
+                            vlogPrefs.edit().putString("local_path_$resolvedUri", targetFile.absolutePath).apply()
+                        } catch (eCache: Exception) {
+                            // Ignore disk write errors
+                        }
+
                         android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -2797,7 +2907,7 @@ fun getCachedVideoPathSync(context: android.content.Context, videoPath: String):
     if (!videoPath.startsWith("http")) {
         val cleanInputPath = if (videoPath.startsWith("file://")) videoPath.substring(7) else videoPath
         val file = java.io.File(cleanInputPath)
-        return if (file.exists()) cleanInputPath else null
+        return if (file.exists() && file.length() > 0) cleanInputPath else null
     }
     val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
     val vlogPrefs = getVlogPrefs(context)
@@ -2805,7 +2915,8 @@ fun getCachedVideoPathSync(context: android.content.Context, videoPath: String):
         ?: vlogPrefs.getString("local_path_$videoPath", null)
     if (cachedLocal != null) {
         val cleanLocalPath = if (cachedLocal.startsWith("file://")) cachedLocal.substring(7) else cachedLocal
-        if (java.io.File(cleanLocalPath).exists()) {
+        val localFile = java.io.File(cleanLocalPath)
+        if (localFile.exists() && localFile.length() > 0) {
             return cleanLocalPath
         }
     }
@@ -2826,11 +2937,104 @@ fun getCachedVideoPathSync(context: android.content.Context, videoPath: String):
     if (savedFile.exists() && savedFile.length() > 0) {
         return savedFile.absolutePath
     }
+    val vlogsDir = java.io.File(context.filesDir, "PALzee_vlogs")
+    val vlogFile = java.io.File(vlogsDir, fileName)
+    if (vlogFile.exists() && vlogFile.length() > 0) {
+        return vlogFile.absolutePath
+    }
     val cacheFile = java.io.File(context.cacheDir, "cached_pal_$fileName")
     if (cacheFile.exists() && cacheFile.length() > 0) {
         return cacheFile.absolutePath
     }
     return null
+}
+
+private val pendingVideoDownloads = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+fun ensureVideoCachedLocally(
+    context: android.content.Context,
+    videoPath: String,
+    onCached: ((String) -> Unit)? = null
+) {
+    if (videoPath.isBlank() || !videoPath.startsWith("http")) return
+    val existing = getCachedVideoPathSync(context, videoPath)
+    if (existing != null) {
+        onCached?.invoke(existing)
+        return
+    }
+
+    if (pendingVideoDownloads.putIfAbsent(videoPath, true) == true) {
+        return
+    }
+
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+        try {
+            var resolvedPath = videoPath
+            if (resolvedPath.contains("/PALS/", ignoreCase = true)) resolvedPath = resolvedPath.replace("/PALS/", "/pals/", ignoreCase = true)
+            if (resolvedPath.contains("/PALS_VLOGS/", ignoreCase = true)) resolvedPath = resolvedPath.replace("/PALS_VLOGS/", "/pals_vlogs/", ignoreCase = true)
+            if (resolvedPath.contains("/AVATARS/", ignoreCase = true)) resolvedPath = resolvedPath.replace("/AVATARS/", "/avatars/", ignoreCase = true)
+
+            val fileName = resolvedPath.substringAfterLast("/")
+            val savedPalsDir = java.io.File(context.filesDir, "saved_pals")
+            savedPalsDir.mkdirs()
+            val targetFile = java.io.File(savedPalsDir, "cached_pal_$fileName")
+            if (targetFile.exists() && targetFile.length() > 0) {
+                val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+                val vlogPrefs = getVlogPrefs(context)
+                palPrefs.edit().putString("local_path_$videoPath", targetFile.absolutePath).apply()
+                vlogPrefs.edit().putString("local_path_$videoPath", targetFile.absolutePath).apply()
+                pendingVideoDownloads.remove(videoPath)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onCached?.invoke(targetFile.absolutePath)
+                }
+                return@launch
+            }
+
+            val bucketName = if (resolvedPath.contains("/pals_vlogs/", ignoreCase = true)) {
+                "pals_vlogs"
+            } else if (resolvedPath.contains("/pals/", ignoreCase = true)) {
+                "pals"
+            } else if (resolvedPath.contains("/avatars/", ignoreCase = true)) {
+                "avatars"
+            } else {
+                "pals"
+            }
+            val isPrivateBucket = bucketName == "pals" || bucketName == "pals_vlogs"
+            val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
+            val bytes = if (isPrivateBucket) {
+                try {
+                    storage.downloadAuthenticated(fileName)
+                } catch (eAuth: Exception) {
+                    storage.downloadPublic(fileName)
+                }
+            } else {
+                try {
+                    storage.downloadPublic(fileName)
+                } catch (pubEx: Exception) {
+                    storage.downloadAuthenticated(fileName)
+                }
+            }
+
+            val tempFile = java.io.File(savedPalsDir, "temp_dn_$fileName")
+            tempFile.writeBytes(bytes)
+            if (!tempFile.renameTo(targetFile)) {
+                tempFile.copyTo(targetFile, overwrite = true)
+                tempFile.delete()
+            }
+            val palPrefs = context.getSharedPreferences("pal_prefs", android.content.Context.MODE_PRIVATE)
+            val vlogPrefs = getVlogPrefs(context)
+            palPrefs.edit().putString("local_path_$videoPath", targetFile.absolutePath).apply()
+            vlogPrefs.edit().putString("local_path_$videoPath", targetFile.absolutePath).apply()
+
+            pendingVideoDownloads.remove(videoPath)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                onCached?.invoke(targetFile.absolutePath)
+            }
+        } catch (e: Exception) {
+            pendingVideoDownloads.remove(videoPath)
+            e.printStackTrace()
+        }
+    }
 }
 
 fun mergeSubmissions(localList: List<SubmissionDbItem>?, remoteList: List<SubmissionDbItem>): List<SubmissionDbItem> {
@@ -9090,11 +9294,21 @@ fun UnifiedPalPlayerBox(
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    
-    // Exact instance management used by the perfectly working Member/User boxes
-    val player = remember(videoUri) {
-        val uriStr = videoUri.toString()
-        val cachedPath = getCachedVideoPathSync(context, uriStr)
+    val uriStr = videoUri.toString()
+    var resolvedPathState by remember(uriStr) {
+        mutableStateOf(getCachedVideoPathSync(context, uriStr))
+    }
+
+    LaunchedEffect(uriStr) {
+        if (resolvedPathState == null && uriStr.startsWith("http")) {
+            ensureVideoCachedLocally(context, uriStr) { localPath ->
+                resolvedPathState = localPath
+            }
+        }
+    }
+
+    val player = remember(uriStr, resolvedPathState) {
+        val cachedPath = resolvedPathState ?: getCachedVideoPathSync(context, uriStr)
         val targetUri = if (cachedPath != null) {
             android.net.Uri.fromFile(java.io.File(cachedPath))
         } else if (uriStr.startsWith("http")) {
@@ -9116,7 +9330,7 @@ fun UnifiedPalPlayerBox(
         }
     }
 
-    DisposableEffect(videoUri) {
+    DisposableEffect(uriStr, resolvedPathState) {
         onDispose {
             DualEnginePlayerFactory.releaseIntoPool(player)
         }
@@ -9130,7 +9344,7 @@ fun UnifiedPalPlayerBox(
     ) {
         VideoPlayerWithThumbnail(
             exoPlayer = player,
-            videoPath = videoUri.toString(),
+            videoPath = resolvedPathState ?: uriStr,
             modifier = Modifier.fillMaxSize(),
             resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
         )
@@ -9269,6 +9483,12 @@ fun GroupMemberCard(
     var activeSubIndex by remember(sortedMemberSubs) { mutableStateOf(0) }
     LaunchedEffect(sortedMemberSubs) {
         activeSubIndex = 0
+        sortedMemberSubs.forEach { sub ->
+            val path = sub.imageUrl.split("|||").firstOrNull() ?: ""
+            if (path.startsWith("http")) {
+                ensureVideoCachedLocally(context, path)
+            }
+        }
     }
     val hasSubmission = sortedMemberSubs.isNotEmpty()
     var showDropdownMenu by remember { mutableStateOf(false) }
@@ -9440,31 +9660,12 @@ fun GroupMemberCard(
                 horizontalArrangement = Arrangement.spacedBy(horizontalSpacing)
             ) {
                 val userAvatar = if (isUser) customAvatarUriString else memberAvatar
-                if (!userAvatar.isNullOrEmpty()) {
-                    UriImage(
-                        uriString = userAvatar,
-                        modifier = Modifier
-                            .size(avatarSize)
-                            .clip(CircleShape)
-                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(avatarSize)
-                            .clip(CircleShape)
-                            .background(accentColor),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.smile_medium),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .rotate(180f)
-                        )
-                    }
-                }
+                UserSmileyAvatar(
+                    avatarUri = userAvatar,
+                    userId = memberId,
+                    index = index,
+                    modifier = Modifier.size(avatarSize)
+                )
 
                 Text(
                     text = if (isUser) userFirstName else (memberName ?: ""),
@@ -9567,6 +9768,18 @@ fun GroupMemberCard(
                 }
             }
 
+            val cardSeenUsers = remember(groupMembers, isUser, memberId, currentUserId) {
+                val authorId = if (isUser) currentUserId else (memberId ?: "")
+                groupMembers.mapNotNull { m ->
+                    val parts = m.split("|||")
+                    val mId = parts.getOrNull(0) ?: ""
+                    val mAvatar = parts.getOrNull(2)
+                    if (mId.isNotEmpty() && mId != authorId) {
+                        Pair(mId, mAvatar)
+                    } else null
+                }
+            }
+
             // Overlay 4: Options menu trailing dots & reacted emoji for User box (Bottom Right)
             if (isUser && !isEditingCaption) {
                 Column(
@@ -9576,6 +9789,11 @@ fun GroupMemberCard(
                         .align(Alignment.BottomEnd)
                         .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
                 ) {
+                    SeenBySmileyRow(
+                        seenUsers = cardSeenUsers,
+                        allGroupMembers = groupMembers
+                    )
+
                     if (latestReaction != null) {
                         Box(
                             modifier = Modifier
@@ -9722,67 +9940,60 @@ fun GroupMemberCard(
                 }
             }
 
-            // Overlay 6: Replies slideshow shown at Bottom Left corner for ANY user/member box
-            if (memberReplies.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(bottom = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
-                    contentAlignment = Alignment.CenterStart
+            // Overlay 6: Replies slideshow shown at Bottom Left corner for ANY user/member box + Seen smileys for other members
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalAlignment = Alignment.Start
                 ) {
-                    androidx.compose.animation.AnimatedContent(
-                        targetState = currentReplyIndex,
-                        transitionSpec = {
-                            (androidx.compose.animation.slideInVertically { height -> height } + androidx.compose.animation.fadeIn()) togetherWith 
-                            (androidx.compose.animation.slideOutVertically { height -> -height } + androidx.compose.animation.fadeOut())
-                        },
-                        label = "ReplySlideshow"
-                    ) { idx ->
-                        val reply = memberReplies.getOrNull(idx)
-                        if (reply != null) {
-                            val (avatar, text, name) = reply
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                if (!avatar.isNullOrEmpty()) {
-                                    UriImage(
-                                        uriString = avatar,
-                                        modifier = Modifier
-                                            .size(if (isGrid) 16.dp else 20.dp)
-                                            .clip(CircleShape)
-                                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                    if (!isUser) {
+                        SeenBySmileyRow(
+                            seenUsers = cardSeenUsers,
+                            allGroupMembers = groupMembers
+                        )
+                    }
+
+                    if (memberReplies.isNotEmpty()) {
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = currentReplyIndex,
+                            transitionSpec = {
+                                (androidx.compose.animation.slideInVertically { height -> height } + androidx.compose.animation.fadeIn()) togetherWith 
+                                (androidx.compose.animation.slideOutVertically { height -> -height } + androidx.compose.animation.fadeOut())
+                            },
+                            label = "ReplySlideshow"
+                        ) { idx ->
+                            val reply = memberReplies.getOrNull(idx)
+                            if (reply != null) {
+                                val (avatar, text, name) = reply
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    UserSmileyAvatar(
+                                        avatarUri = avatar,
+                                        userId = name,
+                                        index = 0,
+                                        modifier = Modifier.size(if (isGrid) 16.dp else 20.dp)
                                     )
-                                } else {
+
                                     Box(
                                         modifier = Modifier
-                                            .size(if (isGrid) 16.dp else 20.dp)
-                                            .clip(CircleShape)
-                                            .background(accentColor),
-                                        contentAlignment = Alignment.Center
+                                            .background(Color.White, RoundedCornerShape(10.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
-                                        Image(
-                                            painter = painterResource(id = R.drawable.smile_medium),
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .rotate(180f)
+                                        Text(
+                                            text = text,
+                                            color = Color.Black,
+                                            fontSize = if (isGrid) 9.sp else 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.SansSerif
                                         )
                                     }
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .background(Color.White, RoundedCornerShape(10.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = text,
-                                        color = Color.Black,
-                                        fontSize = if (isGrid) 9.sp else 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.SansSerif
-                                    )
                                 }
                             }
                         }
@@ -11869,20 +12080,58 @@ fun VlogScreenContent(
                     )
                 }
 
-                // Chat bubble button
+                // Chat bubble button with popping message count badge
+                val totalGroupMessageCount = remember(pal.code, capturedVlogsPaths, allPalsSubmissions, messages) {
+                    val submissionsCount = if (pal.isVlog) {
+                        maxOf(capturedVlogsPaths.size, (allPalsSubmissions["vlog"] ?: emptyList()).size)
+                    } else {
+                        (allPalsSubmissions[pal.code] ?: emptyList()).filterNot { it.imageUrl.startsWith("PROFILE_AVATAR") }.size
+                    }
+                    val chatMessagesCount = messages.size
+                    submissionsCount + chatMessagesCount
+                }
+
                 Box(
                     modifier = Modifier
                         .size(32.5.dp)
-                        .clip(CircleShape)
-                        .background(headerButtonBg)
-                        .clickable { onShowChatChange(true) },
-                    contentAlignment = Alignment.Center
+                        .clickable { onShowChatChange(true) }
                 ) {
-                    ChatBubbleIcon(
-                        tint = headerIconTint,
-                        modifier = Modifier.size(18.dp),
-                        filled = isDark
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(headerButtonBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ChatBubbleIcon(
+                            tint = headerIconTint,
+                            modifier = Modifier.size(18.dp),
+                            filled = isDark
+                        )
+                    }
+
+                    if (totalGroupMessageCount > 0) {
+                        val badgeText = if (totalGroupMessageCount > 99) "99+" else totalGroupMessageCount.toString()
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = 4.dp, y = (-4).dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFFF3B30))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = badgeText,
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.SansSerif,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -15753,6 +16002,13 @@ fun PalChatOverlay(
         }
 
         var showEmojiOverlayForPath by remember { mutableStateOf<String?>(null) }
+        val scrollState = rememberScrollState()
+
+        LaunchedEffect(showChat, feedItems.size, vlogGroups.size, scrollState.maxValue) {
+            if (showChat && feedItems.isNotEmpty()) {
+                scrollState.scrollTo(scrollState.maxValue)
+            }
+        }
 
         Box(
             modifier = Modifier.fillMaxSize()
@@ -15777,7 +16033,7 @@ fun PalChatOverlay(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scrollState)
                         .padding(top = 56.dp, bottom = 80.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
@@ -15900,31 +16156,12 @@ fun PalChatOverlay(
                                                         fontFamily = FontFamily.SansSerif
                                                     )
                                                     val finalAvatar = if (avatarUrl?.startsWith("http") == true) avatarUrl else customAvatarUriString
-                                                    if (!finalAvatar.isNullOrEmpty()) {
-                                                        UriImage(
-                                                            uriString = finalAvatar,
-                                                            modifier = Modifier
-                                                                .size(24.dp)
-                                                                .clip(CircleShape)
-                                                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                                        )
-                                                    } else {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(24.dp)
-                                                                .clip(CircleShape)
-                                                                .background(accentColor),
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Image(
-                                                                painter = painterResource(id = R.drawable.smile_medium),
-                                                                contentDescription = null,
-                                                                modifier = Modifier
-                                                                    .fillMaxSize()
-                                                                    .rotate(180f)
-                                                            )
-                                                        }
-                                                    }
+                                                    UserSmileyAvatar(
+                                                        avatarUri = finalAvatar,
+                                                        userId = feedItem.userId,
+                                                        index = 0,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
                                                 }
 
                                                 if (feedItem.isSound) {
@@ -16179,31 +16416,12 @@ fun PalChatOverlay(
                                                     modifier = Modifier.padding(bottom = 4.dp)
                                                 ) {
                                                     val (displayName, avatarUrl) = parseUserDisplayName(feedItem.userDisplayName)
-                                                    if (!avatarUrl.isNullOrEmpty()) {
-                                                        UriImage(
-                                                            uriString = avatarUrl,
-                                                            modifier = Modifier
-                                                                .size(24.dp)
-                                                                .clip(CircleShape)
-                                                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                                        )
-                                                    } else {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(24.dp)
-                                                                .clip(CircleShape)
-                                                                .background(accentColor),
-                                                            contentAlignment = Alignment.Center
-                                                        ) {
-                                                            Image(
-                                                                painter = painterResource(id = R.drawable.smile_medium),
-                                                                contentDescription = null,
-                                                                modifier = Modifier
-                                                                    .fillMaxSize()
-                                                                    .rotate(180f)
-                                                            )
-                                                        }
-                                                    }
+                                                    UserSmileyAvatar(
+                                                        avatarUri = avatarUrl,
+                                                        userId = feedItem.userId,
+                                                        index = 0,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
                                                     val cleanName = displayName.trim().substringBefore(" ").substringBefore("_").substringBefore(".")
                                                     Text(
                                                         text = cleanName,
