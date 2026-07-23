@@ -12106,6 +12106,19 @@ fun VlogScreenContent(
                     submissionsCount + chatMessagesCount
                 }
 
+                var lastSeenMessageCount by remember(pal.code) {
+                    mutableStateOf(getVlogPrefs(context).getInt("last_seen_msg_count_${pal.code}", 0))
+                }
+
+                LaunchedEffect(showChat, totalGroupMessageCount) {
+                    if (showChat) {
+                        lastSeenMessageCount = totalGroupMessageCount
+                        getVlogPrefs(context).edit().putInt("last_seen_msg_count_${pal.code}", totalGroupMessageCount).apply()
+                    }
+                }
+
+                val unreadCount = (totalGroupMessageCount - lastSeenMessageCount).coerceAtLeast(0)
+
                 Box(
                     modifier = Modifier
                         .size(32.5.dp)
@@ -12125,21 +12138,26 @@ fun VlogScreenContent(
                         )
                     }
 
-                    if (totalGroupMessageCount > 0) {
-                        val badgeText = if (totalGroupMessageCount > 99) "99+" else totalGroupMessageCount.toString()
+                    if (unreadCount > 0) {
+                        val badgeText = if (unreadCount > 99) "99+" else unreadCount.toString()
+                        val badgeBorderColor = if (isDark) Color.White else Color.Black
+                        val badgeBgColor = if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA)
+                        val badgeTextColor = if (isDark) Color.White else Color.Black
+
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .offset(x = 4.dp, y = (-4).dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFFF3B30))
+                                .border(1.dp, badgeBorderColor, CircleShape)
+                                .background(badgeBgColor)
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                                 .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = badgeText,
-                                color = Color.White,
+                                color = badgeTextColor,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.SansSerif,
