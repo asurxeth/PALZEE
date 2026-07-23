@@ -80,7 +80,7 @@ class AuthRepositoryImpl @Inject constructor(
                 if (responseData != "[]" && responseData.isNotEmpty()) {
                     UserRouteState.RETURNING_USER // Destined for Screen 4 (Permissions)
                 } else {
-                    UserRouteState.NEW_USER       // Destined for Welcome to Pal Screen
+                    UserRouteState.NEW_USER       // Destined for Welcome to Plazee Screen
                 }
             }
         } catch (e: Exception) {
@@ -150,7 +150,7 @@ class AuthRepositoryImpl @Inject constructor(
                 if (responseData != "[]" && responseData.isNotEmpty()) {
                     UserRouteState.RETURNING_USER // Destined for Screen 4 (Permissions)
                 } else {
-                    UserRouteState.NEW_USER       // Destined for Welcome to Pal Screen
+                    UserRouteState.NEW_USER       // Destined for Welcome to Plazee Screen
                 }
             }
         } catch (e: Exception) {

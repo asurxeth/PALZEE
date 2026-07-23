@@ -9567,14 +9567,35 @@ fun GroupMemberCard(
                 }
             }
 
-            // Overlay 4: Options menu trailing dots (Only shown if user has submission)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isUser && !isEditingCaption) {
+            // Overlay 4: Options menu trailing dots & reacted emoji for User box (Bottom Right)
+            if (isUser && !isEditingCaption) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = if (isGrid) 8.dp else 12.dp, end = if (isGrid) 10.dp else 16.dp)
+                ) {
+                    if (latestReaction != null) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.4f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = latestReaction,
+                                fontSize = when {
+                                    groupSize <= 2 -> 24.sp
+                                    groupSize <= 4 -> 20.sp
+                                    groupSize <= 6 -> 16.sp
+                                    else -> 13.sp
+                                }
+                            )
+                        }
+                    }
+
                     Box {
                         Text(
                             text = "•••",
@@ -9634,9 +9655,8 @@ fun GroupMemberCard(
                 }
             }
 
-            // Overlay 5: Interaction row at the bottom
+            // Overlay 5: Interaction controls for other members (Reply arrow & Reacted emoji / Favorite at Bottom Right)
             if (!isUser) {
-                val groupSize = groupMembers.size
                 val iconSize = when {
                     groupSize <= 2 -> 28.dp
                     groupSize <= 4 -> 24.dp
@@ -9657,7 +9677,7 @@ fun GroupMemberCard(
                     else -> 5.dp
                 }
 
-                // 1. Reply Arrow Icon in the center right (vertically centered on the right boundary)
+                // 1. Reply Arrow Icon in the center right
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
@@ -9700,69 +9720,69 @@ fun GroupMemberCard(
                         )
                     }
                 }
+            }
 
-                // 3. Replies slideshow shown at Bottom Left corner
-                if (memberReplies.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(bottom = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        androidx.compose.animation.AnimatedContent(
-                            targetState = currentReplyIndex,
-                            transitionSpec = {
-                                (androidx.compose.animation.slideInVertically { height -> height } + androidx.compose.animation.fadeIn()) togetherWith 
-                                (androidx.compose.animation.slideOutVertically { height -> -height } + androidx.compose.animation.fadeOut())
-                            },
-                            label = "ReplySlideshow"
-                        ) { idx ->
-                            val reply = memberReplies.getOrNull(idx)
-                            if (reply != null) {
-                                val (avatar, text, name) = reply
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    if (!avatar.isNullOrEmpty()) {
-                                        UriImage(
-                                            uriString = avatar,
-                                            modifier = Modifier
-                                                .size(if (isGrid) 16.dp else 20.dp)
-                                                .clip(CircleShape)
-                                                .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(if (isGrid) 16.dp else 20.dp)
-                                                .clip(CircleShape)
-                                                .background(accentColor),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Image(
-                                                painter = painterResource(id = R.drawable.smile_medium),
-                                                contentDescription = null,
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .rotate(180f)
-                                            )
-                                        }
-                                    }
-
+            // Overlay 6: Replies slideshow shown at Bottom Left corner for ANY user/member box
+            if (memberReplies.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(bottom = if (isGrid) 8.dp else 12.dp, start = if (isGrid) 10.dp else 16.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    androidx.compose.animation.AnimatedContent(
+                        targetState = currentReplyIndex,
+                        transitionSpec = {
+                            (androidx.compose.animation.slideInVertically { height -> height } + androidx.compose.animation.fadeIn()) togetherWith 
+                            (androidx.compose.animation.slideOutVertically { height -> -height } + androidx.compose.animation.fadeOut())
+                        },
+                        label = "ReplySlideshow"
+                    ) { idx ->
+                        val reply = memberReplies.getOrNull(idx)
+                        if (reply != null) {
+                            val (avatar, text, name) = reply
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (!avatar.isNullOrEmpty()) {
+                                    UriImage(
+                                        uriString = avatar,
+                                        modifier = Modifier
+                                            .size(if (isGrid) 16.dp else 20.dp)
+                                            .clip(CircleShape)
+                                            .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                    )
+                                } else {
                                     Box(
                                         modifier = Modifier
-                                            .background(Color.White, RoundedCornerShape(10.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            .size(if (isGrid) 16.dp else 20.dp)
+                                            .clip(CircleShape)
+                                            .background(accentColor),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            text = text,
-                                            color = Color.Black,
-                                            fontSize = if (isGrid) 9.sp else 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            fontFamily = FontFamily.SansSerif
+                                        Image(
+                                            painter = painterResource(id = R.drawable.smile_medium),
+                                            contentDescription = null,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .rotate(180f)
                                         )
                                     }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .background(Color.White, RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = text,
+                                        color = Color.Black,
+                                        fontSize = if (isGrid) 9.sp else 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.SansSerif
+                                    )
                                 }
                             }
                         }
@@ -13280,7 +13300,7 @@ fun NameInputScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = "→ welcome to pal",
+            text = "→ welcome to plazee",
             fontFamily = FontFamily.Monospace,
             fontSize = 18.sp,
             color = textColor
@@ -13433,7 +13453,7 @@ fun NameConfirmScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = "→ welcome to pal",
+            text = "→ welcome to plazee",
             fontFamily = FontFamily.Monospace,
             fontSize = 18.sp,
             color = textColor
@@ -13538,7 +13558,7 @@ fun CreatingAccountScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = if (firstName.isEmpty()) "→ restoring account" else "→ welcome to pal",
+            text = if (firstName.isEmpty()) "→ restoring account" else "→ welcome to plazee",
             fontFamily = FontFamily.Monospace,
             fontSize = 18.sp,
             color = textColor
@@ -16071,15 +16091,15 @@ fun PalChatOverlay(
                                                             if (feedReactions.isNotEmpty()) {
                                                                 Box(
                                                                     modifier = Modifier
-                                                                        .align(Alignment.TopStart)
-                                                                        .offset(x = (-8.5).dp, y = (-13.5).dp)
+                                                                        .align(Alignment.BottomEnd)
+                                                                        .offset(x = (-6).dp, y = (-6).dp)
                                                                         .size(32.dp)
                                                                         .zIndex(2f),
                                                                     contentAlignment = Alignment.Center
                                                                 ) {
                                                                     Text(
                                                                         text = feedReactions.last(),
-                                                                        fontSize = 24.sp
+                                                                        fontSize = 20.sp
                                                                     )
                                                                 }
                                                             }
@@ -16358,15 +16378,15 @@ fun PalChatOverlay(
                                                             if (feedReactions.isNotEmpty()) {
                                                                 Box(
                                                                     modifier = Modifier
-                                                                        .align(Alignment.TopEnd)
-                                                                        .offset(x = 8.5.dp, y = (-13.5).dp)
+                                                                        .align(Alignment.BottomEnd)
+                                                                        .offset(x = (-6).dp, y = (-6).dp)
                                                                         .size(32.dp)
                                                                         .zIndex(2f),
                                                                     contentAlignment = Alignment.Center
                                                                 ) {
                                                                     Text(
                                                                         text = feedReactions.last(),
-                                                                        fontSize = 24.sp
+                                                                        fontSize = 20.sp
                                                                     )
                                                                 }
                                                             }
