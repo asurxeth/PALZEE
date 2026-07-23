@@ -401,15 +401,29 @@ fun handleDeleteVlog(
                             }
                         }
                         .decodeList<SubmissionDbItem>()
+                    val cleanFileName = deletedPath.substringAfterLast("/")
                     val targetSub = dbSubs.firstOrNull { 
                         val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
-                        pathPart == deletedPath || it.imageUrl == deletedPath 
+                        val subFileName = pathPart.substringAfterLast("/")
+                        pathPart == deletedPath || it.imageUrl == deletedPath ||
+                        subFileName == cleanFileName || pathPart.contains(cleanFileName)
                     }
                     val targetSubId = targetSub?.id
                     if (targetSubId != null) {
                         locallyDeletedSubmissions[targetSubId] = true
                         addPermanentlyDeletedSubmission(context, targetSubId)
                         authRepository.deleteSpecificPalItem(targetSubId)
+                    }
+                    try {
+                        supabaseClient.postgrest.from("submissions").delete {
+                            filter {
+                                eq("pal_code", palCode)
+                                eq("user_id", currentUserId)
+                                like("image_url", "%$cleanFileName%")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                     deleteVlogPostPermanently(context, currentUserId, deletedPath, palCode)
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -472,9 +486,12 @@ fun handleDeleteVlog(
                                 }
                             }
                             .decodeList<SubmissionDbItem>()
+                        val cleanFileName = deletedPath.substringAfterLast("/")
                         val targetSub = dbSubs.firstOrNull { 
                             val pathPart = it.imageUrl.split("|||").firstOrNull() ?: ""
-                            pathPart == deletedPath || it.imageUrl == deletedPath 
+                            val subFileName = pathPart.substringAfterLast("/")
+                            pathPart == deletedPath || it.imageUrl == deletedPath ||
+                            subFileName == cleanFileName || pathPart.contains(cleanFileName)
                         }
                         val targetSubId = targetSub?.id
                         if (targetSubId != null) {
@@ -485,6 +502,17 @@ fun handleDeleteVlog(
                                     eq("id", targetSubId)
                                 }
                             }
+                        }
+                        try {
+                            supabaseClient.postgrest.from("submissions").delete {
+                                filter {
+                                    eq("pal_code", palCode)
+                                    eq("user_id", currentUserId)
+                                    like("image_url", "%$cleanFileName%")
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                         deleteVlogPostPermanently(context, currentUserId, deletedPath, palCode)
                     } catch (e: Exception) {
@@ -2985,13 +3013,14 @@ fun getCachedVideoPathSync(context: android.content.Context, videoPath: String):
 }
 
 private val pendingVideoDownloads = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+private val invalidMediaUrls = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
 fun ensureVideoCachedLocally(
     context: android.content.Context,
     videoPath: String,
     onCached: ((String) -> Unit)? = null
 ) {
-    if (videoPath.isBlank() || !videoPath.startsWith("http")) return
+    if (videoPath.isBlank() || !videoPath.startsWith("http") || invalidMediaUrls.containsKey(videoPath)) return
     val existing = getCachedVideoPathSync(context, videoPath)
     if (existing != null) {
         onCached?.invoke(existing)
@@ -3040,13 +3069,25 @@ fun ensureVideoCachedLocally(
                 try {
                     storage.downloadAuthenticated(fileName)
                 } catch (eAuth: Exception) {
-                    storage.downloadPublic(fileName)
+                    try {
+                        storage.downloadPublic(fileName)
+                    } catch (ePub: Exception) {
+                        invalidMediaUrls[videoPath] = true
+                        pendingVideoDownloads.remove(videoPath)
+                        return@launch
+                    }
                 }
             } else {
                 try {
                     storage.downloadPublic(fileName)
                 } catch (pubEx: Exception) {
-                    storage.downloadAuthenticated(fileName)
+                    try {
+                        storage.downloadAuthenticated(fileName)
+                    } catch (eAuth: Exception) {
+                        invalidMediaUrls[videoPath] = true
+                        pendingVideoDownloads.remove(videoPath)
+                        return@launch
+                    }
                 }
             }
 
