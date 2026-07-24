@@ -12310,14 +12310,31 @@ fun VlogScreenContent(
                 }
 
                 // Chat bubble button with popping message count badge
-                val totalGroupMessageCount = remember(pal.code, capturedVlogsPaths, allPalsSubmissions, messages) {
-                    val submissionsCount = if (pal.isVlog) {
-                        maxOf(capturedVlogsPaths.size, (allPalsSubmissions["vlog"] ?: emptyList()).size)
+                val totalGroupMessageCount = remember(
+                    pal.code,
+                    capturedVlogsPaths.size,
+                    allPalsSubmissions[pal.code]?.size,
+                    allPalsSubmissions["vlog"]?.size,
+                    messages.size,
+                    palReactions.size
+                ) {
+                    if (pal.isVlog) {
+                        val vlogRemoteSubs = (allPalsSubmissions["vlog"] ?: allPalsSubmissions[pal.code] ?: emptyList())
+                            .filterNot { it.imageUrl.startsWith("PROFILE_AVATAR") }
+                        val uniqueVlogPaths = (vlogRemoteSubs.mapNotNull { it.imageUrl.split("|||").firstOrNull() } + capturedVlogsPaths)
+                            .filter { it.isNotEmpty() }
+                            .toSet()
+                        val submissionsCount = maxOf(uniqueVlogPaths.size, vlogRemoteSubs.size)
+                        val chatMessagesCount = messages.size
+                        submissionsCount + chatMessagesCount
                     } else {
-                        (allPalsSubmissions[pal.code] ?: emptyList()).filterNot { it.imageUrl.startsWith("PROFILE_AVATAR") }.size
+                        val submissionsCount = (allPalsSubmissions[pal.code] ?: emptyList())
+                            .filterNot { it.imageUrl.startsWith("PROFILE_AVATAR") }
+                            .size
+                        val chatMessagesCount = messages.size
+                        val reactionsCount = palReactions.size
+                        submissionsCount + chatMessagesCount + reactionsCount
                     }
-                    val chatMessagesCount = messages.size
-                    submissionsCount + chatMessagesCount
                 }
 
                 var lastSeenMessageCount by remember(pal.code) {
