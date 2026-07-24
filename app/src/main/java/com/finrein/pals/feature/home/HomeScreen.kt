@@ -9811,7 +9811,7 @@ fun GroupMemberCard(
                                             context = context,
                                             inputPath = localFile,
                                             outputPath = tempOut.absolutePath,
-                                            vlogText = memberName ?: "Pal",
+                                            vlogText = palName,
                                             timeText = String.format("%02d:00", activeViewingHour),
                                             captionText = caption,
                                             roundedCorners = true,
@@ -9823,7 +9823,7 @@ fun GroupMemberCard(
                                                     savePalLocally(
                                                         context = context,
                                                         palCode = activeSub?.palCode ?: "",
-                                                        palName = memberName ?: "Pal",
+                                                        palName = palName,
                                                         videoPath = videoPath,
                                                         caption = caption,
                                                         timeStr = String.format("%02d:00", activeViewingHour)
@@ -9839,7 +9839,7 @@ fun GroupMemberCard(
                                                     savePalLocally(
                                                         context = context,
                                                         palCode = activeSub?.palCode ?: "",
-                                                        palName = memberName ?: "Pal",
+                                                        palName = palName,
                                                         videoPath = videoPath,
                                                         caption = caption,
                                                         timeStr = String.format("%02d:00", activeViewingHour)
@@ -11879,10 +11879,15 @@ fun VlogScreenContent(
                                             if (!isDropdownSaving && !isSaved && currentPath.isNotEmpty()) {
                                                 isDropdownSaving = true
                                                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                                    val cleanPath = when {
-                                                        currentPath.startsWith("file://") -> currentPath.substring(7)
-                                                        else -> currentPath
+                                                    val cachedPath = getCachedVideoPathSync(context, currentPath) ?: currentPath
+                                                    val cleanInput = when {
+                                                        cachedPath.startsWith("file://") -> cachedPath.substring(7)
+                                                        else -> cachedPath
                                                     }
+                                                    if (cleanInput.startsWith("http")) {
+                                                        ensureVideoCachedLocally(context, cleanInput)
+                                                    }
+                                                    val localFile = getCachedVideoPathSync(context, currentPath) ?: cleanInput
                                                     val tempOut = java.io.File(context.cacheDir, "temp_dropdown_save_${System.currentTimeMillis()}.mp4")
                                                     val caption = capturedVlogsCaptions.getOrNull(selectedPageIndex) ?: ""
                                                     val timeStr = capturedVlogsTimes.getOrNull(selectedPageIndex) ?: ""
@@ -11892,7 +11897,7 @@ fun VlogScreenContent(
                                                     
                                                     VideoProcessor.processVideo(
                                                         context = context,
-                                                        inputPath = cleanPath,
+                                                        inputPath = localFile,
                                                         outputPath = tempOut.absolutePath,
                                                         vlogText = pal.name,
                                                         timeText = timeStr,
@@ -11905,7 +11910,20 @@ fun VlogScreenContent(
                                                             if (saveSuccess) {
                                                                 isDropdownSaved = true
                                                                 savedVlogPaths = savedVlogPaths + currentPath
-                                                                coroutineScope.launch {
+                                                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                                                    android.widget.Toast.makeText(context, "Saved vlog to your phone gallery!", android.widget.Toast.LENGTH_SHORT).show()
+                                                                    kotlinx.coroutines.delay(2000)
+                                                                    isDropdownSaved = false
+                                                                    showTripleDotMenu = false
+                                                                }
+                                                            }
+                                                        } else {
+                                                            val fallbackSave = saveVideoToGallery(context, localFile)
+                                                            if (fallbackSave) {
+                                                                isDropdownSaved = true
+                                                                savedVlogPaths = savedVlogPaths + currentPath
+                                                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                                                    android.widget.Toast.makeText(context, "Saved vlog to your phone gallery!", android.widget.Toast.LENGTH_SHORT).show()
                                                                     kotlinx.coroutines.delay(2000)
                                                                     isDropdownSaved = false
                                                                     showTripleDotMenu = false

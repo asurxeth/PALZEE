@@ -179,14 +179,22 @@ class VideoProcessor {
                 firstVideoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 720, 1280)
             }
 
-            // Fixed 9:16 target size (720x1280)
-            val outputWidth = 720
-            val outputHeight = 1280
+            // High quality 9:16 target size (1080x1920) or dynamically match source format
+            val outputWidth = if (firstVideoFormat?.containsKey(MediaFormat.KEY_WIDTH) == true && (firstVideoFormat.getInteger(MediaFormat.KEY_WIDTH) ?: 0) >= 1080) {
+                firstVideoFormat.getInteger(MediaFormat.KEY_WIDTH) ?: 1080
+            } else {
+                1080
+            }
+            val outputHeight = if (firstVideoFormat?.containsKey(MediaFormat.KEY_HEIGHT) == true && (firstVideoFormat.getInteger(MediaFormat.KEY_HEIGHT) ?: 0) >= 1920) {
+                firstVideoFormat.getInteger(MediaFormat.KEY_HEIGHT) ?: 1920
+            } else {
+                1920
+            }
             val outVideoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, outputWidth, outputHeight).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                setInteger(MediaFormat.KEY_BIT_RATE, 2500000)
+                setInteger(MediaFormat.KEY_BIT_RATE, 10000000) // 10 Mbps for ultra-crisp high quality
                 setInteger(MediaFormat.KEY_FRAME_RATE, 30)
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             }
 
             val videoEncoder = try {
@@ -236,7 +244,7 @@ class VideoProcessor {
             GLES20.glGenTextures(1, textures, 0)
             val texID = textures[0]
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, texID)
-            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
+            GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
