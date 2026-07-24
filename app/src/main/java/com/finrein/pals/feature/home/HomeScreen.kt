@@ -9502,7 +9502,8 @@ fun GroupMemberCard(
     capturedVlogsPaths: List<String> = emptyList(),
     selectedDayOffset: Int = 0,
     activeViewingHour: Int = java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour,
-    onNavigateHour: (Boolean) -> Unit = {}
+    onNavigateHour: (Boolean) -> Unit = {},
+    palName: String = "Pals Group"
 ) {
     val isCurrentHourOnToday = selectedDayOffset == 0 && activeViewingHour == java.time.ZonedDateTime.now(java.time.ZoneId.systemDefault()).hour
     val isActualMember = index < groupMembers.size
@@ -10792,6 +10793,7 @@ fun GroupScreenContent(
                         textColor = textColor,
                         customAvatarUriString = customAvatarUriString,
                         shufflingColors = shufflingColors,
+                        palName = pal.name,
                         selectedMemberIndex = selectedMemberIndex,
                         onSelectedMemberIndexChange = onSelectedMemberIndexChange,
                         onNavigateToCamera = onNavigateToCamera,
@@ -10859,6 +10861,7 @@ fun GroupScreenContent(
                                     textColor = textColor,
                                     customAvatarUriString = customAvatarUriString,
                                     shufflingColors = shufflingColors,
+                                    palName = pal.name,
                                     selectedMemberIndex = selectedMemberIndex,
                                     onSelectedMemberIndexChange = onSelectedMemberIndexChange,
                                     onNavigateToCamera = onNavigateToCamera,
@@ -10915,6 +10918,7 @@ fun GroupScreenContent(
                                     textColor = textColor,
                                     customAvatarUriString = customAvatarUriString,
                                     shufflingColors = shufflingColors,
+                                    palName = pal.name,
                                     selectedMemberIndex = selectedMemberIndex,
                                     onSelectedMemberIndexChange = onSelectedMemberIndexChange,
                                     onNavigateToCamera = onNavigateToCamera,
@@ -10977,6 +10981,7 @@ fun GroupScreenContent(
                                     textColor = textColor,
                                     customAvatarUriString = customAvatarUriString,
                                     shufflingColors = shufflingColors,
+                                    palName = pal.name,
                                     selectedMemberIndex = selectedMemberIndex,
                                     onSelectedMemberIndexChange = onSelectedMemberIndexChange,
                                     onNavigateToCamera = onNavigateToCamera,
