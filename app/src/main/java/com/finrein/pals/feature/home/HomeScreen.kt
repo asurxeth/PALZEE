@@ -12826,6 +12826,7 @@ fun VlogScreenContent(
             currentDisplayName = currentDisplayName,
             palReactions = palReactions,
             onEmojiReacted = onEmojiReacted,
+            activeReplyPreviewPath = activeReplyPreviewPath,
             onActiveReplyPreviewPathChange = onActiveReplyPreviewPathChange,
             onShowChatChange = onShowChatChange,
             onNavigateToCamera = onNavigateToCamera,
@@ -14973,7 +14974,8 @@ fun ReplyPreviewOverlay(
     palName: String,
     accentColor: Color,
     onActiveReplyPreviewPathChange: (String?) -> Unit,
-    onSendReply: (String, String) -> Unit = { _, _ -> }
+    onSendReply: (String, String) -> Unit = { _, _ -> },
+    onShowMemeMenu: (() -> Unit)? = null
 ) {
     if (activeReplyPreviewPath == null) return
     val videoPath = activeReplyPreviewPath
@@ -15002,7 +15004,7 @@ fun ReplyPreviewOverlay(
             keyboardController?.show()
         }
 
-        // 1. Top Header
+        // 1. Top Header (Chevron Back Button ONLY, NO text in top middle)
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -15024,24 +15026,21 @@ fun ReplyPreviewOverlay(
                     modifier = Modifier.size(18.dp)
                 )
             }
-
-            Text(
-                text = palName,
-                fontFamily = BricolageVariableFontFamily,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.Center)
-            )
         }
 
-        // 2. Centered Video with White Border (few dp's above center)
+        val isDark = isSystemInDarkTheme()
+
+        // 2. Bottom Column (Pal Preview Box positioned SLIGHTLY ABOVE message input & send box + Meme button)
         Column(
             modifier = Modifier
-                .offset(y = (-40).dp),
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .imePadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Pal Preview Video Box (Positioned slightly above input bar)
             Box(
                 modifier = Modifier
                     .width(260.dp)
@@ -15054,72 +15053,97 @@ fun ReplyPreviewOverlay(
                     modifier = Modifier.fillMaxSize()
                 )
             }
-        }
 
-        val isDark = isSystemInDarkTheme()
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .imePadding()
-                .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .border(1.dp, if (isDark) Color(0xFF333333) else Color(0xFFCCCCCC), RoundedCornerShape(24.dp))
-                    .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
-                    .padding(horizontal = 16.dp),
-                contentAlignment = Alignment.CenterStart
+            // Bottom Input Row: Meme Button + Message Box + Send Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                androidx.compose.foundation.text.BasicTextField(
-                    value = replyInput,
-                    onValueChange = { replyInput = it },
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontFamily = FontFamily.SansSerif,
-                        fontSize = 14.sp,
-                        color = if (isDark) Color.White else Color.Black
-                    ),
-                    singleLine = true,
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(if (isDark) Color.White else Color.Black),
-                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-                    decorationBox = { innerTextField ->
-                        if (replyInput.isEmpty()) {
-                            Text(
-                                text = "message",
-                                fontFamily = FontFamily.SansSerif,
-                                fontSize = 14.sp,
-                                color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f)
-                            )
-                        }
-                        innerTextField()
+                // Meme Sound Button
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.1f), CircleShape)
+                        .clickable {
+                            onShowMemeMenu?.invoke()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(accentColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.internet_troll_meme_face),
+                            contentDescription = "Meme Sounds",
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
-                )
-            }
+                }
 
-            val isReplyValid = replyInput.trim().isNotEmpty()
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
-                    .border(1.dp, if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.1f), CircleShape)
-                    .clickable(enabled = isReplyValid) {
-                        onSendReply(videoPath, replyInput.trim())
-                        onActiveReplyPreviewPathChange(null)
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = if (isReplyValid) accentColor else (if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.3f)),
-                    modifier = Modifier.size(18.dp)
-                )
+                // Message Input Text Field Box
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .border(1.dp, if (isDark) Color(0xFF333333) else Color(0xFFCCCCCC), RoundedCornerShape(22.dp))
+                        .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = replyInput,
+                        onValueChange = { replyInput = it },
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = FontFamily.SansSerif,
+                            fontSize = 14.sp,
+                            color = if (isDark) Color.White else Color.Black
+                        ),
+                        singleLine = true,
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(if (isDark) Color.White else Color.Black),
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                        decorationBox = { innerTextField ->
+                            if (replyInput.isEmpty()) {
+                                Text(
+                                    text = "message",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 14.sp,
+                                    color = (if (isDark) Color.White else Color.Black).copy(alpha = 0.5f)
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                }
+
+                // Send Button
+                val isReplyValid = replyInput.trim().isNotEmpty()
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFE5E5EA))
+                        .border(1.dp, if (isDark) Color.White.copy(alpha = 0.1f) else Color.Black.copy(alpha = 0.1f), CircleShape)
+                        .clickable(enabled = isReplyValid) {
+                            onSendReply(videoPath, replyInput.trim())
+                            onActiveReplyPreviewPathChange(null)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send",
+                        tint = if (isReplyValid) accentColor else (if (isDark) Color.White.copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.3f)),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
@@ -15763,6 +15787,7 @@ fun PalChatOverlay(
     currentDisplayName: String,
     palReactions: Map<String, String>,
     onEmojiReacted: (String, String) -> Unit,
+    activeReplyPreviewPath: String? = null,
     onActiveReplyPreviewPathChange: (String?) -> Unit,
     onShowChatChange: (Boolean) -> Unit,
     onNavigateToCamera: () -> Unit,
@@ -17580,6 +17605,22 @@ fun PalChatOverlay(
                 }
             }
         }
+
+        // Reply Preview Overlay
+        ReplyPreviewOverlay(
+            activeReplyPreviewPath = activeReplyPreviewPath,
+            palName = pal.name,
+            accentColor = accentColor,
+            onActiveReplyPreviewPathChange = onActiveReplyPreviewPathChange,
+            onSendReply = { targetVideoPath, replyText ->
+                val replyContent = "REPLY|||${currentUserId}|||${currentDisplayName}|||$targetVideoPath|||$replyText"
+                onSendMessage(replyContent)
+            },
+            onShowMemeMenu = {
+                loadMemeSounds()
+                showMemeSoundsMenu = true
+            }
+        )
     }
 }
 
