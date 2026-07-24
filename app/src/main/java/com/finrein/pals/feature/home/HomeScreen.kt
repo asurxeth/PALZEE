@@ -9782,6 +9782,8 @@ fun GroupMemberCard(
                 else -> 12.dp
             }
 
+            val coroutineScope = rememberCoroutineScope()
+            var isPalSavingState by remember(videoPath) { mutableStateOf(false) }
             var isPalSavedLocallyState by remember(videoPath) { mutableStateOf(isPalSavedLocally(context, videoPath)) }
 
             if (!isEditingCaption) {
@@ -9789,18 +9791,73 @@ fun GroupMemberCard(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .padding(top = topPadding, end = topEndPadding)
-                        .clickable {
+                        .clickable(enabled = !isPalSavingState) {
                             if (!isPalSavedLocallyState) {
-                                savePalLocally(
-                                    context = context,
-                                    palCode = activeSub?.palCode ?: "",
-                                    palName = memberName ?: "Pal",
-                                    videoPath = videoPath,
-                                    caption = caption,
-                                    timeStr = activeSub?.createdAt ?: "${activeViewingHour}:00"
-                                )
-                                isPalSavedLocallyState = true
-                                android.widget.Toast.makeText(context, "Saved pal to your collection!", android.widget.Toast.LENGTH_SHORT).show()
+                                isPalSavingState = true
+                                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    try {
+                                        val cachedPath = getCachedVideoPathSync(context, videoPath) ?: videoPath
+                                        val cleanInput = when {
+                                            cachedPath.startsWith("file://") -> cachedPath.substring(7)
+                                            else -> cachedPath
+                                        }
+                                        if (cleanInput.startsWith("http")) {
+                                            ensureVideoCachedLocally(context, cleanInput)
+                                        }
+                                        val localFile = getCachedVideoPathSync(context, videoPath) ?: cleanInput
+                                        val tempOut = java.io.File(context.cacheDir, "temp_pal_save_${System.currentTimeMillis()}.mp4")
+
+                                        VideoProcessor.processVideo(
+                                            context = context,
+                                            inputPath = localFile,
+                                            outputPath = tempOut.absolutePath,
+                                            vlogText = memberName ?: "Pal",
+                                            timeText = String.format("%02d:00", activeViewingHour),
+                                            captionText = caption,
+                                            roundedCorners = true,
+                                            isMuted = false
+                                        ) { success ->
+                                            if (success) {
+                                                val saveSuccess = saveVideoToGallery(context, tempOut.absolutePath)
+                                                if (saveSuccess) {
+                                                    savePalLocally(
+                                                        context = context,
+                                                        palCode = activeSub?.palCode ?: "",
+                                                        palName = memberName ?: "Pal",
+                                                        videoPath = videoPath,
+                                                        caption = caption,
+                                                        timeStr = String.format("%02d:00", activeViewingHour)
+                                                    )
+                                                    isPalSavedLocallyState = true
+                                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                                        android.widget.Toast.makeText(context, "Saved pal to your phone gallery!", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            } else {
+                                                val fallbackSave = saveVideoToGallery(context, localFile)
+                                                if (fallbackSave) {
+                                                    savePalLocally(
+                                                        context = context,
+                                                        palCode = activeSub?.palCode ?: "",
+                                                        palName = memberName ?: "Pal",
+                                                        videoPath = videoPath,
+                                                        caption = caption,
+                                                        timeStr = String.format("%02d:00", activeViewingHour)
+                                                    )
+                                                    isPalSavedLocallyState = true
+                                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                                        android.widget.Toast.makeText(context, "Saved pal to your phone gallery!", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                            try { tempOut.delete() } catch (e: Exception) {}
+                                            isPalSavingState = false
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        isPalSavingState = false
+                                    }
+                                }
                             } else {
                                 deleteSavedPalLocally(context, videoPath)
                                 isPalSavedLocallyState = false
@@ -9809,12 +9866,19 @@ fun GroupMemberCard(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = if (isPalSavedLocallyState) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        contentDescription = "Save Pal",
-                        tint = Color.White,
-                        modifier = Modifier.size(saveIconSize)
-                    )
+                    if (isPalSavingState) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(saveIconSize),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        AnimatedSaveIcon(
+                            isSaved = isPalSavedLocallyState,
+                            tint = Color.White,
+                            modifier = Modifier.size(saveIconSize)
+                        )
+                    }
                 }
             }
 
