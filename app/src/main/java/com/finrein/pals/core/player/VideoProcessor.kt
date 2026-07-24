@@ -179,17 +179,9 @@ class VideoProcessor {
                 firstVideoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 720, 1280)
             }
 
-            // High quality 9:16 target size (1080x1920) or dynamically match source format
-            val outputWidth = if (firstVideoFormat?.containsKey(MediaFormat.KEY_WIDTH) == true && (firstVideoFormat.getInteger(MediaFormat.KEY_WIDTH) ?: 0) >= 1080) {
-                firstVideoFormat.getInteger(MediaFormat.KEY_WIDTH) ?: 1080
-            } else {
-                1080
-            }
-            val outputHeight = if (firstVideoFormat?.containsKey(MediaFormat.KEY_HEIGHT) == true && (firstVideoFormat.getInteger(MediaFormat.KEY_HEIGHT) ?: 0) >= 1920) {
-                firstVideoFormat.getInteger(MediaFormat.KEY_HEIGHT) ?: 1920
-            } else {
-                1920
-            }
+            // High quality 9:16 target size (720x1280)
+            val outputWidth = 720
+            val outputHeight = 1280
             val outVideoFormat = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, outputWidth, outputHeight).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, 10000000) // 10 Mbps for ultra-crisp high quality
@@ -317,7 +309,7 @@ class VideoProcessor {
                             }
                             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
-                            GLES20.glViewport(0, 0, 720, 1280)
+                            GLES20.glViewport(0, 0, outputWidth, outputHeight)
                             GLES20.glUseProgram(overlayProgram)
                             val moPositionHandle = GLES20.glGetAttribLocation(overlayProgram, "aPosition")
                             val moTextureHandle = GLES20.glGetAttribLocation(overlayProgram, "aTextureCoord")
@@ -487,7 +479,10 @@ class VideoProcessor {
                                 GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
 
                                 // Viewport is centered 16:9 box inside 720x1280
-                                GLES20.glViewport(0, 437, 720, 405)
+                                val boxWidth = outputWidth
+                                val boxHeight = (outputWidth * (9f / 16f)).toInt()
+                                val boxY = (outputHeight - boxHeight) / 2
+                                GLES20.glViewport(0, boxY, boxWidth, boxHeight)
 
                                 GLES20.glUseProgram(renderProgram)
                                 val muSTMatrixHandle = GLES20.glGetUniformLocation(renderProgram, "uSTMatrix")
@@ -499,8 +494,8 @@ class VideoProcessor {
 
                                 GLES20.glUniformMatrix4fv(muSTMatrixHandle, 1, false, stMatrix, 0)
                                 GLES20.glUniform1f(muUseRoundedHandle, if (roundedCorners) 1.0f else 0.0f)
-                                GLES20.glUniform2f(muSizeHandle, 720f, 405f)
-                                GLES20.glUniform1f(muRadiusHandle, 65.8f)
+                                GLES20.glUniform2f(muSizeHandle, boxWidth.toFloat(), boxHeight.toFloat())
+                                GLES20.glUniform1f(muRadiusHandle, 65.8f * (outputWidth / 720f))
 
                                 triangleVertices.position(0)
                                 GLES20.glVertexAttribPointer(maPositionHandle, 3, GLES20.GL_FLOAT, false, 20, triangleVertices)
@@ -516,7 +511,7 @@ class VideoProcessor {
                                 GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
 
                                 // 2. Draw Text Overlay on top (non-rotated)
-                                GLES20.glViewport(0, 0, 720, 1280)
+                                GLES20.glViewport(0, 0, outputWidth, outputHeight)
                                 GLES20.glUseProgram(overlayProgram)
                                 val moPositionHandle = GLES20.glGetAttribLocation(overlayProgram, "aPosition")
                                 val moTextureHandle = GLES20.glGetAttribLocation(overlayProgram, "aTextureCoord")
