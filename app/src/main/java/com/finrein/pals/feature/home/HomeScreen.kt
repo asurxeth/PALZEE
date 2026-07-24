@@ -7225,8 +7225,8 @@ fun CameraScreenContent(
 
         val progressWidth = 7.5.dp
 
-        // Precise positioning constants for taller layout
-        val shutterBottomMargin = 65.5.dp
+        // Precise positioning constants for taller layout (shifted above by 5dp)
+        val shutterBottomMargin = 70.5.dp
         val shutterSize0 = 59.dp
         val shutterSize = shutterSize0 * scale
         val outerRingSize = 67.dp * scale
@@ -13066,8 +13066,8 @@ fun VlogScreenContent(
                 val scaleWidth = (screenWidth.value * 0.85f) / 306f
                 val scale = scaleHeight.coerceAtMost(scaleWidth).coerceAtMost(1.1f)
 
-                // Precise positioning and dimension logic matching the main camera frame exactly
-                val shutterBottomMargin = 67.5.dp
+                // Precise positioning and dimension logic matching the main camera frame exactly (shifted above by 5dp)
+                val shutterBottomMargin = 72.5.dp
                 val shutterSize0 = 59.dp
                 val shutterSize = shutterSize0 * scale
                 val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
