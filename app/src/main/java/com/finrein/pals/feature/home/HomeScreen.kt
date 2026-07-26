@@ -5338,7 +5338,7 @@ fun HomeScreen(
             .fillMaxSize()
             .clip(RoundedCornerShape(screenCornerRadius))
             .background(currentBackgroundColor)
-            .border(2.5.dp, currentBorderColor, RoundedCornerShape(screenCornerRadius))
+            .border(5.dp, currentBorderColor, RoundedCornerShape(screenCornerRadius))
             .statusBarsPadding()
             .navigationBarsPadding()
     } else {
@@ -7223,9 +7223,9 @@ fun CameraScreenContent(
         val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
         val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
 
-        // Dynamically calculate camera frame size with reduced side margins (reduced inside by 2.5dp on left & right)
+        // Dynamically calculate camera frame size with reduced side margins (moved inward by another 2.5dp on left & right)
         val maxCameraHeight = screenHeight - cameraFrameBottomPadding - 16.dp
-        var cameraWidth = screenWidth - 6.dp
+        var cameraWidth = screenWidth - 16.dp
         var cameraHeight = cameraWidth * (16f / 9f)
         if (cameraHeight > maxCameraHeight) {
             cameraHeight = maxCameraHeight
@@ -7273,7 +7273,7 @@ fun CameraScreenContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .border(
-                        BorderStroke(width = 1.5.dp, color = selectedProfileColor.copy(alpha = 0.55f)),
+                        BorderStroke(width = 3.5.dp, color = selectedProfileColor.copy(alpha = 0.35f)),
                         shape = cameraViewShape
                     )
                     .clip(cameraViewShape)
@@ -7303,11 +7303,11 @@ fun CameraScreenContent(
                          onVideoCaptureCreated = { videoCaptureRef = it }
                      )
  
-                     // Zoom Selector Options (1 to 5) inside the camera frame
+                     // Zoom Selector Options (1 to 5) inside the camera frame (moved below by 5dp)
                      Row(
                          modifier = Modifier
                              .align(Alignment.BottomCenter)
-                             .padding(bottom = 74.dp * scale)
+                             .padding(bottom = 69.dp * scale)
                              .fillMaxWidth()
                              .padding(horizontal = 48.dp * scale),
                          horizontalArrangement = Arrangement.SpaceBetween,
@@ -7624,7 +7624,7 @@ fun CameraScreenContent(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(x = (-64).dp * scale)
-                .padding(bottom = cameraFrameBottomPadding + 20.5.dp - (36.dp * scale / 2f))
+                .padding(bottom = cameraFrameBottomPadding + 13.dp - (36.dp * scale / 2f))
                 .size(36.dp * scale)
                 .clip(CircleShape) // circular shape for soft click ripple!
                 .clickable {
@@ -7671,7 +7671,7 @@ fun CameraScreenContent(
 
                 if (endY > startY) {
                     drawLine(
-                        color = selectedProfileColor,
+                        color = palTextLogoColor,
                         start = androidx.compose.ui.geometry.Offset(radius, startY),
                         end = androidx.compose.ui.geometry.Offset(radius, endY),
                         strokeWidth = strokeWidthPx,
@@ -13112,7 +13112,7 @@ fun VlogScreenContent(
                 val exportShift = if (isVlog) 25.dp else 30.dp
                 val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp + exportShift - 10.dp
 
-                val cameraWidth = screenWidth - 10.dp
+                val cameraWidth = screenWidth - 20.dp
                 val cameraHeight = cameraWidth * (16f / 9f)
 
                 val hasVlogs = capturedVlogsPaths.isNotEmpty()
