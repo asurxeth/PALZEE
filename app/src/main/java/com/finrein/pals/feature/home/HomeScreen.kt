@@ -5338,7 +5338,7 @@ fun HomeScreen(
             .fillMaxSize()
             .clip(RoundedCornerShape(screenCornerRadius))
             .background(currentBackgroundColor)
-            .border(5.dp, currentBorderColor, RoundedCornerShape(screenCornerRadius))
+            .border(4.dp, currentBorderColor, RoundedCornerShape(screenCornerRadius))
             .statusBarsPadding()
             .navigationBarsPadding()
     } else {
@@ -7215,17 +7215,17 @@ fun CameraScreenContent(
 
         val progressWidth = 7.5.dp
 
-        // Precise positioning constants for taller layout (shifted above by 20dp)
-        val shutterBottomMargin = 90.5.dp
+        // Precise positioning constants for taller layout (shifted above by 27.5dp)
+        val shutterBottomMargin = 98.dp
         val shutterSize0 = 59.dp
         val shutterSize = shutterSize0 * scale
         val outerRingSize = 67.dp * scale
         val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
         val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
 
-        // Dynamically calculate camera frame size with reduced side margins (moved inward by another 2.5dp on left & right)
+        // Dynamically calculate camera frame size with reduced side margins (moved inward by another 3dp on left & right)
         val maxCameraHeight = screenHeight - cameraFrameBottomPadding - 16.dp
-        var cameraWidth = screenWidth - 16.dp
+        var cameraWidth = screenWidth - 22.dp
         var cameraHeight = cameraWidth * (16f / 9f)
         if (cameraHeight > maxCameraHeight) {
             cameraHeight = maxCameraHeight
@@ -7273,7 +7273,7 @@ fun CameraScreenContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .border(
-                        BorderStroke(width = 3.5.dp, color = selectedProfileColor.copy(alpha = 0.35f)),
+                        BorderStroke(width = 3.5.dp, color = selectedProfileColor.copy(alpha = 0.26f)),
                         shape = cameraViewShape
                     )
                     .clip(cameraViewShape)
@@ -7327,9 +7327,9 @@ fun CameraScreenContent(
                              ) {
                                  Text(
                                      text = slot.toString(),
-                                     color = if (isSelected) selectedProfileColor else Color.White,
-                                     fontSize = (18 * scale).sp,
-                                     fontWeight = FontWeight.Bold,
+                                     color = if (isSelected) Color(0xFFFFD600) else Color.White,
+                                     fontSize = (16 * scale).sp,
+                                     fontWeight = FontWeight.Medium,
                                      modifier = Modifier.rotate(-90f)
                                  )
                              }
@@ -7653,8 +7653,8 @@ fun CameraScreenContent(
 
         // Screen-Edge Anchored Vertical Progress Bar (parallel to card straight-edge, highest Z-index)
         if (isRecording && recordingProgress > 0.0f) {
-            val drawWidth = 4.dp * scale
-            val drawEnd = 3.dp
+            val drawWidth = 7.dp * scale
+            val drawEnd = 4.dp
             Canvas(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -13103,8 +13103,8 @@ fun VlogScreenContent(
                 val scaleWidth = (screenWidth.value * 0.85f) / 306f
                 val scale = scaleHeight.coerceAtMost(scaleWidth).coerceAtMost(1.1f)
 
-                // Precise positioning and dimension logic matching the main camera frame exactly (shifted above by 20dp)
-                val shutterBottomMargin = 92.5.dp
+                // Precise positioning and dimension logic matching the main camera frame exactly (shifted above by 27.5dp)
+                val shutterBottomMargin = 100.dp
                 val shutterSize0 = 59.dp
                 val shutterSize = shutterSize0 * scale
                 val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
@@ -13112,7 +13112,7 @@ fun VlogScreenContent(
                 val exportShift = if (isVlog) 25.dp else 30.dp
                 val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp + exportShift - 10.dp
 
-                val cameraWidth = screenWidth - 20.dp
+                val cameraWidth = screenWidth - 26.dp
                 val cameraHeight = cameraWidth * (16f / 9f)
 
                 val hasVlogs = capturedVlogsPaths.isNotEmpty()
