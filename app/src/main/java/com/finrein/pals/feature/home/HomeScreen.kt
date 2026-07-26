@@ -3020,7 +3020,7 @@ fun ensureVideoCachedLocally(
     videoPath: String,
     onCached: ((String) -> Unit)? = null
 ) {
-    if (videoPath.isBlank() || !videoPath.startsWith("http") || invalidMediaUrls.containsKey(videoPath)) return
+    if (videoPath.isBlank() || !videoPath.startsWith("http") || invalidMediaUrls.containsKey(videoPath) || getVlogPrefs(context).getBoolean("invalid_media_$videoPath", false)) return
     val existing = getCachedVideoPathSync(context, videoPath)
     if (existing != null) {
         onCached?.invoke(existing)
@@ -3063,31 +3063,17 @@ fun ensureVideoCachedLocally(
             } else {
                 "pals"
             }
-            val isPrivateBucket = bucketName == "pals" || bucketName == "pals_vlogs"
             val storage = com.finrein.pals.PalApplication.supabase.storage.from(bucketName)
-            val bytes = if (isPrivateBucket) {
+            val bytes = try {
+                storage.downloadPublic(fileName)
+            } catch (ePub: Exception) {
                 try {
                     storage.downloadAuthenticated(fileName)
                 } catch (eAuth: Exception) {
-                    try {
-                        storage.downloadPublic(fileName)
-                    } catch (ePub: Exception) {
-                        invalidMediaUrls[videoPath] = true
-                        pendingVideoDownloads.remove(videoPath)
-                        return@launch
-                    }
-                }
-            } else {
-                try {
-                    storage.downloadPublic(fileName)
-                } catch (pubEx: Exception) {
-                    try {
-                        storage.downloadAuthenticated(fileName)
-                    } catch (eAuth: Exception) {
-                        invalidMediaUrls[videoPath] = true
-                        pendingVideoDownloads.remove(videoPath)
-                        return@launch
-                    }
+                    invalidMediaUrls[videoPath] = true
+                    getVlogPrefs(context).edit().putBoolean("invalid_media_$videoPath", true).apply()
+                    pendingVideoDownloads.remove(videoPath)
+                    return@launch
                 }
             }
 
@@ -3107,6 +3093,8 @@ fun ensureVideoCachedLocally(
                 onCached?.invoke(targetFile.absolutePath)
             }
         } catch (e: Exception) {
+            invalidMediaUrls[videoPath] = true
+            getVlogPrefs(context).edit().putBoolean("invalid_media_$videoPath", true).apply()
             pendingVideoDownloads.remove(videoPath)
             e.printStackTrace()
         }
