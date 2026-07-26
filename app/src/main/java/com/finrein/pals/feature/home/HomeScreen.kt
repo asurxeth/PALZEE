@@ -7212,18 +7212,6 @@ fun CameraScreenContent(
         val scaleWidth = (screenWidth.value * 0.85f) / 306f
         val scale = scaleHeight.coerceAtMost(scaleWidth).coerceAtMost(1.1f)
 
-        // Outer Screen Edge Boundary (follows dynamic app profile/theme color)
-        val outerBorderShape = RoundedCornerShape(36.dp)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(1.dp)
-                .border(
-                    BorderStroke(width = 3.5.dp, color = selectedProfileColor),
-                    shape = outerBorderShape
-                )
-        )
-
 
         val progressWidth = 7.5.dp
 
@@ -7315,11 +7303,11 @@ fun CameraScreenContent(
                          onVideoCaptureCreated = { videoCaptureRef = it }
                      )
  
-                     // Zoom Selector Options (1 to 5) inside the camera frame (shifted above by 20dp)
+                     // Zoom Selector Options (1 to 5) inside the camera frame
                      Row(
                          modifier = Modifier
                              .align(Alignment.BottomCenter)
-                             .padding(bottom = 79.dp * scale)
+                             .padding(bottom = 74.dp * scale)
                              .fillMaxWidth()
                              .padding(horizontal = 48.dp * scale),
                          horizontalArrangement = Arrangement.SpaceBetween,
