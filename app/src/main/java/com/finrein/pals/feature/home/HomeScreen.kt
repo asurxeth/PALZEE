@@ -7212,6 +7212,18 @@ fun CameraScreenContent(
         val scaleWidth = (screenWidth.value * 0.85f) / 306f
         val scale = scaleHeight.coerceAtMost(scaleWidth).coerceAtMost(1.1f)
 
+        // Outer Screen Edge Boundary (follows dynamic app profile/theme color)
+        val outerBorderShape = RoundedCornerShape(36.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(1.dp)
+                .border(
+                    BorderStroke(width = 3.5.dp, color = selectedProfileColor),
+                    shape = outerBorderShape
+                )
+        )
+
 
         val progressWidth = 7.5.dp
 
@@ -7260,7 +7272,7 @@ fun CameraScreenContent(
             }
         }
 
-        // Camera Viewfinder Box (9:16 rounded card) wrapped in a clean container (no glow/shadow)
+        // Camera Viewfinder Box (9:16 rounded card) wrapped with subdued inner viewfinder boundary
         val cameraViewShape = RoundedCornerShape(32.dp * scale)
         Box(
             modifier = Modifier
@@ -7272,11 +7284,11 @@ fun CameraScreenContent(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(cameraViewShape)
                     .border(
-                        BorderStroke(width = 1.5.dp, color = selectedProfileColor.copy(alpha = 0.5f)),
+                        BorderStroke(width = 1.5.dp, color = selectedProfileColor.copy(alpha = 0.55f)),
                         shape = cameraViewShape
                     )
+                    .clip(cameraViewShape)
             ) {
                 GlassmorphicCard(
                     modifier = Modifier.fillMaxSize(),
@@ -7653,14 +7665,14 @@ fun CameraScreenContent(
 
         // Screen-Edge Anchored Vertical Progress Bar (parallel to card straight-edge, highest Z-index)
         if (isRecording && recordingProgress > 0.0f) {
-            val drawWidth = 3.5.dp * scale
-            val drawEnd = 5.5.dp - drawWidth
+            val drawWidth = 4.dp * scale
+            val drawEnd = 3.dp
             Canvas(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = cameraFrameBottomPadding + 32.dp * scale, end = drawEnd) // aligned with straight vertical edge of card
-                    .width(drawWidth) // width
-                    .height(cameraHeight - 64.dp * scale) // length of straight vertical edge (cameraHeight - 32.dp * 2)
+                    .padding(bottom = cameraFrameBottomPadding + 32.dp * scale, end = drawEnd)
+                    .width(drawWidth)
+                    .height(cameraHeight - 64.dp * scale)
             ) {
                 val strokeWidthPx = size.width
                 val heightPx = size.height
@@ -7671,7 +7683,7 @@ fun CameraScreenContent(
 
                 if (endY > startY) {
                     drawLine(
-                        color = palTextLogoColor,
+                        color = selectedProfileColor,
                         start = androidx.compose.ui.geometry.Offset(radius, startY),
                         end = androidx.compose.ui.geometry.Offset(radius, endY),
                         strokeWidth = strokeWidthPx,
