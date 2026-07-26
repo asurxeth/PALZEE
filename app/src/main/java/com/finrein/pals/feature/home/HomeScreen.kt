@@ -7223,9 +7223,9 @@ fun CameraScreenContent(
         val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
         val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
 
-        // Dynamically calculate camera frame size with reduced side margins (moved inward by another 3dp on left & right)
+        // Dynamically calculate camera frame size with side margins (moved outward by 2dp on left & right towards screen edge)
         val maxCameraHeight = screenHeight - cameraFrameBottomPadding - 16.dp
-        var cameraWidth = screenWidth - 22.dp
+        var cameraWidth = screenWidth - 18.dp
         var cameraHeight = cameraWidth * (16f / 9f)
         if (cameraHeight > maxCameraHeight) {
             cameraHeight = maxCameraHeight
@@ -7273,7 +7273,7 @@ fun CameraScreenContent(
                 modifier = Modifier
                     .fillMaxSize()
                     .border(
-                        BorderStroke(width = 3.5.dp, color = selectedProfileColor.copy(alpha = 0.26f)),
+                        BorderStroke(width = 3.0.dp, color = selectedProfileColor.copy(alpha = 0.26f)),
                         shape = cameraViewShape
                     )
                     .clip(cameraViewShape)
@@ -7653,7 +7653,7 @@ fun CameraScreenContent(
 
         // Screen-Edge Anchored Vertical Progress Bar (parallel to card straight-edge, highest Z-index)
         if (isRecording && recordingProgress > 0.0f) {
-            val drawWidth = 7.dp * scale
+            val drawWidth = 5.dp * scale
             val drawEnd = 4.dp
             Canvas(
                 modifier = Modifier
@@ -13112,7 +13112,7 @@ fun VlogScreenContent(
                 val exportShift = if (isVlog) 25.dp else 30.dp
                 val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp + exportShift - 10.dp
 
-                val cameraWidth = screenWidth - 26.dp
+                val cameraWidth = screenWidth - 22.dp
                 val cameraHeight = cameraWidth * (16f / 9f)
 
                 val hasVlogs = capturedVlogsPaths.isNotEmpty()
