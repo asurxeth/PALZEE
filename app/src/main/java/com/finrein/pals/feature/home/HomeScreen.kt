@@ -18003,30 +18003,9 @@ fun JoinPalDialogOverlay(
                                     val code = joinPalCode.trim().lowercase(java.util.Locale.ROOT)
                                     coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
-                                            // 1. Check/Insert mapping first to bypass pals RLS select policy
-                                            val existingMapping = supabaseClient.postgrest.from("user_pals")
-                                                .select {
-                                                    filter {
-                                                        eq("user_id", currentUserId)
-                                                        eq("pal_code", code)
-                                                    }
-                                                }
-                                                .decodeSingleOrNull<UserPalMapping>()
-
-                                            if (existingMapping == null) {
-                                                val newMapping = UserPalMapping(
-                                                    userId = currentUserId,
-                                                    palCode = code,
-                                                    userDisplayName = currentDisplayName,
-                                                    userAvatarUrl = customAvatarUriString
-                                                )
-                                                // If code is invalid, foreign key constraint will throw exception here
-                                                supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
-                                            }
-
-                                            // 2. Fetch group details with retries to account for database replication lag
+                                            // 1. Verify code existence in 'pals' table first
                                             var matchedPalDb: PalDbItem? = null
-                                            for (i in 1..4) {
+                                            for (i in 1..3) {
                                                 try {
                                                     matchedPalDb = supabaseClient.postgrest.from("pals")
                                                         .select {
@@ -18039,38 +18018,43 @@ fun JoinPalDialogOverlay(
                                                 } catch (e: Exception) {
                                                     e.printStackTrace()
                                                 }
-                                                delay(500)
+                                                delay(300)
                                             }
 
-                                            // 3. Fallback construct if RLS or replication delays details fetching
-                                            val matchedItem = PalItem(
-                                                name = matchedPalDb?.name?.removeSuffix(" ($code)") ?: "Pals Group",
-                                                size = "1",
-                                                code = code,
-                                                isVlog = false,
-                                                isCreator = false
-                                            )
+                                            if (matchedPalDb != null) {
+                                                // 2. Insert mapping safely after confirming pal_code exists
+                                                val newMapping = UserPalMapping(
+                                                    userId = currentUserId,
+                                                    palCode = code,
+                                                    userDisplayName = currentDisplayName,
+                                                    userAvatarUrl = customAvatarUriString
+                                                )
+                                                supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
 
-                                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                if (!createdPals.any { it.code == code }) {
-                                                    onCreatedPalsChange(createdPals + matchedItem)
+                                                val matchedItem = PalItem(
+                                                    name = matchedPalDb.name.removeSuffix(" ($code)"),
+                                                    size = "1",
+                                                    code = code,
+                                                    isVlog = false,
+                                                    isCreator = false
+                                                )
+
+                                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                    if (!createdPals.any { it.code == code }) {
+                                                        onCreatedPalsChange(createdPals + matchedItem)
+                                                    }
+                                                    refreshPals()
+                                                    onShowJoinPalFlowChange(false)
+                                                    val groupNameToShow = matchedPalDb.name.removeSuffix(" ($code)")
+                                                    android.widget.Toast.makeText(context.applicationContext, "Successfully joined $groupNameToShow!", android.widget.Toast.LENGTH_SHORT).show()
                                                 }
-                                                refreshPals()
-                                                onShowJoinPalFlowChange(false)
-                                                val groupNameToShow = matchedPalDb?.name?.removeSuffix(" ($code)") ?: "Pals Group"
-                                                android.widget.Toast.makeText(context.applicationContext, "Successfully joined $groupNameToShow!", android.widget.Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                    android.widget.Toast.makeText(context.applicationContext, "Pal code not found or invalid", android.widget.Toast.LENGTH_SHORT).show()
+                                                }
                                             }
                                         } catch (e: Exception) {
                                             e.printStackTrace()
-                                            // Cleanup if insert succeeded but failed later
-                                            try {
-                                                supabaseClient.postgrest.from("user_pals").delete {
-                                                    filter {
-                                                        eq("user_id", currentUserId)
-                                                        eq("pal_code", code)
-                                                    }
-                                                }
-                                            } catch (ex: Exception) {}
                                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                                 android.widget.Toast.makeText(context.applicationContext, "Pal code not found or invalid", android.widget.Toast.LENGTH_SHORT).show()
                                             }
