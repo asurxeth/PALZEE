@@ -2305,10 +2305,12 @@ val SmileyAvatarColors = listOf(
 )
 
 fun getSmileyColorForUser(userId: String?, index: Int = 0): Color {
-    val idx = if (!userId.isNullOrEmpty()) {
+    val idx = if (index >= 0) {
+        index % SmileyAvatarColors.size
+    } else if (!userId.isNullOrEmpty()) {
         kotlin.math.abs(userId.hashCode()) % SmileyAvatarColors.size
     } else {
-        index % SmileyAvatarColors.size
+        0
     }
     return SmileyAvatarColors[idx]
 }
@@ -9939,12 +9941,38 @@ fun GroupMemberCard(
                     )
                 }
             } else {
-                // Both user (when not editing) and other members show caption ONLY (no timeText)
-                if (caption.isNotEmpty()) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.align(Alignment.Center)
-                    ) {
+                // Render 1-hour rounded off time text in exact middle of box with DelaGothicOneFontFamily
+                val timeText = String.format("%02d:00", activeViewingHour)
+                val timeFontSize = when {
+                    !isGrid -> 28.sp
+                    groupSize <= 2 -> 24.sp
+                    groupSize <= 4 -> 20.sp
+                    groupSize <= 6 -> 16.sp
+                    groupSize <= 8 -> 13.sp
+                    else -> 11.sp
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    Text(
+                        text = timeText,
+                        fontFamily = DelaGothicOneFontFamily,
+                        fontSize = timeFontSize,
+                        fontWeight = FontWeight.Normal,
+                        color = Color.White,
+                        style = TextStyle(
+                            shadow = androidx.compose.ui.graphics.Shadow(
+                                color = Color.Black.copy(alpha = 0.5f),
+                                offset = androidx.compose.ui.geometry.Offset(2f, 2f),
+                                blurRadius = 4f
+                            )
+                        )
+                    )
+                    if (caption.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = caption,
                             fontFamily = RobotoFontFamily,
@@ -9963,13 +9991,17 @@ fun GroupMemberCard(
                 }
             }
 
-            val cardSeenUsers = remember(groupMembers, isUser, memberId, currentUserId) {
+            val cardSeenUsers = remember(groupMembers, isUser, memberId, currentUserId, videoPath) {
                 val authorId = if (isUser) currentUserId else (memberId ?: "")
+                val prefs = getVlogPrefs(context)
                 groupMembers.mapNotNull { m ->
                     val parts = m.split("|||")
                     val mId = parts.getOrNull(0) ?: ""
                     val mAvatar = parts.getOrNull(2)
-                    if (mId.isNotEmpty() && mId != authorId) {
+                    val hasSeen = mId.isNotEmpty() && mId != authorId && (
+                        prefs.getBoolean("seen_pal_${videoPath}_$mId", false)
+                    )
+                    if (hasSeen) {
                         Pair(mId, mAvatar)
                     } else null
                 }
