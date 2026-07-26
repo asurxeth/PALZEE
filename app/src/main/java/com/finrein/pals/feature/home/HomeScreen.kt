@@ -7215,17 +7215,17 @@ fun CameraScreenContent(
 
         val progressWidth = 7.5.dp
 
-        // Precise positioning constants for taller layout (shifted above by 5dp)
-        val shutterBottomMargin = 70.5.dp
+        // Precise positioning constants for taller layout (shifted above by 20dp)
+        val shutterBottomMargin = 90.5.dp
         val shutterSize0 = 59.dp
         val shutterSize = shutterSize0 * scale
         val outerRingSize = 67.dp * scale
         val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
         val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp
 
-        // Dynamically calculate camera frame size to be exactly 7.5dp spaced from both ends of the screen
+        // Dynamically calculate camera frame size with reduced side margins (reduced inside by 2.5dp on left & right)
         val maxCameraHeight = screenHeight - cameraFrameBottomPadding - 16.dp
-        var cameraWidth = screenWidth - 11.dp
+        var cameraWidth = screenWidth - 6.dp
         var cameraHeight = cameraWidth * (16f / 9f)
         if (cameraHeight > maxCameraHeight) {
             cameraHeight = maxCameraHeight
@@ -7303,11 +7303,11 @@ fun CameraScreenContent(
                          onVideoCaptureCreated = { videoCaptureRef = it }
                      )
  
-                     // Zoom Selector Options (1 to 5) inside the camera frame
+                     // Zoom Selector Options (1 to 5) inside the camera frame (shifted above by 20dp)
                      Row(
                          modifier = Modifier
                              .align(Alignment.BottomCenter)
-                             .padding(bottom = 59.dp * scale)
+                             .padding(bottom = 79.dp * scale)
                              .fillMaxWidth()
                              .padding(horizontal = 48.dp * scale),
                          horizontalArrangement = Arrangement.SpaceBetween,
@@ -7500,21 +7500,21 @@ fun CameraScreenContent(
                         }
                     }
 
-                    // Close Button (X) in Top-Right
+                    // Close Button (X) in Top-Right (transparent black background)
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(16.dp * scale)
                             .size(36.dp * scale)
                             .clip(CircleShape)
-                            .background(if (isDark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA))
+                            .background(Color.Black.copy(alpha = 0.4f))
                             .clickable { onClose() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close camera",
-                            tint = if (isDark) Color.White else Color(0xFF1C1C1E),
+                            tint = Color.White,
                             modifier = Modifier.size(20.dp * scale)
                         )
                     }
@@ -13103,8 +13103,8 @@ fun VlogScreenContent(
                 val scaleWidth = (screenWidth.value * 0.85f) / 306f
                 val scale = scaleHeight.coerceAtMost(scaleWidth).coerceAtMost(1.1f)
 
-                // Precise positioning and dimension logic matching the main camera frame exactly (shifted above by 5dp)
-                val shutterBottomMargin = 72.5.dp
+                // Precise positioning and dimension logic matching the main camera frame exactly (shifted above by 20dp)
+                val shutterBottomMargin = 92.5.dp
                 val shutterSize0 = 59.dp
                 val shutterSize = shutterSize0 * scale
                 val cardBottomPadding = shutterBottomMargin + (shutterSize / 2f)
@@ -13112,7 +13112,7 @@ fun VlogScreenContent(
                 val exportShift = if (isVlog) 25.dp else 30.dp
                 val cameraFrameBottomPadding = cardBottomPadding - 2.5.dp + exportShift - 10.dp
 
-                val cameraWidth = screenWidth - 15.dp
+                val cameraWidth = screenWidth - 10.dp
                 val cameraHeight = cameraWidth * (16f / 9f)
 
                 val hasVlogs = capturedVlogsPaths.isNotEmpty()
