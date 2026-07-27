@@ -1052,27 +1052,34 @@ fun handleGlobalSearchTrigger(
                     .decodeSingleOrNull<PalDbItem>()
 
                 if (matchedPalDb != null) {
-                    val newMapping = UserPalMapping(
-                        userId = currentUserId,
-                        palCode = code,
-                        userDisplayName = currentDisplayName,
-                        userAvatarUrl = customAvatarUriString
-                    )
-                    supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
-                    val matchedItem = PalItem(
-                        name = matchedPalDb.name,
-                        size = "1",
-                        code = matchedPalDb.code,
-                        isVlog = false,
-                        isCreator = false
-                    )
+                    try {
+                        val newMapping = UserPalMapping(
+                            userId = currentUserId,
+                            palCode = code,
+                            userDisplayName = currentDisplayName,
+                            userAvatarUrl = customAvatarUriString
+                        )
+                        supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
+                        val matchedItem = PalItem(
+                            name = matchedPalDb.name,
+                            size = "1",
+                            code = matchedPalDb.code,
+                            isVlog = false,
+                            isCreator = false
+                        )
 
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        if (!createdPals.any { it.code == code }) {
-                            onCreatedPalsChange(createdPals + matchedItem)
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            if (!createdPals.any { it.code == code }) {
+                                onCreatedPalsChange(createdPals + matchedItem)
+                            }
+                            refreshPals()
+                            android.widget.Toast.makeText(context, "Joined group: ${matchedPalDb.name}", android.widget.Toast.LENGTH_SHORT).show()
                         }
-                        refreshPals()
-                        android.widget.Toast.makeText(context, "Joined group: ${matchedPalDb.name}", android.widget.Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        android.util.Log.e("UserPalsJoin", "Failed to join group due to constraint or network error: ${e.message}", e)
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            android.widget.Toast.makeText(context, "Unable to join group. Code may be invalid or expired.", android.widget.Toast.LENGTH_SHORT).show()
+                        }
                     }
                 } else {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -2041,7 +2048,11 @@ suspend fun sendVideoPalToVlog(context: android.content.Context, localUri: andro
             captured_at = java.time.Instant.now().toString()
         )
         
-        com.finrein.pals.PalApplication.supabase.postgrest.from("user_pals").insert(newVlogRecord)
+        try {
+            com.finrein.pals.PalApplication.supabase.postgrest.from("user_pals").insert(newVlogRecord)
+        } catch (e: Exception) {
+            android.util.Log.e("VlogInsert", "Suppressed vlog insertion constraint error: ${e.message}")
+        }
     }
 }
 
@@ -6133,7 +6144,11 @@ fun HomeScreen(
                                     userDisplayName = if (currentDisplayName.isNotEmpty()) currentDisplayName else "Pal Member",
                                     userAvatarUrl = customAvatarUriString
                                 )
-                                supabaseClient.postgrest.from("user_pals").insert(newMapping)
+                                try {
+                                    supabaseClient.postgrest.from("user_pals").insert(newMapping)
+                                } catch (e: Exception) {
+                                    android.util.Log.w("CreatePalGroup", "user_pals creator mapping insert deferred or constraint caught: ${e.message}")
+                                }
 
                                 withContext(Dispatchers.Main) {
                                     val freshPalItem = PalItem(
@@ -18023,7 +18038,6 @@ fun JoinPalDialogOverlay(
                                     val code = joinPalCode.trim().lowercase(java.util.Locale.ROOT)
                                     coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         try {
-                                            // 1. Verify code existence in 'pals' table first
                                             var matchedPalDb: PalDbItem? = null
                                             for (i in 1..3) {
                                                 try {
@@ -18042,41 +18056,47 @@ fun JoinPalDialogOverlay(
                                             }
 
                                             if (matchedPalDb != null) {
-                                                // 2. Insert mapping safely after confirming pal_code exists
-                                                val newMapping = UserPalMapping(
-                                                    userId = currentUserId,
-                                                    palCode = code,
-                                                    userDisplayName = currentDisplayName,
-                                                    userAvatarUrl = customAvatarUriString
-                                                )
-                                                supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
+                                                try {
+                                                    val newMapping = UserPalMapping(
+                                                        userId = currentUserId,
+                                                        palCode = code,
+                                                        userDisplayName = currentDisplayName,
+                                                        userAvatarUrl = customAvatarUriString
+                                                    )
+                                                    supabaseClient.postgrest.from("user_pals").upsert(newMapping, onConflict = "pal_code,user_id")
 
-                                                val matchedItem = PalItem(
-                                                    name = matchedPalDb.name.removeSuffix(" ($code)"),
-                                                    size = "1",
-                                                    code = code,
-                                                    isVlog = false,
-                                                    isCreator = false
-                                                )
+                                                    val matchedItem = PalItem(
+                                                        name = matchedPalDb.name.removeSuffix(" ($code)"),
+                                                        size = "1",
+                                                        code = code,
+                                                        isVlog = false,
+                                                        isCreator = false
+                                                    )
 
-                                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                    if (!createdPals.any { it.code == code }) {
-                                                        onCreatedPalsChange(createdPals + matchedItem)
+                                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                        if (!createdPals.any { it.code == code }) {
+                                                            onCreatedPalsChange(createdPals + matchedItem)
+                                                        }
+                                                        refreshPals()
+                                                        onShowJoinPalFlowChange(false)
+                                                        val groupNameToShow = matchedPalDb.name.removeSuffix(" ($code)")
+                                                        android.widget.Toast.makeText(context.applicationContext, "Successfully joined $groupNameToShow!", android.widget.Toast.LENGTH_SHORT).show()
                                                     }
-                                                    refreshPals()
-                                                    onShowJoinPalFlowChange(false)
-                                                    val groupNameToShow = matchedPalDb.name.removeSuffix(" ($code)")
-                                                    android.widget.Toast.makeText(context.applicationContext, "Successfully joined $groupNameToShow!", android.widget.Toast.LENGTH_SHORT).show()
+                                                } catch (e: Exception) {
+                                                    android.util.Log.e("ModalJoinPal", "Constraint or PostgREST error joining pal group: ${e.message}", e)
+                                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                        android.widget.Toast.makeText(context.applicationContext, "Unable to join group. Code may be invalid or expired.", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
                                                 }
                                             } else {
                                                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                    android.widget.Toast.makeText(context.applicationContext, "Pal code not found or invalid", android.widget.Toast.LENGTH_SHORT).show()
+                                                    android.widget.Toast.makeText(context.applicationContext, "No group found with code: $code", android.widget.Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         } catch (e: Exception) {
                                             e.printStackTrace()
                                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                android.widget.Toast.makeText(context.applicationContext, "Pal code not found or invalid", android.widget.Toast.LENGTH_SHORT).show()
+                                                android.widget.Toast.makeText(context.applicationContext, "Unable to join group. Please try again.", android.widget.Toast.LENGTH_SHORT).show()
                                             }
                                         }
                                     }
