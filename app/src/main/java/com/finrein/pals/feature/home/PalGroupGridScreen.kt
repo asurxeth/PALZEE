@@ -482,17 +482,124 @@ fun PalGroupGridScreen(
             // E. Onboarding Steps (shown if no group spaces exist)
             if (!isLoadingPals && createdPals.none { !it.isVlog }) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
+                    var headerCharCount by remember { mutableIntStateOf(0) }
+                    var point1CharCount by remember { mutableIntStateOf(0) }
+                    var showButtons by remember { mutableStateOf(false) }
+                    var showPoint2Circle by remember { mutableStateOf(false) }
+                    var point2Line1CharCount by remember { mutableIntStateOf(0) }
+                    var point2Line2CharCount by remember { mutableIntStateOf(0) }
+                    var point2Line3CharCount by remember { mutableIntStateOf(0) }
+                    var showFooter by remember { mutableStateOf(false) }
+                    var isAnimationFinished by remember { mutableStateOf(false) }
+
+                    val fullHeaderText = "your day, side by side."
+                    val fullPoint1Title = "tap + to start"
+                    val fullPoint2Line1 = remember {
+                        buildAnnotatedString {
+                            append("add a ")
+                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
+                                append("2")
+                            }
+                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
+                                append("s")
+                            }
+                            append(" clip every hour.")
+                        }
+                    }
+                    val fullPoint2Line2 = "see everyone's day come together."
+                    val fullPoint2Line3 = "solo pals don't have limits."
+
+                    val charDelayMs = 30L
+
+                    LaunchedEffect(Unit) {
+                        if (isAnimationFinished) return@LaunchedEffect
+
+                        for (i in 1..fullHeaderText.length) {
+                            headerCharCount = i
+                            kotlinx.coroutines.delay(charDelayMs)
+                        }
+                        kotlinx.coroutines.delay(100L)
+
+                        for (i in 1..fullPoint1Title.length) {
+                            point1CharCount = i
+                            kotlinx.coroutines.delay(charDelayMs)
+                        }
+                        kotlinx.coroutines.delay(120L)
+
+                        showButtons = true
+                        kotlinx.coroutines.delay(200L)
+
+                        showPoint2Circle = true
+                        for (i in 1..fullPoint2Line1.length) {
+                            point2Line1CharCount = i
+                            kotlinx.coroutines.delay(charDelayMs)
+                        }
+                        kotlinx.coroutines.delay(80L)
+
+                        for (i in 1..fullPoint2Line2.length) {
+                            point2Line2CharCount = i
+                            kotlinx.coroutines.delay(charDelayMs)
+                        }
+                        kotlinx.coroutines.delay(80L)
+
+                        for (i in 1..fullPoint2Line3.length) {
+                            point2Line3CharCount = i
+                            kotlinx.coroutines.delay(charDelayMs)
+                        }
+                        kotlinx.coroutines.delay(150L)
+
+                        showFooter = true
+                        isAnimationFinished = true
+                    }
+
+                    val completeAllAnimation = {
+                        headerCharCount = fullHeaderText.length
+                        point1CharCount = fullPoint1Title.length
+                        showButtons = true
+                        showPoint2Circle = true
+                        point2Line1CharCount = fullPoint2Line1.length
+                        point2Line2CharCount = fullPoint2Line2.length
+                        point2Line3CharCount = fullPoint2Line3.length
+                        showFooter = true
+                        isAnimationFinished = true
+                    }
+
+                    val circle1Alpha by animateFloatAsState(
+                        targetValue = if (headerCharCount > 0 || isAnimationFinished) 1f else 0f,
+                        animationSpec = tween(durationMillis = 300),
+                        label = "circle1_alpha"
+                    )
+                    val buttonsAlpha by animateFloatAsState(
+                        targetValue = if (showButtons || isAnimationFinished) 1f else 0f,
+                        animationSpec = tween(durationMillis = 350),
+                        label = "buttons_alpha"
+                    )
+                    val circle2Alpha by animateFloatAsState(
+                        targetValue = if (showPoint2Circle || isAnimationFinished) 1f else 0f,
+                        animationSpec = tween(durationMillis = 300),
+                        label = "circle2_alpha"
+                    )
+                    val footerAlpha by animateFloatAsState(
+                        targetValue = if (showFooter || isAnimationFinished) 1f else 0f,
+                        animationSpec = tween(durationMillis = 400),
+                        label = "footer_alpha"
+                    )
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp),
+                            .padding(top = 8.dp)
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null
+                            ) { completeAllAnimation() },
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Spacer(modifier = Modifier.height(6.dp))
 
                         val isVlogSent = capturedVlogsPaths.isNotEmpty()
                         Text(
-                            text = "your day, side by side.",
+                            text = fullHeaderText.take(headerCharCount),
                             fontFamily = OwnglyphFontFamily,
                             fontSize = 16.sp,
                             color = textColor,
@@ -519,6 +626,7 @@ fun PalGroupGridScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(24.dp)
+                                        .graphicsLayer { alpha = circle1Alpha }
                                         .clip(CircleShape)
                                         .background(circleNumBg),
                                     contentAlignment = Alignment.Center
@@ -536,13 +644,14 @@ fun PalGroupGridScreen(
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
-                                        text = "tap + to start",
+                                        text = fullPoint1Title.take(point1CharCount),
                                         fontSize = 13.sp,
                                         fontFamily = FontFamily.SansSerif,
                                         color = textColor
                                     )
 
                                     Row(
+                                        modifier = Modifier.graphicsLayer { alpha = buttonsAlpha },
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
@@ -581,6 +690,7 @@ fun PalGroupGridScreen(
                                     }
 
                                     Row(
+                                        modifier = Modifier.graphicsLayer { alpha = buttonsAlpha },
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
@@ -628,6 +738,7 @@ fun PalGroupGridScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(24.dp)
+                                        .graphicsLayer { alpha = circle2Alpha }
                                         .clip(CircleShape)
                                         .background(circleNumBg),
                                     contentAlignment = Alignment.Center
@@ -645,28 +756,19 @@ fun PalGroupGridScreen(
                                     verticalArrangement = Arrangement.spacedBy(1.dp)
                                 ) {
                                     Text(
-                                        text = buildAnnotatedString {
-                                            append("add a ")
-                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = DelaGothicOneFontFamily)) {
-                                                append("2")
-                                            }
-                                            withStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.SansSerif)) {
-                                                append("s")
-                                            }
-                                            append(" clip every hour.")
-                                        },
+                                        text = if (point2Line1CharCount > 0) fullPoint2Line1.subSequence(0, minOf(point2Line1CharCount, fullPoint2Line1.length)) else buildAnnotatedString { },
                                         fontSize = 13.sp,
                                         fontFamily = FontFamily.SansSerif,
                                         color = textColor
                                     )
                                     Text(
-                                        text = "see everyone's day come together.",
+                                        text = fullPoint2Line2.take(point2Line2CharCount),
                                         fontSize = 13.sp,
                                         fontFamily = FontFamily.SansSerif,
                                         color = textColor
                                     )
                                     Text(
-                                        text = "solo pals don't have limits.",
+                                        text = fullPoint2Line3.take(point2Line3CharCount),
                                         fontSize = 13.sp,
                                         fontFamily = FontFamily.SansSerif,
                                         color = textColor
@@ -682,7 +784,8 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(54.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-72.5).dp),
+                                .offset(y = (-72.5).dp)
+                                .graphicsLayer { alpha = footerAlpha },
                             contentAlignment = Alignment.Center
                         ) {
                             Image(
@@ -733,7 +836,8 @@ fun PalGroupGridScreen(
                                 .fillMaxWidth()
                                 .height(64.dp)
                                 .align(Alignment.CenterHorizontally)
-                                .offset(y = (-86.5).dp),
+                                .offset(y = (-86.5).dp)
+                                .graphicsLayer { alpha = footerAlpha },
                             contentScale = ContentScale.Fit
                         )
                     }
