@@ -5,11 +5,13 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.finrein.pals.MainActivity
+import com.finrein.pals.R
 import java.util.Locale
 
 class MyFirebaseMessagingService : FirebaseMessagingService() {
@@ -48,22 +50,36 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val publicNotification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(com.finrein.pals.R.drawable.ic_notification)
+        val largeIconBitmap = try {
+            BitmapFactory.decodeResource(context.resources, R.drawable.pal_circular_logo)
+                ?: BitmapFactory.decodeResource(context.resources, R.drawable.ic_notification)
+        } catch (e: Exception) {
+            null
+        }
+
+        val publicNotificationBuilder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Palzee")
             .setContentText("Notification")
             .setAutoCancel(true)
-            .build()
+
+        if (largeIconBitmap != null) {
+            publicNotificationBuilder.setLargeIcon(largeIconBitmap)
+        }
 
         val notificationBuilder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(com.finrein.pals.R.drawable.ic_notification)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPublicVersion(publicNotification)
+            .setPublicVersion(publicNotificationBuilder.build())
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+
+        if (largeIconBitmap != null) {
+            notificationBuilder.setLargeIcon(largeIconBitmap)
+        }
 
         notificationManager.notify(1002, notificationBuilder.build())
     }
