@@ -2833,6 +2833,29 @@ val PalThemes = mapOf(
     )
 )
 
+fun formatUserFullName(firstName: String, lastName: String): String {
+    val firstTrimmed = firstName.trim()
+    val lastTrimmed = lastName.trim()
+    if (firstTrimmed.isEmpty()) return lastTrimmed
+    if (lastTrimmed.isEmpty()) return firstTrimmed
+
+    val firstWords = firstTrimmed.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+    val lastWords = lastTrimmed.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+
+    val resultWords = mutableListOf<String>()
+    for (word in firstWords) {
+        if (resultWords.isEmpty() || !resultWords.last().equals(word, ignoreCase = true)) {
+            resultWords.add(word)
+        }
+    }
+    for (word in lastWords) {
+        if (resultWords.isEmpty() || !resultWords.last().equals(word, ignoreCase = true)) {
+            resultWords.add(word)
+        }
+    }
+    return resultWords.joinToString(" ")
+}
+
 fun parseName(email: String?, displayName: String?): Pair<String, String> {
     val genericNames = listOf("google user", "apple user", "default user", "user")
     if (!displayName.isNullOrBlank() && !genericNames.contains(displayName.lowercase().trim())) {
@@ -2840,10 +2863,12 @@ fun parseName(email: String?, displayName: String?): Pair<String, String> {
         val first = parts.firstOrNull() ?: ""
         val last = if (parts.size > 1) parts.drop(1).joinToString(" ") else ""
         if (first.isNotEmpty()) {
-            return Pair(
-                first.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
-                last.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-            )
+            val formattedFirst = first.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            val formattedLast = last.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            if (formattedFirst.equals(formattedLast, ignoreCase = true)) {
+                return Pair(formattedFirst, "")
+            }
+            return Pair(formattedFirst, formattedLast)
         }
     }
     
@@ -3254,7 +3279,7 @@ fun OnboardingFlowContainer(
             firstName = onboardingFirstName,
             lastName = onboardingLastName,
             onContinue = {
-                val newName = "$onboardingFirstName $onboardingLastName".trim()
+                val newName = formatUserFullName(onboardingFirstName, onboardingLastName)
                 onCurrentDisplayNameChange(newName)
                 user?.let {
                     sessionManager.saveUser(it.copy(displayName = newName))
@@ -13972,6 +13997,8 @@ fun NameConfirmScreen(
     textColor: Color,
     mutedTextColor: Color
 ) {
+    val fullFormattedName = remember(firstName, lastName) { formatUserFullName(firstName, lastName) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -14022,7 +14049,7 @@ fun NameConfirmScreen(
 
         // Star, Name, Smiley
         Text(
-            text = "☆ $firstName $lastName :)",
+            text = "☆ $fullFormattedName :)",
             fontFamily = FontFamily.Monospace,
             fontSize = 20.sp,
             color = textColor,
@@ -14078,6 +14105,8 @@ fun CreatingAccountScreen(
     textColor: Color,
     mutedTextColor: Color
 ) {
+    val fullFormattedName = remember(firstName, lastName) { formatUserFullName(firstName, lastName) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -14125,10 +14154,10 @@ fun CreatingAccountScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        if (firstName.isNotEmpty() || lastName.isNotEmpty()) {
+        if (fullFormattedName.isNotEmpty()) {
             // Star, Name, Smiley
             Text(
-                text = "☆ $firstName $lastName :)",
+                text = "☆ $fullFormattedName :)",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 20.sp,
                 color = textColor,
