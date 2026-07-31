@@ -552,18 +552,6 @@ fun PalGroupGridScreen(
                         isAnimationFinished = true
                     }
 
-                    val completeAllAnimation = {
-                        headerCharCount = fullHeaderText.length
-                        point1CharCount = fullPoint1Title.length
-                        showButtons = true
-                        showPoint2Circle = true
-                        point2Line1CharCount = fullPoint2Line1.length
-                        point2Line2CharCount = fullPoint2Line2.length
-                        point2Line3CharCount = fullPoint2Line3.length
-                        showFooter = true
-                        isAnimationFinished = true
-                    }
-
                     val circle1Alpha by animateFloatAsState(
                         targetValue = if (headerCharCount > 0 || isAnimationFinished) 1f else 0f,
                         animationSpec = tween(durationMillis = 300),
@@ -588,11 +576,7 @@ fun PalGroupGridScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clickable(
-                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                indication = null
-                            ) { completeAllAnimation() },
+                            .padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Spacer(modifier = Modifier.height(6.dp))
