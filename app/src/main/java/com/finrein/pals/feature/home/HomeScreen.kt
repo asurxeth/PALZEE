@@ -20462,6 +20462,15 @@ fun HomeScreenOverlays(
         onCurrentDisplayNameChange = onCurrentDisplayNameChange,
         useDarkTextOnAccent = themeConfig.useDarkTextOnAccent
     )
+
+    // Global In-App Web View Overlay
+    activeInAppWebUrl?.let { url ->
+        InAppWebOverlay(
+            url = url,
+            isDark = isDark,
+            onClose = { activeInAppWebUrl = null }
+        )
+    }
 }
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
