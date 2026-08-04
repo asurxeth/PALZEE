@@ -19268,10 +19268,6 @@ fun TripleDotMenuOverlay(
                                     onShowTripleDotMenuChange(false)
                                     onOpenInAppUrl("https://palzee.fun/csampolicy.html")
                                 },
-                                "feedback" to {
-                                    onShowTripleDotMenuChange(false)
-                                    onOpenInAppUrl("https://palzee.fun/feedback.html")
-                                },
                                 "log out" to {
                                     onShowTripleDotMenuChange(false)
                                     onSignOut()
