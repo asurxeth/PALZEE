@@ -12579,6 +12579,110 @@ fun VlogScreenContent(
                                     }
                                 }
                             }
+
+                            // 4. privacy policy option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onShowDropdownChange(false)
+                                        inSettingsSubMenu = false
+                                        try {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://palzee.fun/privacy.html"))
+                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "privacy policy",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 15.sp,
+                                    color = textColor
+                                )
+                            }
+
+                            // 5. terms of service option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onShowDropdownChange(false)
+                                        inSettingsSubMenu = false
+                                        try {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://palzee.fun/tos.html"))
+                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "terms of service",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 15.sp,
+                                    color = textColor
+                                )
+                            }
+
+                            // 6. csam policy option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onShowDropdownChange(false)
+                                        inSettingsSubMenu = false
+                                        try {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://palzee.fun/csampolicy.html"))
+                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "csam policy",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 15.sp,
+                                    color = textColor
+                                )
+                            }
+
+                            // 7. feedback option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onShowDropdownChange(false)
+                                        inSettingsSubMenu = false
+                                        try {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://palzee.fun/csampolicy.html#feedback"))
+                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "feedback",
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontSize = 15.sp,
+                                    color = textColor
+                                )
+                            }
                         } else if (inMembersSubMenu) {
                             // Members Sub-menu (styled identically to settings submenu)
                             
