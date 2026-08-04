@@ -1,11 +1,37 @@
 # Palzee 🎥
-### Low-Latency Local-First Media Architecture & Android Media3 Processing Pipeline
+### Low-Latency Local-First Media Architecture & Native Android App & Web Ecosystem
+
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
 [![Design-System](https://img.shields.io/badge/Design_System-Material_3-6750A4?logo=materialdesign&logoColor=white)](https://m3.material.io/)
 [![Framework](https://img.shields.io/badge/Framework-Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack-compose)
 [![Backend](https://img.shields.io/badge/Backend-Supabase-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
+[![Website](https://img.shields.io/badge/Website-palzee.fun-FF007A?logo=googlechrome&logoColor=white)](https://palzee.fun/)
 
-Palzee is a native Android application engineering micro-vlogging through a low-latency, local-first media architecture. Built completely around standard system components and the Android Material 3 Design framework, Palzee achieves instantaneous video processing, frame-accurate slideshow transitions, and sub-millisecond perceived interface responsiveness without relying on network-first blocking actions.
+Palzee is a native Android application and web ecosystem engineering micro-vlogging for close friend groups through a low-latency, local-first media architecture. Built completely around standard system components, Jetpack Compose, and the Android Material 3 Design framework, Palzee achieves instantaneous video processing, frame-accurate slideshow transitions, sub-millisecond perceived interface responsiveness, and seamless in-app legal/feedback overlay navigation.
+
+---
+
+## 🌐 Web Ecosystem & Legal Transparency (`palzee.fun`)
+
+Palzee hosts a lightweight, responsive web domain at **[https://palzee.fun](https://palzee.fun)** providing full transparency, legal compliance, and user feedback channels.
+
+*   **Official Website:** [https://palzee.fun/](https://palzee.fun/)
+*   📜 **Privacy Policy:** [https://palzee.fun/privacy.html](https://palzee.fun/privacy.html) — Outlines data protection and user privacy guarantees.
+*   ⚖️ **Terms of Service:** [https://palzee.fun/tos.html](https://palzee.fun/tos.html) — Service usage terms and community guidelines.
+*   🛡️ **CSAM Policy & Safety:** [https://palzee.fun/csampolicy.html](https://palzee.fun/csampolicy.html) — Zero-tolerance Child Sexual Abuse Material prevention & reporting standard.
+*   💬 **Feedback & Suggestions:** [https://palzee.fun/feedback.html](https://palzee.fun/feedback.html) — Dedicated feedback portal routing to `feedback@palzee.fun`.
+
+---
+
+## 📱 Native In-App Web Overlay (`InAppWebOverlay`)
+
+To avoid context switching out of the mobile application, Palzee embeds a high-performance native Android `InAppWebOverlay` composable:
+
+*   **Zero-External-Browser Context Shift:** Policy pages and the Feedback form open directly inside the app with a dedicated header, page title, and close `(X)` button.
+*   **Profile (...) Menu Integration:**
+    *   Tapping **feedback** on the main profile screen directly launches `https://palzee.fun/feedback.html`.
+    *   Tapping **privacy policy**, **terms of service**, or **csam policy** inside Profile Settings opens their respective pages instantly.
+*   **Intent Handling:** Web `mailto:` links (such as `feedback@palzee.fun`) trigger native device email launchers automatically.
 
 ---
 
@@ -13,19 +39,20 @@ Palzee is a native Android application engineering micro-vlogging through a low-
 
 Palzee implements a modular framework engineered for predictable memory allocation, native Android system optimizations, and zero UI-thread blocking.
 
-*   **Design Framework:** Pure Material 3 (M3) component patterns, responsive token systems, and system icons running over standard device Android layouts.
-*   **Media Processing Layer:** Google Media3 Ecosystem (`ExoPlayer`), CameraX API, and native hardware decoder configurations (`MediaCodec`).
+*   **Android Mobile Layer:** Pure Material 3 (M3) Jetpack Compose components, Kotlin Coroutines, responsive token systems, and system icons running over standard device Android layouts.
+*   **Media Processing Engine:** Google Media3 Ecosystem (`ExoPlayer`), CameraX API, and native hardware decoder configurations (`MediaCodec`).
 *   **Persistent & Cache Data Fabric:** 
     *   Jetpack DataStore (Proto-backed structural state isolation).
     *   Atomic shared cache files via isolated multi-process `SharedPreferences` (`vlog_prefs`).
     *   Deterministic `Context.cacheDir` disk-space registry garbage collector.
-*   **Backend Infrastructure:** Supabase PostgREST Client, PostgreSQL Relational Store, and Edge CDN Storage Infrastructure.
+*   **Backend & Cloud Infrastructure:** Supabase PostgREST Client, PostgreSQL Relational Store, and Edge CDN Storage Infrastructure.
+*   **Web Engine:** Vanilla CSS Woblo token system, Hind typography, Google Analytics 4 (`G-BBRQJPLQ9D`), and XML Sitemap indexer (`/sitemap.xml`).
 
 ---
 
 ## 📐 User Navigation & Flow Architecture
 
-The user journey transitions smoothly between full-screen continuous media recording and interactive group dashboard layouts. Below is the structural state-machine path:
+The user journey transitions smoothly between full-screen continuous media recording, interactive group dashboard layouts, and native in-app web overlays:
 
 ```text
 [ Launch App (MainActivity) ] ──> Runs Background Cache GC (0ms Impact)
@@ -35,11 +62,14 @@ The user journey transitions smoothly between full-screen continuous media recor
               │
               ├───► [ Camera Capture View ] ───► Local Persistent File (.mp4)
               │                                           │
-              ▼                                           ▼
-   [ Upload Service Loop ] ◄───────────────── [ Captured Preview Screen ]
+              ├───► [ Profile (...) Menu ]                 ▼
+              │            │                  [ Captured Preview Screen ]
+              │            ├───► [ Feedback ] ───► (In-App Overlay: feedback.html)
+              │            └───► [ Settings ] ───► (In-App Overlay: privacy/tos/csam)
+              │
+              ▼
+   [ Upload Service Loop ] ◄───────────────── (Instant Local JPEG Latch)
 ```
-
-*(Supabase Background Sync)                       (Instant Local JPEG Latch)*
 
 ---
 
@@ -60,5 +90,6 @@ Network uploads run detached from critical UI processing tracks. Database insert
 
 ---
 
-## 🛡️ License
-All rights reserved by Finrein.
+## 🛡️ License & Support
+© 2026 Fin Rein Inc. All rights reserved.  
+Support & Contact: `pratham@palzee.fun` | Feedback: `feedback@palzee.fun`
