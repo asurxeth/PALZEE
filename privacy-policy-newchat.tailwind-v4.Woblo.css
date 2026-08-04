@@ -1,0 +1,136 @@
+/* Design system extracted from Privacy Policy & Terms of Service – Woblo / Tailwind v4 */
+@theme {
+    /* Colors */
+    --color-neutral-50: oklch(0.9693 0.0144 264.5);
+    --color-neutral-100: oklch(0.9395 0.0158 266.3);
+    --color-neutral-200: oklch(0.8996 0.0176 264.5);
+    --color-neutral-300: oklch(0.8293 0.0206 267.3);
+    --color-neutral-400: oklch(0.7401 0.0216 264.4);
+    --color-neutral-500: oklch(0.6293 0.024 265.7);
+    --color-neutral-600: oklch(0.5202 0.0218 265.8);
+    --color-neutral-700: oklch(0.4198 0.0194 266.1);
+    --color-neutral-800: oklch(0.32 0.0175 262.2);
+    --color-neutral-900: oklch(0.2212 0.015 261.6);
+    --color-neutral-950: oklch(0.129 0.015 266.4);
+
+    /* Spacing */
+    --spacing-3: 0.1875rem;
+    --spacing-5: 0.3125rem;
+    --spacing-5.5: 0.3438rem;
+    --spacing-6.5: 0.4063rem;
+    --spacing-8: 0.5rem;
+    --spacing-9.5: 0.5938rem;
+    --spacing-14.5: 0.9063rem;
+    --spacing-20: 1.25rem;
+    --spacing-28: 1.75rem;
+    --spacing-40: 2.5rem;
+
+    /* Typography */
+    --text-13.6px: 0.85rem;
+    --text-14.4px: 0.9rem;
+    --text-16px: 1rem;
+    --text-19.2px: 1.2rem;
+    --text-30.4px: 1.9rem;
+}
+
+:root {
+    --bg-main: #ffffff;
+    --text-heading: #111827;
+    --text-body: #374151;
+    --text-muted: #6b7280;
+    --link-color: #111827;
+    --border-color: #e5e7eb;
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Hind', sans-serif;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-body);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.65;
+    padding: 3rem 1.5rem 4rem 1.5rem;
+    margin: 0;
+}
+
+.legal-container {
+    max-width: 780px;
+    margin: 0 auto;
+}
+
+.page-title {
+    font-size: 1.9rem;
+    font-weight: 700;
+    color: var(--text-heading);
+    letter-spacing: -0.02em;
+    margin-bottom: 2.2rem;
+    line-height: 1.25;
+}
+
+.legal-section {
+    margin-bottom: 1.8rem;
+}
+
+.section-heading {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text-heading);
+    margin-top: 2.2rem;
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.01em;
+}
+
+p {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: var(--text-body);
+}
+
+ul, ol {
+    margin-top: 0;
+    margin-bottom: 1.25rem;
+    padding-left: 1.5rem;
+}
+
+li {
+    margin-bottom: 0.5rem;
+}
+
+a {
+    color: var(--link-color);
+    text-decoration: underline;
+    font-weight: 500;
+}
+
+a:hover {
+    color: #000000;
+}
+
+.company-signature {
+    font-weight: 600;
+    color: var(--text-heading);
+    margin-top: 0.75rem;
+    margin-bottom: 2rem;
+}
+
+.copyright-footer {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.back-nav {
+    margin-bottom: 2rem;
+}
+
+.back-nav a {
+    text-decoration: none;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.back-nav a:hover {
+    color: var(--text-heading);
+}

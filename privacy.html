@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - PALZEE | Fin Rein Inc.</title>
+    <meta name="description" content="Privacy Policy for PALZEE by Fin Rein Inc. (Kanpur & Lucknow). Learn how we handle your media and data with a local-first architecture.">
+    <link rel="stylesheet" href="privacy-policy-newchat.tailwind-v4.Woblo.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hind:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="legal-container">
+        
+        <nav class="back-nav">
+            <a href="index.html">← Back to PALZEE</a>
+        </nav>
+
+        <h1 class="page-title">Privacy Policy | गोपनीयता नीति</h1>
+
+        <div class="legal-section">
+            <h2 class="section-heading">1. Introduction | परिचय</h2>
+            <p>Welcome to <strong>PALZEE</strong>, operated by <strong>Fin Rein Inc.</strong> ("Company", "we", "our", or "us"), established in Kanpur & Lucknow, UP, India. This Privacy Policy explains how we collect, use, and protect your information when you use our mobile application and services.</p>
+            <p>गोपनीयता नीति: PALZEE फिन रेन इंक. (Kanpur & Lucknow) द्वारा संचालित एक सुरक्षित माइक्रो-वीलॉगिंग ऐप है। यह नीति बताती है कि हम आपके डेटा और मीडिया को कैसे सुरक्षित रखते हैं।</p>
+        </div>
+
+        <div class="legal-section">
+            <h2 class="section-heading">2. Collection of Information | एकत्र की जाने वाली जानकारी</h2>
+            <p>We collect only the essential data required to deliver high-speed, local-first micro-vlogging experiences:</p>
+            <ul>
+                <li><strong>Account Credentials:</strong> Email address, username, and authentication data managed securely via Supabase Auth (<code>io.supabase.pals</code>).</li>
+                <li><strong>Media Content:</strong> Daily vlogs, photos, keyframe snapshots (JPEG), and video clips (.mp4) captured using CameraX & ExoPlayer.</li>
+                <li><strong>Device Permissions:</strong> Camera, Microphone (Audio), Media Storage, Push Notifications (POST_NOTIFICATIONS), and Background Data Sync.</li>
+                <li><strong>Technical Diagnostics:</strong> Device model, operating system version, and Firebase Cloud Messaging (FCM) tokens for instant notifications.</li>
+            </ul>
+        </div>
+
+        <div class="legal-section">
+            <h2 class="section-heading">3. Local-First Caching & Media Retention | मीडिया आर्किटेक्चर एवं कैशिंग</h2>
+            <p>PALZEE utilizes a zero-latency local-first media processing pipeline:</p>
+            <ul>
+                <li><strong>State-Latch Keyframes:</strong> A high-speed worker generates a static JPEG keyframe using <code>MediaMetadataRetriever</code> at <code>timeUs = 0</code> to render instant previews.</li>
+                <li><strong>Algorithmic Garbage Collector (GC):</strong> Temporary files and preview caches in <code>Context.cacheDir</code> are automatically cleaned up on app launch and shutdown, keeping device storage overhead minimal.</li>
+            </ul>
+        </div>
+
+        <div class="legal-section">
+            <h2 class="section-heading">4. Data Sharing & Security | डेटा साझाकरण एवं सुरक्षा</h2>
+            <p>Your media content is shared strictly with your designated circle of friends ("My Pals"). We do not sell or rent personal information or media files to any third party. Data in transit and at rest is protected using industry-standard encryption on Supabase PostgreSQL and Edge CDN infrastructure.</p>
+        </div>
+
+        <div class="legal-section">
+            <h2 class="section-heading">5. Child Safety & CSAM Zero Tolerance | बाल सुरक्षा नीति</h2>
+            <p>PALZEE enforces a strict zero-tolerance policy against Child Sexual Abuse Material (CSAM) and Child Sexual Exploitation and Abuse (CSAE). For detailed safety procedures and legal reporting guidelines, please refer to our <a href="csam.html">Child Safety Standards Policy</a>.</p>
+        </div>
+
+        <div class="legal-section">
+            <h2 class="section-heading">6. User Rights & Data Deletion | आपके अधिकार</h2>
+            <p>You reserve the right to access, update, or permanently delete your account and associated media at any time through the application settings or by contacting our privacy team.</p>
+        </div>
+
+        <div class="legal-section">
+            <h2 class="section-heading">7. Governing Law and Jurisdiction | शासी कानून</h2>
+            <p>This Privacy Policy shall be governed by and construed in accordance with the laws of India. Any disputes arising hereunder shall be subject to the exclusive jurisdiction of the competent courts in Kanpur & Lucknow, Uttar Pradesh, India.</p>
+        </div>
+
+        <div class="legal-section">
+            <h2 class="section-heading">8. Contact Information</h2>
+            <p>Please send any inquiries regarding the Privacy Policy to the contact information below.</p>
+            <p>Email: <a href="mailto:mypalsapp1@gmail.com">mypalsapp1@gmail.com</a></p>
+            <p class="company-signature">Fin Rein Inc.</p>
+        </div>
+
+        <div class="copyright-footer">
+            © 2026 Fin Rein Inc.
+        </div>
+
+    </div>
+
+</body>
+</html>

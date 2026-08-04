@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.gradle/
+.gradle_home/
+.idea/
+.vscode/
+.venv/
+Palls.jks
+app/
+build/
+local.properties
+supabase/
