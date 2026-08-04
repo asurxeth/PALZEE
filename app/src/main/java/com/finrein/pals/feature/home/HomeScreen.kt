@@ -11392,6 +11392,7 @@ fun VlogScreenContent(
     var inMembersSubMenu by remember { mutableStateOf(false) }
     var capsuleLeftDp by remember { mutableStateOf(0.dp) }
     var inSettingsSubMenu by remember { mutableStateOf(false) }
+    var activeInAppWebUrl by remember { mutableStateOf<String?>(null) }
     var showArchiveView by remember { mutableStateOf(false) }
     var currentMonth by remember { mutableStateOf(java.time.YearMonth.now()) }
     var showTripleDotMenu by remember { mutableStateOf(false) }
@@ -12587,13 +12588,7 @@ fun VlogScreenContent(
                                     .clickable {
                                         onShowDropdownChange(false)
                                         inSettingsSubMenu = false
-                                        try {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://palzee.fun/privacy.html"))
-                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                        }
+                                        activeInAppWebUrl = "https://palzee.fun/privacy.html"
                                     }
                                     .padding(horizontal = 16.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -12613,13 +12608,7 @@ fun VlogScreenContent(
                                     .clickable {
                                         onShowDropdownChange(false)
                                         inSettingsSubMenu = false
-                                        try {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://palzee.fun/tos.html"))
-                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                        }
+                                        activeInAppWebUrl = "https://palzee.fun/tos.html"
                                     }
                                     .padding(horizontal = 16.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -12639,13 +12628,7 @@ fun VlogScreenContent(
                                     .clickable {
                                         onShowDropdownChange(false)
                                         inSettingsSubMenu = false
-                                        try {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://palzee.fun/csampolicy.html"))
-                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                        }
+                                        activeInAppWebUrl = "https://palzee.fun/csampolicy.html"
                                     }
                                     .padding(horizontal = 16.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -12665,13 +12648,7 @@ fun VlogScreenContent(
                                     .clickable {
                                         onShowDropdownChange(false)
                                         inSettingsSubMenu = false
-                                        try {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://palzee.fun/csampolicy.html#feedback"))
-                                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            context.startActivity(intent)
-                                        } catch (e: Exception) {
-                                            e.printStackTrace()
-                                        }
+                                        activeInAppWebUrl = "https://palzee.fun/csampolicy.html#feedback"
                                     }
                                     .padding(horizontal = 16.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
