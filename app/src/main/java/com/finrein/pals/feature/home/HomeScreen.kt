@@ -20386,7 +20386,7 @@ fun HomeScreenOverlays(
         onShowEditNameDialogChange = onShowEditNameDialogChange,
         onSignOut = { VlogPlayerManager.clearAll(); onSignOut() },
         onDeleteAccount = { VlogPlayerManager.clearAll(); onDeleteAccount() },
-        onOpenInAppUrl = { url -> activeInAppWebUrl = url },
+        onOpenInAppUrl = { url -> onActiveInAppWebUrlChange(url) },
         onTripleDotMenuBoundsChange = onTripleDotMenuBoundsChange
     )
 
@@ -20472,7 +20472,7 @@ fun HomeScreenOverlays(
         InAppWebOverlay(
             url = url,
             isDark = isDark,
-            onClose = { activeInAppWebUrl = null }
+            onClose = { onActiveInAppWebUrlChange(null) }
         )
     }
 }
