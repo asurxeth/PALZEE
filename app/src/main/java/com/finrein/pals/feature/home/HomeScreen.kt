@@ -12648,7 +12648,7 @@ fun VlogScreenContent(
                                     .clickable {
                                         onShowDropdownChange(false)
                                         inSettingsSubMenu = false
-                                        activeInAppWebUrl = "https://palzee.fun/csampolicy.html#feedback"
+                                        activeInAppWebUrl = "https://palzee.fun/feedback.html"
                                     }
                                     .padding(horizontal = 16.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
