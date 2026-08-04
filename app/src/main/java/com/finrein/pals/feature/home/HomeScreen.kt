@@ -3696,6 +3696,7 @@ fun HomeScreen(
     )
 
     var tripleDotScreen by remember { mutableStateOf(TripleDotScreen.MAIN) }
+    var activeInAppWebUrl by remember { mutableStateOf<String?>(null) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     var notificationInterval by remember { mutableStateOf(sessionManager.getNotificationInterval()) }
     var userPin by remember { mutableStateOf("4A2D8B") }
