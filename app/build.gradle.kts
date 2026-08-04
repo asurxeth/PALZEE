@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
     kotlin("plugin.serialization") version "2.0.0"
 
 }
@@ -197,9 +198,11 @@ dependencies {
     // Tooling dependencies for development
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-    // Firebase Cloud Messaging dependencies
+    // Firebase dependencies
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging.ktx)
+    implementation(libs.firebase.analytics.ktx)
+    implementation(libs.firebase.crashlytics.ktx)
 }
 
 
