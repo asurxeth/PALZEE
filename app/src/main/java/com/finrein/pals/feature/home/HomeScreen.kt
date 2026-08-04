@@ -6037,6 +6037,8 @@ fun HomeScreen(
         // ----------------------------------------------------
         if (initialSyncCompleted) {
             HomeScreenOverlays(
+                activeInAppWebUrl = activeInAppWebUrl,
+                onActiveInAppWebUrlChange = { activeInAppWebUrl = it },
                 showPlusMenu = showPlusMenu,
                 onShowPlusMenuChange = { showPlusMenu = it },
                 showTripleDotMenu = showTripleDotMenu,
@@ -20243,6 +20245,8 @@ fun VideoVlogBoxItem(
 
 @Composable
 fun HomeScreenOverlays(
+    activeInAppWebUrl: String?,
+    onActiveInAppWebUrlChange: (String?) -> Unit,
     showPlusMenu: Boolean,
     onShowPlusMenuChange: (Boolean) -> Unit,
     showTripleDotMenu: Boolean,
