@@ -18788,6 +18788,7 @@ fun TripleDotMenuOverlay(
     onShowEditNameDialogChange: (Boolean) -> Unit,
     onSignOut: () -> Unit,
     onDeleteAccount: () -> Unit = {},
+    onOpenInAppUrl: (String) -> Unit = {},
     onTripleDotMenuBoundsChange: (Rect) -> Unit
 ) {
     val context = LocalContext.current
@@ -18901,11 +18902,12 @@ fun TripleDotMenuOverlay(
                                 Triple("pal notifications", if (notificationInterval.isEmpty()) "off" else notificationInterval) {
                                     onTripleDotScreenChange(TripleDotScreen.PAL_NOTIFICATIONS)
                                 },
-                                Triple("settings", "log out, terms of service, delete account") {
+                                Triple("settings", "privacy policy, terms of service, csam policy, log out, delete account") {
                                     onTripleDotScreenChange(TripleDotScreen.SETTINGS)
                                 },
                                 Triple("feedback", "report bugs or request features") {
                                     onShowTripleDotMenuChange(false)
+                                    onOpenInAppUrl("https://palzee.fun/feedback.html")
                                 }
                             )
 
@@ -19252,12 +19254,25 @@ fun TripleDotMenuOverlay(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             val settingsOptions = listOf(
-                                "log out" to {
+                                "privacy policy" to {
                                     onShowTripleDotMenuChange(false)
-                                    onSignOut()
+                                    onOpenInAppUrl("https://palzee.fun/privacy.html")
                                 },
                                 "terms of service" to {
                                     onShowTripleDotMenuChange(false)
+                                    onOpenInAppUrl("https://palzee.fun/tos.html")
+                                },
+                                "csam policy" to {
+                                    onShowTripleDotMenuChange(false)
+                                    onOpenInAppUrl("https://palzee.fun/csampolicy.html")
+                                },
+                                "feedback" to {
+                                    onShowTripleDotMenuChange(false)
+                                    onOpenInAppUrl("https://palzee.fun/feedback.html")
+                                },
+                                "log out" to {
+                                    onShowTripleDotMenuChange(false)
+                                    onSignOut()
                                 },
                                 "delete account" to {
                                     onShowTripleDotMenuChange(false)
@@ -20367,6 +20382,7 @@ fun HomeScreenOverlays(
         onShowEditNameDialogChange = onShowEditNameDialogChange,
         onSignOut = { VlogPlayerManager.clearAll(); onSignOut() },
         onDeleteAccount = { VlogPlayerManager.clearAll(); onDeleteAccount() },
+        onOpenInAppUrl = { url -> activeInAppWebUrl = url },
         onTripleDotMenuBoundsChange = onTripleDotMenuBoundsChange
     )
 
