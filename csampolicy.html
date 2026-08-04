@@ -83,7 +83,7 @@
                 <form id="feedbackForm" onsubmit="handleFeedbackSubmit(event)">
                     <div class="form-group">
                         <label class="form-label" for="feedback-recipient">Recipient Email / प्राप्तकर्ता ईमेल</label>
-                        <input type="text" id="feedback-recipient" class="form-input" value="pratham@palzee.fun" readonly>
+                        <input type="text" id="feedback-recipient" class="form-input" value="feedback@palzee.fun" readonly>
                     </div>
 
                     <div class="form-group">
@@ -124,7 +124,7 @@
                     "Feedback / Message:\n" + message
                 );
 
-                const mailtoUrl = "mailto:pratham@palzee.fun?subject=" + subject + "&body=" + body;
+                const mailtoUrl = "mailto:feedback@palzee.fun?subject=" + subject + "&body=" + body;
                 
                 setTimeout(function() {
                     window.location.href = mailtoUrl;
