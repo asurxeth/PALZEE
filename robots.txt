@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://palzee.fun/sitemap.xml
