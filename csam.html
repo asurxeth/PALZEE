@@ -76,67 +76,11 @@
         </div>
 
         
-        <!-- Section 7: Feedback & Suggestions Form -->
-        <div class="legal-section" id="feedback">
-            <h2 class="section-heading">7. Feedback & Suggestions | प्रतिक्रिया एवं सुझाव</h2>
-            <p>We value your thoughts and suggestions! Please use the form below to submit your feedback directly to our team.</p>
-            
-            <div class="feedback-card">
-                <form id="feedbackForm" onsubmit="handleFeedbackSubmit(event)">
-                    <div class="form-group">
-                        <label class="form-label" for="feedback-recipient">Recipient Email / प्राप्तकर्ता ईमेल</label>
-                        <input type="text" id="feedback-recipient" class="form-input" value="feedback@palzee.fun" readonly>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="feedback-name">Your Name / आपका नाम</label>
-                        <input type="text" id="feedback-name" name="name" class="form-input" placeholder="Enter your full name" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="feedback-email">Your Email / आपका ईमेल</label>
-                        <input type="email" id="feedback-email" name="email" class="form-input" placeholder="name@example.com" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="feedback-message">Feedback / प्रतिक्रिया</label>
-                        <textarea id="feedback-message" name="message" class="form-textarea" rows="4" placeholder="Write your feedback, suggestions, or bug reports here..." required></textarea>
-                    </div>
-
-                    <button type="submit" class="feedback-submit-btn">Send Feedback | प्रतिक्रिया भेजें</button>
-                    <div id="feedbackAlert" class="feedback-alert">Thank you! Opening your email client to send feedback...</div>
-                </form>
-            </div>
-        </div>
-
-        <script>
-            function handleFeedbackSubmit(event) {
-                event.preventDefault();
-                const name = document.getElementById("feedback-name").value;
-                const userEmail = document.getElementById("feedback-email").value;
-                const message = document.getElementById("feedback-message").value;
-
-                const alertBox = document.getElementById("feedbackAlert");
-                alertBox.style.display = "block";
-
-                const subject = encodeURIComponent("Palzee App Feedback from " + name);
-                const body = encodeURIComponent(
-                    "Name: " + name + "\n" +
-                    "User Email: " + userEmail + "\n\n" +
-                    "Feedback / Message:\n" + message
-                );
-
-                const mailtoUrl = "mailto:feedback@palzee.fun?subject=" + subject + "&body=" + body;
-                
-                setTimeout(function() {
-                    window.location.href = mailtoUrl;
-                }, 500);
-            }
-        </script>
+        
 
 
         <div class="copyright-footer">
-            © 2026 Fin Rein Inc. · <a href="privacy.html">Privacy Policy</a> · <a href="tos.html">Terms of Service</a> · <a href="csampolicy.html">CSAM Policy</a> · <a href="csampolicy.html#feedback">Feedback</a>
+            © 2026 Fin Rein Inc. · <a href="privacy.html">Privacy Policy</a> · <a href="tos.html">Terms of Service</a> · <a href="csampolicy.html">CSAM Policy</a> · <a href="feedback.html">Feedback</a>
         </div>
 
     </div>
