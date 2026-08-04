@@ -12780,7 +12780,15 @@ fun VlogScreenContent(
             }
         }
         
-        // --- Edit Pal Overlay (Image 5 Style) ---
+        // --- In-App Web View Overlay ---
+        activeInAppWebUrl?.let { url ->
+            InAppWebOverlay(
+                url = url,
+                isDark = isDark,
+                onClose = { activeInAppWebUrl = null }
+            )
+        }
+        
         // --- Edit Pal Overlay (Image 5 Style) ---
         EditPalOverlay(
             showEdit = showEdit,
@@ -20960,6 +20968,117 @@ fun EditPalOverlay(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun InAppWebOverlay(
+    url: String,
+    isDark: Boolean,
+    onClose: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val bgColor = if (isDark) Color(0xFF161616) else Color.White
+    val textColor = if (isDark) Color.White else Color(0xFF111827)
+
+    val titleText = when {
+        url.contains("privacy") -> "privacy policy"
+        url.contains("tos") -> "terms of service"
+        url.contains("feedback") -> "feedback"
+        url.contains("csam") -> "csam policy"
+        else -> "palzee"
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(bgColor)
+            .statusBarsPadding()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Top Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .background(bgColor)
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF2C2C2E) else Color(0xFFF3F4F6))
+                        .clickable { onClose() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = textColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = titleText,
+                    fontFamily = FontFamily.SansSerif,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+            }
+
+            // Bottom Border Line
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(if (isDark) Color(0xFF2A2A2A) else Color(0xFFE5E7EB))
+            )
+
+            // In-App WebView
+            androidx.compose.ui.viewinterop.AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    android.webkit.WebView(ctx).apply {
+                        layoutParams = android.view.ViewGroup.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+
+                        webViewClient = object : android.webkit.WebViewClient() {
+                            override fun shouldOverrideUrlLoading(
+                                view: android.webkit.WebView?,
+                                request: android.webkit.WebResourceRequest?
+                            ): Boolean {
+                                val reqUrl = request?.url?.toString() ?: ""
+                                if (reqUrl.startsWith("mailto:")) {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse(reqUrl))
+                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        ctx.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                    return true
+                                }
+                                return false
+                            }
+                        }
+                        loadUrl(url)
+                    }
+                },
+                update = { webView ->
+                    webView.loadUrl(url)
+                }
+            )
         }
     }
 }
