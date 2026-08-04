@@ -1,7 +1,10 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { GoogleAuth } from "npm:google-auth-library"
 
-serve(async (req) => {
+declare const Deno: any;
+
+serve(async (req: Request) => {
   try {
     const projectId = Deno.env.get("FIREBASE_PROJECT_ID")
     const clientEmail = Deno.env.get("FIREBASE_CLIENT_EMAIL")
@@ -94,7 +97,7 @@ serve(async (req) => {
       headers: { "Content-Type": "application/json" }
     })
   } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error as any).message }), {
       status: 500,
       headers: { "Content-Type": "application/json" }
     })
