@@ -1,86 +1,40 @@
 package com.finrein.pals.push
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.content.Context
-import android.content.Intent
-import android.graphics.BitmapFactory
-import android.os.Build
-import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import com.finrein.pals.MainActivity
-import com.finrein.pals.R
-import java.util.Locale
 
 class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
 
-        val title = remoteMessage.notification?.title ?: remoteMessage.data["title"] ?: "Palzee"
-        val body = remoteMessage.notification?.body ?: remoteMessage.data["body"] ?: "Time to capture your pal"
+        val type = remoteMessage.data["type"] ?: remoteMessage.data["notification_type"] ?: ""
+        val groupName = remoteMessage.data["group_name"] ?: remoteMessage.data["pals_group_name"] ?: ""
+        val userName = remoteMessage.data["user_name"] ?: remoteMessage.data["person_name"] ?: remoteMessage.data["sender_name"] ?: ""
 
-        showNotification(applicationContext, title, body)
-    }
+        val rawTitle = remoteMessage.notification?.title ?: remoteMessage.data["title"] ?: ""
+        val rawBody = remoteMessage.notification?.body ?: remoteMessage.data["body"] ?: ""
 
-    private fun showNotification(context: Context, title: String, body: String) {
-        val channelId = "palzee_hourly_reminders"
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Hourly Pal Reminders",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Reminders to capture your pal"
+        when {
+            type == "group_join" || rawBody.contains("joined", ignoreCase = true) -> {
+                // Image 1 format: Title = <pals_group_name>, Body = <user_name> joined <pals_group_name>
+                val gName = groupName.ifBlank { rawTitle.ifBlank { "Pals" } }
+                val uName = userName.ifBlank { rawBody.substringBefore("joined").trim() }
+                PalNotificationManager.showGroupJoinNotification(applicationContext, uName, gName)
             }
-            notificationManager.createNotificationChannel(channel)
+            type == "new_pal" || type == "vlog_post" || rawBody.contains("new pal", ignoreCase = true) || rawBody.contains("new log", ignoreCase = true) -> {
+                // Image 2 format: Title = <person_name>, Body = "new pal"
+                val pName = userName.ifBlank { rawTitle.ifBlank { "Someone" } }
+                val gName = groupName.ifBlank { "Pals" }
+                PalNotificationManager.showNewPalNotification(applicationContext, pName, gName)
+            }
+            else -> {
+                // Fallback for general notifications
+                val title = rawTitle.ifBlank { "Palzee" }
+                val body = rawBody.ifBlank { "Time to capture your pal" }
+                val gName = groupName.ifBlank { "Pals" }
+                PalNotificationManager.showNotification(applicationContext, title, body, gName)
+            }
         }
-
-        val openAppIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val largeIconBitmap = try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.pal_circular_logo)
-                ?: BitmapFactory.decodeResource(context.resources, R.drawable.ic_notification)
-        } catch (e: Exception) {
-            null
-        }
-
-        val publicNotificationBuilder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Palzee")
-            .setContentText("Notification")
-            .setAutoCancel(true)
-
-        if (largeIconBitmap != null) {
-            publicNotificationBuilder.setLargeIcon(largeIconBitmap)
-        }
-
-        val notificationBuilder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPublicVersion(publicNotificationBuilder.build())
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-
-        if (largeIconBitmap != null) {
-            notificationBuilder.setLargeIcon(largeIconBitmap)
-        }
-
-        notificationManager.notify(1002, notificationBuilder.build())
     }
 }
