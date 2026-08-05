@@ -1,4 +1,10 @@
 User-agent: *
 Allow: /
 
+User-agent: Googlebot-Favicon
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
 Sitemap: https://palzee.fun/sitemap.xml
