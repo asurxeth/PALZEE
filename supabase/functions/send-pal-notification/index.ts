@@ -72,8 +72,8 @@ serve(async (req: Request) => {
         },
         android: {
           notification: {
-            icon: "ic_notification",
-            color: "#A882D0"
+            icon: "ic_status_bar_silhouette",
+            color: "#111827"
           }
         }
       }
