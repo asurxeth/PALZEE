@@ -86,7 +86,13 @@ class AuthViewModel @Inject constructor(
                 }
                 _uiState.value = AuthUiState.Success("Verification code dispatched to $trimmedEmail")
             } catch (e: Exception) {
-                _uiState.value = AuthUiState.Error(e.localizedMessage ?: "Failed to transmit OTP")
+                android.util.Log.e("AuthOTP", "Failed to send OTP to $emailAddress: ${e.message}", e)
+                val errorMessage = when {
+                    e.message?.contains("rate limit", ignoreCase = true) == true -> "Email rate limit exceeded. Please wait a few minutes before trying again."
+                    e.message?.contains("disabled", ignoreCase = true) == true -> "Email sign-in is disabled in your Supabase project configuration."
+                    else -> e.localizedMessage ?: "Failed to transmit OTP"
+                }
+                _uiState.value = AuthUiState.Error(errorMessage)
             }
         }
     }

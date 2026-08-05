@@ -206,6 +206,7 @@ class AuthRepositoryImpl @Inject constructor(
             }
             supabaseClient.auth.signInWith(io.github.jan.supabase.gotrue.providers.builtin.OTP) {
                 this.email = email
+                this.createUser = true
             }
         }
     }
