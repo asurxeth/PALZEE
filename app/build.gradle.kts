@@ -34,12 +34,21 @@ android {
     namespace = "com.finrein.pals"
     compileSdk = 36
 
+    val keystoreProperties = Properties().apply {
+        val kFile = project.rootProject.file("keystore.properties")
+        if (kFile.exists()) {
+            kFile.inputStream().use { load(it) }
+        }
+    }
+    val storePass = keystoreProperties.getProperty("storePassword") ?: System.getenv("KEYSTORE_STORE_PASSWORD") ?: "11223344"
+    val keyPass = keystoreProperties.getProperty("keyPassword") ?: System.getenv("KEYSTORE_KEY_PASSWORD") ?: "11223344"
+
     signingConfigs {
         create("release") {
             storeFile = project.rootProject.file("Palls.jks")
-            storePassword = "11223344"
+            storePassword = storePass
             keyAlias = "pals-release"
-            keyPassword = "11223344"
+            keyPassword = keyPass
             enableV3Signing = true
             enableV4Signing = true
         }

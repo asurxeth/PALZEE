@@ -33,3 +33,10 @@
 -dontwarn androidx.credentials.**
 -dontwarn com.google.android.libraries.identity.googleid.**
 
+# --- Strip debug logs in release builds ---
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+}
+
+
