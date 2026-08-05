@@ -2,10 +2,28 @@ package com.finrein.pals.core.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
 class Settings() {
     private val prefs: SharedPreferences by lazy {
-        SharedContextRegistry.context.getSharedPreferences("pal_prefs", Context.MODE_PRIVATE)
+        val context = SharedContextRegistry.context
+        try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+
+            EncryptedSharedPreferences.create(
+                context,
+                "pal_secure_prefs",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            // Fallback to standard private preferences if crypto initialization fails on obscure hardware
+            context.getSharedPreferences("pal_prefs_secure_fallback", Context.MODE_PRIVATE)
+        }
     }
 
     fun putString(key: String, value: String) {

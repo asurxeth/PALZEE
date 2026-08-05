@@ -177,28 +177,23 @@ class AuthRepositoryImpl @Inject constructor(
             }
             
             // Execute real handshake to establish active session
-            try {
-                supabaseClient.auth.signInWith(IDToken) {
-                    this.idToken = idToken
-                    this.provider = when (provider.lowercase()) {
-                        "google" -> Google
-                        "apple" -> Apple
-                        else -> throw IllegalArgumentException("Unsupported provider: $provider")
-                    }
-                    this.nonce = nonce
+            supabaseClient.auth.signInWith(IDToken) {
+                this.idToken = idToken
+                this.provider = when (provider.lowercase()) {
+                    "google" -> Google
+                    "apple" -> Apple
+                    else -> throw IllegalArgumentException("Unsupported provider: $provider")
                 }
-            } catch (e: Exception) {
-                // If network/config fails, fall back to mock session for onboarding UI validation
-                e.printStackTrace()
+                this.nonce = nonce
             }
             
             val session = supabaseClient.auth.currentSessionOrNull()
-            val freshUser = session?.user
+            val freshUser = session?.user ?: throw IllegalStateException("Supabase authentication session failed")
             
             User(
-                id = freshUser?.id ?: "${provider}_user_12345",
-                email = freshUser?.email ?: "user@domain.com",
-                displayName = freshUser?.userMetadata?.get("full_name")?.toString() ?: "$provider User",
+                id = freshUser.id,
+                email = freshUser.email ?: "",
+                displayName = freshUser.userMetadata?.get("full_name")?.toString() ?: "$provider User",
                 isPasskeyRegistered = false
             )
         }
@@ -206,25 +201,32 @@ class AuthRepositoryImpl @Inject constructor(
 
     override suspend fun sendEmailOtp(email: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            delay(1000)
             if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
                 throw IllegalArgumentException("Invalid email format")
             }
-            // Mock server request
-            Unit
+            supabaseClient.auth.sendOtpTo(OtpType.Email.MAGIC_LINK, email)
         }
     }
 
     override suspend fun verifyEmailOtp(email: String, token: String): Result<User> = withContext(Dispatchers.IO) {
         runCatching {
-            delay(1500)
-            if (token != "123456" && token.length != 6) {
-                throw IllegalArgumentException("Invalid OTP token. Try '123456'")
+            if (token.length != 6) {
+                throw IllegalArgumentException("Invalid OTP token length")
             }
-            User(
-                id = "email_user_67890",
+            
+            supabaseClient.auth.verifyEmailOtp(
+                type = OtpType.Email.MAGIC_LINK,
                 email = email,
-                displayName = email.substringBefore("@"),
+                token = token
+            )
+            
+            val session = supabaseClient.auth.currentSessionOrNull()
+            val freshUser = session?.user ?: throw IllegalStateException("OTP session verification failed")
+            
+            User(
+                id = freshUser.id,
+                email = freshUser.email ?: email,
+                displayName = freshUser.userMetadata?.get("full_name")?.toString() ?: email.substringBefore("@"),
                 isPasskeyRegistered = false
             )
         }

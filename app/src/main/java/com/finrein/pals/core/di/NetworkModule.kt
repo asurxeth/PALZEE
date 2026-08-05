@@ -1,5 +1,6 @@
 package com.finrein.pals.core.di
 
+import com.finrein.pals.BuildConfig
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -36,7 +37,7 @@ object NetworkModule {
                 })
             }
             install(Logging) {
-                level = LogLevel.INFO
+                level = if (BuildConfig.DEBUG) LogLevel.INFO else LogLevel.NONE
             }
             install(WebSockets)
         }
