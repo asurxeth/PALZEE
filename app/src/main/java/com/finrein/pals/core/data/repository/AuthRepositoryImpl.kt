@@ -204,7 +204,9 @@ class AuthRepositoryImpl @Inject constructor(
             if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
                 throw IllegalArgumentException("Invalid email format")
             }
-            supabaseClient.auth.sendOtpTo(OtpType.Email.MAGIC_LINK, email)
+            supabaseClient.auth.signInWith(io.github.jan.supabase.gotrue.providers.builtin.OTP) {
+                this.email = email
+            }
         }
     }
 
