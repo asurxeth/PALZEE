@@ -4919,7 +4919,11 @@ fun HomeScreen(
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
                     val vlogPal = PalDbItem(code = "vlog", name = "vlog")
-                    supabaseClient.postgrest.from("pals").upsert(vlogPal, onConflict = "pal_code")
+                    try {
+                        supabaseClient.postgrest.from("pals").insert(vlogPal)
+                    } catch (e: Exception) {
+                        // Ignore if already exists in database
+                    }
                 } catch (e: Exception) {
                     // Ignore if already exists or RLS blocks
                 }
@@ -5154,12 +5158,12 @@ fun HomeScreen(
                             createdAt = java.time.Instant.now().toString()
                         )
                         try {
-                            // Recreate group if deleted or missing using upsert (no pre-check select)
+                            // Recreate group if deleted or missing using plain insert
                             try {
                                 supabaseClient.postgrest.from("pals")
-                                    .upsert(PalDbItem(code = cleanCode, name = pal.name), onConflict = "pal_code")
+                                    .insert(PalDbItem(code = cleanCode, name = pal.name))
                             } catch (e: Exception) {
-                                // Ignore conflict to preserve original group name
+                                // Ignore conflict if group already exists
                             }
 
                             supabaseClient.postgrest.from("submissions").insert(newSubmission)
