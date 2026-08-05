@@ -14,7 +14,7 @@
     </script>
 
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>PALZEE — Share Real-Time Moments With Friends</title>
     <meta name="description" content="PALZEE by Fin Rein Inc. (Kanpur & Lucknow). Share real-time moments with friends through video pals.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -30,106 +30,226 @@
         }
 
         html, body {
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        body {
+            min-height: 100%;
+            width: 100%;
             background-color: #ffffff;
             color: #121316;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 1rem 0.5rem 1rem;
         }
 
-        .container {
-            flex: 1;
-            width: 100%;
-            max-width: 900px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            margin: auto;
-            min-height: 0;
+        /* Desktop View (min-width: 769px): Centered single-viewport desktop layout */
+        @media (min-width: 769px) {
+            html, body {
+                height: 100vh;
+                overflow: hidden;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                align-items: center;
+                padding: 1rem 1rem 0.5rem 1rem;
+            }
+
+            .container {
+                flex: 1;
+                width: 100%;
+                max-width: 900px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                margin: auto;
+                min-height: 0;
+            }
+
+            #textContainer {
+                flex: 1;
+                width: 100%;
+                max-width: 330px;
+                max-height: calc(100vh - 150px);
+                margin: 0 auto 0.5rem auto;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 0;
+            }
+
+            #textContainer img {
+                max-height: 100%;
+                max-width: 100%;
+                width: auto;
+                height: auto;
+                display: block;
+                object-fit: contain;
+                user-select: none;
+                -webkit-user-drag: none;
+            }
+
+            #storeContainer {
+                display: flex;
+                gap: 12px;
+                justify-content: center;
+                align-items: center;
+                flex-wrap: nowrap;
+                margin-top: 0.25rem;
+                margin-bottom: 0.5rem;
+                flex-shrink: 0;
+            }
+
+            .qr-badge {
+                background: #ffffff;
+                padding: 5px;
+                border-radius: 10px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 74px;
+                width: 74px;
+                flex-shrink: 0;
+            }
+
+            .qr-badge svg {
+                width: 64px;
+                height: 64px;
+            }
+
+            .store-badges-col {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                justify-content: center;
+            }
+
+            .store-badge {
+                display: inline-block;
+                height: 34px;
+                text-decoration: none;
+            }
+
+            .store-badge img {
+                height: 34px;
+                width: 116px;
+                object-fit: cover;
+                display: block;
+                border-radius: 6px;
+            }
+
+            footer {
+                width: 100%;
+                padding: 0.4rem 1.5rem 0.4rem 1.5rem;
+                text-align: left;
+                font-size: 0.76rem;
+                color: #888888;
+                line-height: 1.5;
+                flex-shrink: 0;
+            }
         }
 
-        /* Hero Image Container constrained to fit inside 100vh without scrolling */
-        #textContainer {
-            flex: 1;
-            width: 100%;
-            max-width: 330px;
-            max-height: calc(100vh - 150px);
-            margin: 0 auto 0.5rem auto;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 0;
-        }
+        /* Mobile View (max-width: 768px): Single continuous scrollable landing page */
+        @media (max-width: 768px) {
+            html, body {
+                height: auto !important;
+                min-height: 100vh;
+                overflow-y: auto !important;
+                overflow-x: hidden;
+                -webkit-overflow-scrolling: touch;
+            }
 
-        #textContainer img {
-            max-height: 100%;
-            max-width: 100%;
-            width: auto;
-            height: auto;
-            display: block;
-            object-fit: contain;
-            user-select: none;
-            -webkit-user-drag: none;
-        }
+            body {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-start;
+                padding: 1.5rem 1rem calc(2.5rem + env(safe-area-inset-bottom, 0px)) 1rem;
+            }
 
-        /* Store Download Badges matching setlog.kr exactly */
-        #storeContainer {
-            display: flex;
-            gap: 12px;
-            justify-content: center;
-            align-items: center;
-            flex-wrap: nowrap;
-            margin-top: 0.25rem;
-            margin-bottom: 0.5rem;
-            flex-shrink: 0;
-        }
+            .container {
+                width: 100%;
+                max-width: 360px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                margin: 0 auto;
+            }
 
-        .qr-badge {
-            background: #ffffff;
-            padding: 5px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-            border: 1px solid rgba(0, 0, 0, 0.08);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 74px;
-            width: 74px;
-            flex-shrink: 0;
-        }
+            #textContainer {
+                width: 100%;
+                max-width: 320px;
+                margin: 0.5rem auto 1.5rem auto;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
 
-        .qr-badge svg {
-            width: 64px;
-            height: 64px;
-        }
+            #textContainer img {
+                width: 100%;
+                height: auto;
+                max-width: 100%;
+                display: block;
+                object-fit: contain;
+            }
 
-        .store-badges-col {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            justify-content: center;
+            /* HIDE QR CODE ON MOBILE */
+            .qr-badge {
+                display: none !important;
+            }
+
+            #storeContainer {
+                width: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin-bottom: 2.2rem;
+            }
+
+            .store-badges-col {
+                display: flex;
+                flex-direction: row;
+                gap: 12px;
+                justify-content: center;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+
+            .store-badge {
+                height: 42px;
+            }
+
+            .store-badge img {
+                height: 42px;
+                width: auto;
+                min-width: 135px;
+                object-fit: contain;
+                border-radius: 8px;
+            }
+
+            footer {
+                width: 100%;
+                max-width: 360px;
+                margin: 0 auto;
+                padding: 1.25rem 0.5rem calc(1.5rem + env(safe-area-inset-bottom, 0px)) 0.5rem;
+                text-align: center;
+                font-size: 0.78rem;
+                color: #888888;
+                line-height: 1.6;
+                border-top: 1px solid rgba(0, 0, 0, 0.08);
+            }
+
+            .footer-line-1 {
+                margin-bottom: 6px;
+            }
         }
 
         .store-badge {
             display: inline-block;
-            height: 34px;
             text-decoration: none;
         }
 
         .store-badge img {
-            height: 34px;
-            width: 116px;
-            object-fit: cover;
             display: block;
-            border-radius: 6px;
             transition: transform 0.15s ease;
         }
 
@@ -137,24 +257,9 @@
             transform: translateY(-1px);
         }
 
-        /* Bottom-Left Footer matching setlog.kr exactly */
-        footer {
-            width: 100%;
-            padding: 0.4rem 1.5rem 0.4rem 1.5rem;
-            text-align: left;
-            font-size: 0.76rem;
-            color: #888888;
-            line-height: 1.5;
-            flex-shrink: 0;
-        }
-
         .footer-line-1 {
             font-weight: 600;
             color: #666666;
-        }
-
-        .footer-line-2 {
-            margin-top: 2px;
         }
 
         footer a {
@@ -179,7 +284,7 @@
                  alt="PALZEE — Share real-time moments with friends through video pals">
         </div>
 
-        <!-- Store Download Badges -->
+        <!-- Store Download Badges (QR hidden on mobile) -->
         <div id="storeContainer">
             <div class="qr-badge" title="Scan to download PALZEE">
                 <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -220,14 +325,14 @@
                     <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store">
                 </a>
                 <a href="https://play.google.com" class="store-badge" target="_blank" rel="noopener">
-                    <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="height: 34px; width: 116px; object-fit: cover; object-position: center;">
+                    <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play">
                 </a>
             </div>
         </div>
 
     </div>
 
-    <!-- Bottom-Left Footer matching setlog.kr exactly -->
+    <!-- Bottom Footer -->
     <footer>
         <div class="footer-line-1">
             Fin Rein Inc. · Registered Office: Kanpur & Lucknow · Email: <a href="mailto:pratham@palzee.fun">pratham@palzee.fun</a>
