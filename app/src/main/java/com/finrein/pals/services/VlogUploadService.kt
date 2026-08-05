@@ -170,11 +170,19 @@ class VlogUploadService : Service() {
                     )
 
                     try {
-                        try {
+                        val groupExists = try {
                             supabaseClient.postgrest.from("pals")
-                                .upsert(PalDbItem(code = cleanCode, name = targetPalName), onConflict = "pal_code")
-                        } catch (e: Exception) {
-                            // Ignore conflict
+                                .select { filter { eq("pal_code", cleanCode) } }
+                                .decodeSingleOrNull<PalDbItem>() != null
+                        } catch (e: Exception) { true }
+
+                        if (!groupExists) {
+                            try {
+                                supabaseClient.postgrest.from("pals")
+                                    .insert(PalDbItem(code = cleanCode, name = targetPalName))
+                            } catch (e: Exception) {
+                                // Ignore conflict if created concurrently
+                            }
                         }
                         supabaseClient.postgrest.from("submissions").insert(newSubmission)
                         

@@ -4918,11 +4918,19 @@ fun HomeScreen(
         if (currentUserId.isNotEmpty() && !initialSyncCompleted) {
             withContext(kotlinx.coroutines.Dispatchers.IO) {
                 try {
-                    val vlogPal = PalDbItem(code = "vlog", name = "vlog")
-                    try {
-                        supabaseClient.postgrest.from("pals").insert(vlogPal)
-                    } catch (e: Exception) {
-                        // Ignore if already exists in database
+                    val vlogExists = try {
+                        supabaseClient.postgrest.from("pals")
+                            .select { filter { eq("pal_code", "vlog") } }
+                            .decodeSingleOrNull<PalDbItem>() != null
+                    } catch (e: Exception) { true }
+
+                    if (!vlogExists) {
+                        val vlogPal = PalDbItem(code = "vlog", name = "vlog")
+                        try {
+                            supabaseClient.postgrest.from("pals").insert(vlogPal)
+                        } catch (e: Exception) {
+                            // Ignore if created concurrently
+                        }
                     }
                 } catch (e: Exception) {
                     // Ignore if already exists or RLS blocks
@@ -5158,12 +5166,20 @@ fun HomeScreen(
                             createdAt = java.time.Instant.now().toString()
                         )
                         try {
-                            // Recreate group if deleted or missing using plain insert
-                            try {
+                            // Recreate group if deleted or missing using pre-check then insert
+                            val groupExists = try {
                                 supabaseClient.postgrest.from("pals")
-                                    .insert(PalDbItem(code = cleanCode, name = pal.name))
-                            } catch (e: Exception) {
-                                // Ignore conflict if group already exists
+                                    .select { filter { eq("pal_code", cleanCode) } }
+                                    .decodeSingleOrNull<PalDbItem>() != null
+                            } catch (e: Exception) { true }
+
+                            if (!groupExists) {
+                                try {
+                                    supabaseClient.postgrest.from("pals")
+                                        .insert(PalDbItem(code = cleanCode, name = pal.name))
+                                } catch (e: Exception) {
+                                    // Ignore conflict if created concurrently
+                                }
                             }
 
                             supabaseClient.postgrest.from("submissions").insert(newSubmission)
