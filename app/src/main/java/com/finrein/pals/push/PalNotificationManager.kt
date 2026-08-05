@@ -5,11 +5,10 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.finrein.pals.MainActivity
-import com.finrein.pals.R
+import com.finrein.pals.utils.NotificationHelper
 
 object PalNotificationManager {
 
@@ -25,17 +24,6 @@ object PalNotificationManager {
     fun showHourlyNotification(context: Context, title: String, body: String) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                HOURLY_CHANNEL_ID,
-                HOURLY_CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Reminders to capture your pal"
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
-
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
@@ -46,42 +34,23 @@ object PalNotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val largeIconBitmap = try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.pal_circular_logo)
-                ?: BitmapFactory.decodeResource(context.resources, R.drawable.ic_notification)
-        } catch (e: Exception) {
-            null
-        }
-
-        val publicNotificationBuilder = NotificationCompat.Builder(context, HOURLY_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+        val publicNotificationBuilder = NotificationHelper.getBaseBuilder(context, HOURLY_CHANNEL_ID, HOURLY_CHANNEL_NAME)
             .setContentTitle("Palzee")
             .setContentText("Notification")
-            .setAutoCancel(true)
 
-        if (largeIconBitmap != null) {
-            publicNotificationBuilder.setLargeIcon(largeIconBitmap)
-        }
-
-        val notificationBuilder = NotificationCompat.Builder(context, HOURLY_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+        val notificationBuilder = NotificationHelper.getBaseBuilder(context, HOURLY_CHANNEL_ID, HOURLY_CHANNEL_NAME)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(publicNotificationBuilder.build())
-            .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-
-        if (largeIconBitmap != null) {
-            notificationBuilder.setLargeIcon(largeIconBitmap)
-        }
 
         notificationManager.notify(1002, notificationBuilder.build())
     }
 
     /**
-     * Shows notification when a user joins a pals group (Image 1 style):
+     * Shows notification when a user joins a pals group:
      * Title: <pals_group_name>
      * Body: <user_name> joined <pals_group_name>
      */
@@ -96,7 +65,7 @@ object PalNotificationManager {
     }
 
     /**
-     * Shows notification when a user sends a pal in a pals group (Image 2 style):
+     * Shows notification when a user sends a pal in a pals group:
      * Title: <person_name>
      * Body: new pal
      */
@@ -118,17 +87,6 @@ object PalNotificationManager {
     ) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                GROUP_CHANNEL_ID,
-                GROUP_CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifications for group activity and new pals"
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
-
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
@@ -139,41 +97,22 @@ object PalNotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val largeIconBitmap = try {
-            BitmapFactory.decodeResource(context.resources, R.drawable.pal_circular_logo)
-                ?: BitmapFactory.decodeResource(context.resources, R.drawable.ic_notification)
-        } catch (e: Exception) {
-            null
-        }
-
         val groupKey = "com.finrein.pals.NOTIFICATION_GROUP_$groupName"
         val notificationId = ((System.currentTimeMillis() % 1000000).toInt() + (0..1000).random())
 
-        val publicNotificationBuilder = NotificationCompat.Builder(context, GROUP_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+        val publicNotificationBuilder = NotificationHelper.getBaseBuilder(context, GROUP_CHANNEL_ID, GROUP_CHANNEL_NAME)
             .setContentTitle(title)
             .setContentText(body)
             .setGroup(groupKey)
-            .setAutoCancel(true)
 
-        if (largeIconBitmap != null) {
-            publicNotificationBuilder.setLargeIcon(largeIconBitmap)
-        }
-
-        val notificationBuilder = NotificationCompat.Builder(context, GROUP_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
+        val notificationBuilder = NotificationHelper.getBaseBuilder(context, GROUP_CHANNEL_ID, GROUP_CHANNEL_NAME)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(publicNotificationBuilder.build())
             .setGroup(groupKey)
-            .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-
-        if (largeIconBitmap != null) {
-            notificationBuilder.setLargeIcon(largeIconBitmap)
-        }
 
         notificationManager.notify(notificationId, notificationBuilder.build())
     }

@@ -59,7 +59,7 @@ class VlogUploadService : Service() {
         }
 
         val channelId = "vlog_upload_channel"
-        val notification = NotificationCompat.Builder(this, channelId)
+        val notification = NotificationHelper.getBaseBuilder(this, channelId, "Vlog Upload Progress")
             .setContentTitle("Uploading Vlog...")
             .setContentText("Your vlog is being uploaded securely.")
             .setSmallIcon(android.R.drawable.stat_sys_upload)
