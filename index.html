@@ -14,7 +14,7 @@
     </script>
 
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>PALZEE — Share Real-Time Moments With Friends</title>
     <meta name="description" content="PALZEE by Fin Rein Inc. (Kanpur & Lucknow). Share real-time moments with friends through video pals.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -29,227 +29,107 @@
             font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
         }
 
+        /* Single-Viewport Locked Layout (No Scroll, No Clipping, No Cropping) */
         html, body {
-            min-height: 100%;
             width: 100%;
-            background-color: #ffffff;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden !important;
+            background-color: #F8F6F3; /* Clean warm background matching setlog.kr */
             color: #121316;
         }
 
-        /* Desktop View (min-width: 769px): Centered single-viewport desktop layout */
-        @media (min-width: 769px) {
-            html, body {
-                height: 100vh;
-                overflow: hidden;
-            }
-
-            body {
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
-                align-items: center;
-                padding: 1rem 1rem 0.5rem 1rem;
-            }
-
-            .container {
-                flex: 1;
-                width: 100%;
-                max-width: 900px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                margin: auto;
-                min-height: 0;
-            }
-
-            #textContainer {
-                flex: 1;
-                width: 100%;
-                max-width: 330px;
-                max-height: calc(100vh - 150px);
-                margin: 0 auto 0.5rem auto;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 0;
-            }
-
-            #textContainer img {
-                max-height: 100%;
-                max-width: 100%;
-                width: auto;
-                height: auto;
-                display: block;
-                object-fit: contain;
-                user-select: none;
-                -webkit-user-drag: none;
-            }
-
-            #storeContainer {
-                display: flex;
-                gap: 12px;
-                justify-content: center;
-                align-items: center;
-                flex-wrap: nowrap;
-                margin-top: 0.25rem;
-                margin-bottom: 0.5rem;
-                flex-shrink: 0;
-            }
-
-            .qr-badge {
-                background: #ffffff;
-                padding: 5px;
-                border-radius: 10px;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-                border: 1px solid rgba(0, 0, 0, 0.08);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 74px;
-                width: 74px;
-                flex-shrink: 0;
-            }
-
-            .qr-badge svg {
-                width: 64px;
-                height: 64px;
-            }
-
-            .store-badges-col {
-                display: flex;
-                flex-direction: column;
-                gap: 6px;
-                justify-content: center;
-            }
-
-            .store-badge {
-                display: inline-block;
-                height: 34px;
-                text-decoration: none;
-            }
-
-            .store-badge img {
-                height: 34px;
-                width: 116px;
-                object-fit: cover;
-                display: block;
-                border-radius: 6px;
-            }
-
-            footer {
-                width: 100%;
-                padding: 0.4rem 1.5rem 0.4rem 1.5rem;
-                text-align: left;
-                font-size: 0.76rem;
-                color: #888888;
-                line-height: 1.5;
-                flex-shrink: 0;
-            }
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding: clamp(0.4rem, 1.5vh, 1rem) clamp(0.75rem, 2vw, 1.5rem) clamp(0.3rem, 1vh, 0.75rem) clamp(0.75rem, 2vw, 1.5rem);
         }
 
-        /* Mobile View (max-width: 768px): Single continuous scrollable landing page */
-        @media (max-width: 768px) {
-            html, body {
-                height: auto !important;
-                min-height: 100vh;
-                overflow-y: auto !important;
-                overflow-x: hidden;
-                -webkit-overflow-scrolling: touch;
-            }
+        .container {
+            flex: 1;
+            width: 100%;
+            max-width: 900px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: auto;
+            min-height: 0;
+        }
 
-            body {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: flex-start;
-                padding: 1.5rem 1rem calc(2.5rem + env(safe-area-inset-bottom, 0px)) 1rem;
-            }
+        /* Hero Image Container proportionally scaled to fit available height */
+        #textContainer {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 0;
+            padding: 0.25rem 0;
+        }
 
-            .container {
-                width: 100%;
-                max-width: 360px;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                margin: 0 auto;
-            }
+        #textContainer img {
+            max-height: 100%;
+            max-width: 100%;
+            width: auto;
+            height: auto;
+            display: block;
+            object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
 
-            #textContainer {
-                width: 100%;
-                max-width: 320px;
-                margin: 0.5rem auto 1.5rem auto;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-            }
+        /* Store Download Badges & QR Code container */
+        #storeContainer {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: nowrap;
+            margin: 0.25rem 0 0.5rem 0;
+            flex-shrink: 0;
+        }
 
-            #textContainer img {
-                width: 100%;
-                height: auto;
-                max-width: 100%;
-                display: block;
-                object-fit: contain;
-            }
+        .qr-badge {
+            background: #ffffff;
+            padding: 5px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 70px;
+            width: 70px;
+            flex-shrink: 0;
+        }
 
-            /* HIDE QR CODE ON MOBILE */
-            .qr-badge {
-                display: none !important;
-            }
+        .qr-badge svg {
+            width: 60px;
+            height: 60px;
+        }
 
-            #storeContainer {
-                width: 100%;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                margin-bottom: 2.2rem;
-            }
-
-            .store-badges-col {
-                display: flex;
-                flex-direction: row;
-                gap: 12px;
-                justify-content: center;
-                align-items: center;
-                flex-wrap: wrap;
-            }
-
-            .store-badge {
-                height: 42px;
-            }
-
-            .store-badge img {
-                height: 42px;
-                width: auto;
-                min-width: 135px;
-                object-fit: contain;
-                border-radius: 8px;
-            }
-
-            footer {
-                width: 100%;
-                max-width: 360px;
-                margin: 0 auto;
-                padding: 1.25rem 0.5rem calc(1.5rem + env(safe-area-inset-bottom, 0px)) 0.5rem;
-                text-align: center;
-                font-size: 0.78rem;
-                color: #888888;
-                line-height: 1.6;
-                border-top: 1px solid rgba(0, 0, 0, 0.08);
-            }
-
-            .footer-line-1 {
-                margin-bottom: 6px;
-            }
+        .store-badges-col {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            justify-content: center;
         }
 
         .store-badge {
             display: inline-block;
+            height: 32px;
             text-decoration: none;
         }
 
         .store-badge img {
+            height: 32px;
+            width: 110px;
+            object-fit: cover;
             display: block;
+            border-radius: 6px;
             transition: transform 0.15s ease;
         }
 
@@ -257,9 +137,24 @@
             transform: translateY(-1px);
         }
 
+        /* Footer styling matching setlog.kr */
+        footer {
+            width: 100%;
+            padding: 0.3rem 1rem;
+            text-align: left;
+            font-size: clamp(0.68rem, 1.1vh, 0.76rem);
+            color: #888888;
+            line-height: 1.4;
+            flex-shrink: 0;
+        }
+
         .footer-line-1 {
             font-weight: 600;
             color: #666666;
+        }
+
+        .footer-line-2 {
+            margin-top: 1px;
         }
 
         footer a {
@@ -272,19 +167,57 @@
             color: #333333;
             text-decoration: underline;
         }
+
+        /* Mobile Adjustments (Android / iOS) */
+        @media (max-width: 768px) {
+            body {
+                padding: clamp(0.5rem, 2vh, 1rem) 1rem clamp(0.5rem, 2vh, 1rem) 1rem;
+            }
+
+            /* HIDE QR CODE ON MOBILE */
+            .qr-badge {
+                display: none !important;
+            }
+
+            #storeContainer {
+                margin: 0.4rem 0 0.4rem 0;
+            }
+
+            .store-badges-col {
+                flex-direction: row;
+                gap: 10px;
+                align-items: center;
+            }
+
+            .store-badge {
+                height: 36px;
+            }
+
+            .store-badge img {
+                height: 36px;
+                width: 124px;
+                border-radius: 6px;
+            }
+
+            footer {
+                text-align: center;
+                font-size: 0.7rem;
+                padding: 0.2rem 0.5rem;
+            }
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
         
-        <!-- Hero Graphic set directly to user's exact Ix15A_cleanup.jpg file -->
+        <!-- Hero Graphic set directly to WldCi_cleanup.jpg -->
         <div id="textContainer">
-            <img src="Ix15A_cleanup.jpg" 
+            <img src="WldCi_cleanup.jpg" 
                  alt="PALZEE — Share real-time moments with friends through video pals">
         </div>
 
-        <!-- Store Download Badges (QR hidden on mobile) -->
+        <!-- Store Download Badges (QR Code hidden on mobile) -->
         <div id="storeContainer">
             <div class="qr-badge" title="Scan to download PALZEE">
                 <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
