@@ -243,3 +243,62 @@ a:hover {
     font-weight: 500;
     margin-top: 1rem;
 }
+
+/* Dark Mode Adaptation for Legal & Feedback Pages */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-main: #0d0e11;
+        --text-heading: #f9fafb;
+        --text-body: #d1d5db;
+        --text-muted: #9ca3af;
+        --link-color: #f3f4f6;
+        --border-color: #27272a;
+    }
+
+    body {
+        background-color: #0d0e11 !important;
+        color: #d1d5db !important;
+    }
+
+    .legal-card, .feedback-card {
+        background-color: #18181b !important;
+        border-color: #27272a !important;
+    }
+
+    .form-label {
+        color: #f9fafb !important;
+    }
+
+    .form-input, .form-textarea {
+        background-color: #0d0e11 !important;
+        color: #f9fafb !important;
+        border-color: #3f3f46 !important;
+    }
+
+    .form-input:focus, .form-textarea:focus {
+        border-color: #ffffff !important;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15) !important;
+    }
+
+    .form-input[readonly] {
+        background-color: #18181b !important;
+        color: #9ca3af !important;
+    }
+
+    .feedback-submit-btn {
+        background-color: #ffffff !important;
+        color: #09090b !important;
+    }
+
+    .feedback-submit-btn:hover {
+        background-color: #e4e4e7 !important;
+    }
+
+    .back-nav a {
+        color: #9ca3af !important;
+    }
+
+    .back-nav a:hover {
+        color: #ffffff !important;
+    }
+}
