@@ -7260,8 +7260,8 @@ fun CameraScreenContent(
 
         val progressWidth = 7.5.dp
 
-        // Precise positioning constants for taller layout (shifted above by 27.5dp)
-        val shutterBottomMargin = 98.dp
+        // Precise positioning constants for taller layout (shifted below by 15dp)
+        val shutterBottomMargin = 83.dp
         val shutterSize0 = 59.dp
         val shutterSize = shutterSize0 * scale
         val outerRingSize = 67.dp * scale
@@ -7664,12 +7664,12 @@ fun CameraScreenContent(
             )
         }
 
-        // Flash toggle (auto / off / on) positioned to the left of the capture button, centered on bottom border line
+        // Flash toggle (auto / off / on) positioned to the left of the capture button, centered on bottom border line (moved below by 18dp)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .offset(x = (-64).dp * scale)
-                .padding(bottom = cameraFrameBottomPadding + 13.dp - (36.dp * scale / 2f))
+                .padding(bottom = cameraFrameBottomPadding + 10.dp - (36.dp * scale / 2f))
                 .size(36.dp * scale)
                 .clip(CircleShape) // circular shape for soft click ripple!
                 .clickable {
@@ -7699,7 +7699,7 @@ fun CameraScreenContent(
         // Screen-Edge Anchored Vertical Progress Bar (parallel to card straight-edge, highest Z-index)
         if (isRecording && recordingProgress > 0.0f) {
             val drawWidth = 5.dp * scale
-            val drawEnd = 4.dp
+            val drawEnd = maxOf(4.dp, ((screenWidth - cameraWidth) / 2f) - 6.dp)
             Canvas(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -13524,7 +13524,7 @@ fun VlogScreenContent(
                         ),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Spacer(modifier = Modifier.height(12.5.dp))
+                    Spacer(modifier = Modifier.height(25.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -13968,7 +13968,7 @@ fun NameInputScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = "→ welcome to plazee",
+            text = "→ welcome to palzee",
             fontFamily = FontFamily.Monospace,
             fontSize = 18.sp,
             color = textColor
@@ -14123,7 +14123,7 @@ fun NameConfirmScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = "→ welcome to plazee",
+            text = "→ welcome to palzee",
             fontFamily = FontFamily.Monospace,
             fontSize = 18.sp,
             color = textColor
@@ -14230,7 +14230,7 @@ fun CreatingAccountScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = if (firstName.isEmpty()) "→ restoring account" else "→ welcome to plazee",
+            text = if (firstName.isEmpty()) "→ restoring account" else "→ welcome to palzee",
             fontFamily = FontFamily.Monospace,
             fontSize = 18.sp,
             color = textColor
