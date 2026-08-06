@@ -210,6 +210,19 @@ fun addPermanentlyDeletedSubmission(context: android.content.Context, pathOrId: 
     prefs.edit().putStringSet("permanently_deleted_submissions", updated).apply()
 }
 
+fun getPermanentlyDeletedPals(context: android.content.Context): Set<String> {
+    val prefs = getVlogPrefs(context)
+    return prefs.getStringSet("permanently_deleted_pals", emptySet()) ?: emptySet()
+}
+
+fun addPermanentlyDeletedPal(context: android.content.Context, palCode: String) {
+    if (palCode == "vlog" || palCode.isBlank()) return
+    val prefs = getVlogPrefs(context)
+    val current = prefs.getStringSet("permanently_deleted_pals", emptySet()) ?: emptySet()
+    val updated = current.toMutableSet().apply { add(palCode) }
+    prefs.edit().putStringSet("permanently_deleted_pals", updated).apply()
+}
+
 fun handleDeletePal(
     pal: PalItem?,
     currentUserId: String,
@@ -231,6 +244,7 @@ fun handleDeletePal(
     val p = pal
     if (p != null) {
         locallyDeletedPals[p.code] = true
+        addPermanentlyDeletedPal(context, p.code)
         onCreatedPalsChange(createdPals.filterNot { it.code == p.code })
         if (groupDatabase.containsKey(p.code)) {
             groupDatabase.remove(p.code)
@@ -247,12 +261,14 @@ fun handleDeletePal(
         }
         coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                supabaseClient.postgrest.from("user_pals")
+                    .delete { filter { eq("pal_code", p.code) } }
+                supabaseClient.postgrest.from("submissions")
+                    .delete { filter { eq("pal_code", p.code) } }
+                supabaseClient.postgrest.from("messages")
+                    .delete { filter { eq("pal_code", p.code) } }
                 supabaseClient.postgrest.from("pals")
-                    .delete {
-                        filter {
-                            eq("pal_code", p.code)
-                        }
-                    }
+                    .delete { filter { eq("pal_code", p.code) } }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -281,6 +297,7 @@ fun handleLeavePal(
     val p = pal
     if (p != null) {
         locallyDeletedPals[p.code] = true
+        addPermanentlyDeletedPal(context, p.code)
         onCreatedPalsChange(createdPals.filterNot { it.code == p.code })
         palPalsCount.remove(p.code)
         viewModel.removePalMessages(p.code)
@@ -4455,7 +4472,7 @@ fun HomeScreen(
         coroutineScope.launch {
             try {
                 isRefreshing = true
-                viewModel.refreshPals(currentUserId, force)
+                viewModel.refreshPals(currentUserId, force, getPermanentlyDeletedPals(context))
             } catch (e: Exception) {
                 android.util.Log.e("RPC_Dashboard_Error", "Transaction request bypassed: ${e.message}")
             } finally {
@@ -4588,7 +4605,7 @@ fun HomeScreen(
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 if (currentUserId.isNotEmpty()) {
                     avatarScope.launch {
-                        viewModel.refreshPals(currentUserId)
+                        viewModel.refreshPals(currentUserId, force = false, permanentlyDeletedPals = getPermanentlyDeletedPals(context))
                     }
                 }
                 val savedPaths = getVlogPrefs(context).getString("vlog_paths", "") ?: ""
@@ -12997,6 +13014,12 @@ fun VlogScreenContent(
             var isExportSavingVideo by remember { mutableStateOf(false) }
             var isExportSharingVideo by remember { mutableStateOf(false) }
             var isExportSaved by remember { mutableStateOf(false) }
+            var exportProgress by remember { mutableStateOf(0.0f) }
+            val animatedExportProgress by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = exportProgress,
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 150, easing = androidx.compose.animation.core.LinearEasing),
+                label = "ExportBoundaryProgress"
+            )
             val localCoroutineScope = rememberCoroutineScope()
 
             var showEditExportSheet by remember { mutableStateOf(false) }
@@ -13451,6 +13474,36 @@ fun VlogScreenContent(
                     }
                 }
 
+                // Vertical Progress Bar (parallel to export camera card straight-edge)
+                if ((isExportSavingVideo || isExportSharingVideo) && (exportProgress > 0.0f || animatedExportProgress > 0.0f)) {
+                    val drawWidth = 5.dp * scale
+                    val drawEnd = maxOf(4.dp, ((screenWidth - cameraWidth) / 2f) - 6.dp)
+                    Canvas(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = cameraFrameBottomPadding + 32.dp * scale, end = drawEnd)
+                            .width(drawWidth)
+                            .height(cameraHeight - 64.dp * scale)
+                    ) {
+                        val strokeWidthPx = size.width
+                        val heightPx = size.height
+                        val radius = strokeWidthPx / 2f
+
+                        val startY = radius
+                        val endY = radius + (heightPx - strokeWidthPx) * animatedExportProgress
+
+                        if (endY > startY) {
+                            drawLine(
+                                color = palTextLogoColor,
+                                start = androidx.compose.ui.geometry.Offset(radius, startY),
+                                end = androidx.compose.ui.geometry.Offset(radius, endY),
+                                strokeWidth = strokeWidthPx,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round
+                            )
+                        }
+                    }
+                }
+
                 // Space below the viewfinder containing the 4 buttons exactly 2.5.dp below the frame
                 Column(
                     modifier = Modifier
@@ -13526,6 +13579,7 @@ fun VlogScreenContent(
                                 val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else dayHoursList.isNotEmpty()
                                 if (!isExportSavingVideo && !isExportSharingVideo && !isExportSaved && hasItemsToExport) {
                                     isExportSavingVideo = true
+                                    exportProgress = 0.01f
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_save_${System.currentTimeMillis()}.mp4")
                                         val (pathsToProcess, timesToProcess, rest) = buildExportLists()
@@ -13543,7 +13597,12 @@ fun VlogScreenContent(
                                             captionTexts = captionsToProcess,
                                             roundedCorners = false,
                                             exportBackground = exportBackground,
-                                            isMutedList = mutedToProcess
+                                            isMutedList = mutedToProcess,
+                                            onProgress = { p ->
+                                                localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                                    exportProgress = p
+                                                }
+                                            }
                                         ) { success ->
                                             if (success) {
                                                 val saveSuccess = saveVideoToGallery(context, tempOut.absolutePath)
@@ -13556,7 +13615,10 @@ fun VlogScreenContent(
                                                 }
                                             }
                                             try { tempOut.delete() } catch(e: Exception) {}
-                                            isExportSavingVideo = false
+                                            localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                                isExportSavingVideo = false
+                                                exportProgress = 0.0f
+                                            }
                                         }
                                     }
                                 }
@@ -13585,6 +13647,7 @@ fun VlogScreenContent(
                                 val hasItemsToExport = if (pal.isVlog) capturedVlogsPaths.isNotEmpty() else dayHoursList.isNotEmpty()
                                 if (!isExportSavingVideo && !isExportSharingVideo && hasItemsToExport) {
                                     isExportSharingVideo = true
+                                    exportProgress = 0.01f
                                     localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                         val tempOut = java.io.File(context.cacheDir, "temp_export_share_${System.currentTimeMillis()}.mp4")
                                         val (pathsToProcess, timesToProcess, rest) = buildExportLists()
@@ -13601,7 +13664,12 @@ fun VlogScreenContent(
                                             timeTexts = timesToProcess,
                                             captionTexts = captionsToProcess,
                                             roundedCorners = false,
-                                            exportBackground = exportBackground
+                                            exportBackground = exportBackground,
+                                            onProgress = { p ->
+                                                localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                                    exportProgress = p
+                                                }
+                                            }
                                         ) { success ->
                                             if (success) {
                                                 try {
@@ -13622,7 +13690,10 @@ fun VlogScreenContent(
                                                     e.printStackTrace()
                                                 }
                                             }
-                                            isExportSharingVideo = false
+                                            localCoroutineScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                                                isExportSharingVideo = false
+                                                exportProgress = 0.0f
+                                            }
                                         }
                                     }
                                 }

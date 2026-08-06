@@ -32,6 +32,7 @@ class VideoProcessor {
             roundedCorners: Boolean,
             exportBackground: String = "black",
             isMuted: Boolean = false,
+            onProgress: ((Float) -> Unit)? = null,
             callback: (Boolean) -> Unit
         ) {
             processVideoList(
@@ -44,6 +45,7 @@ class VideoProcessor {
                 roundedCorners = roundedCorners,
                 exportBackground = exportBackground,
                 isMutedList = listOf(isMuted),
+                onProgress = onProgress,
                 callback = callback
             )
         }
@@ -58,6 +60,7 @@ class VideoProcessor {
             roundedCorners: Boolean,
             exportBackground: String = "black",
             isMutedList: List<Boolean>? = null,
+            onProgress: ((Float) -> Unit)? = null,
             callback: (Boolean) -> Unit
         ) {
             Thread {
@@ -72,10 +75,14 @@ class VideoProcessor {
                         captionTexts = captionTexts,
                         roundedCorners = roundedCorners,
                         exportBackground = exportBackground,
-                        isMutedList = isMutedList
+                        isMutedList = isMutedList,
+                        onProgress = onProgress
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Error transcoding video list", e)
+                }
+                if (success) {
+                    onProgress?.invoke(1.0f)
                 }
                 callback(success)
             }.start()
@@ -122,7 +129,8 @@ class VideoProcessor {
             captionTexts: List<String>,
             roundedCorners: Boolean,
             exportBackground: String = "black",
-            isMutedList: List<Boolean>? = null
+            isMutedList: List<Boolean>? = null,
+            onProgress: ((Float) -> Unit)? = null
         ): Boolean {
             if (inputPaths.isEmpty()) {
                 Log.e(TAG, "Input paths list is empty")
@@ -278,6 +286,34 @@ class VideoProcessor {
 
             var videoPtsOffsetUs = 0L
 
+            var totalEstimatedDurationUs = 0L
+            for (input in validInputs) {
+                if (input.first == "EMPTY_BOX") {
+                    totalEstimatedDurationUs += 2000000L
+                } else {
+                    var ext: MediaExtractor? = null
+                    try {
+                        ext = MediaExtractor().apply { setDataSource(input.first) }
+                        for (i in 0 until ext.trackCount) {
+                            val format = ext.getTrackFormat(i)
+                            if (format.getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
+                                if (format.containsKey(MediaFormat.KEY_DURATION)) {
+                                    totalEstimatedDurationUs += format.getLong(MediaFormat.KEY_DURATION)
+                                } else {
+                                    totalEstimatedDurationUs += 2000000L
+                                }
+                                break
+                            }
+                        }
+                    } catch (e: Exception) {
+                        totalEstimatedDurationUs += 2000000L
+                    } finally {
+                        try { ext?.release() } catch (e: Exception) {}
+                    }
+                }
+            }
+            if (totalEstimatedDurationUs <= 0L) totalEstimatedDurationUs = 2000000L
+
             // Process video tracks sequentially
             for (vIndex in validInputs.indices) {
                 val (inputPath, originalIndex, _) = validInputs[vIndex]
@@ -301,6 +337,7 @@ class VideoProcessor {
                             val ptsUs = f * frameDurationUs
                             val renderPtsUs = currentVideoPtsOffsetUs + ptsUs
                             fileMaxVideoPtsUs = maxOf(fileMaxVideoPtsUs, ptsUs)
+                            onProgress?.invoke((renderPtsUs.toFloat() / totalEstimatedDurationUs.toFloat()).coerceIn(0.01f, 0.99f))
 
                             if (exportBackground == "white") {
                                 GLES20.glClearColor(1.0f, 1.0f, 1.0f, 1.0f)
@@ -542,6 +579,7 @@ class VideoProcessor {
 
                                 val renderPtsUs = currentVideoPtsOffsetUs + decoderBufferInfo.presentationTimeUs
                                 fileMaxVideoPtsUs = maxOf(fileMaxVideoPtsUs, decoderBufferInfo.presentationTimeUs)
+                                onProgress?.invoke((renderPtsUs.toFloat() / totalEstimatedDurationUs.toFloat()).coerceIn(0.01f, 0.99f))
 
                                 EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, renderPtsUs * 1000)
                                 EGL14.eglSwapBuffers(eglDisplay, eglSurface)

@@ -99,6 +99,9 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("release") // Keeps your working Palls.jks signature
+            configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
+                mappingFileUploadEnabled = true
+            }
         }
     }
     compileOptions {

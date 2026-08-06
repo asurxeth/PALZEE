@@ -88,7 +88,7 @@ class HomeViewModel @Inject constructor(
 
     private var isInitialized = false
 
-    suspend fun refreshPals(currentUserId: String, force: Boolean = false) {
+    suspend fun refreshPals(currentUserId: String, force: Boolean = false, permanentlyDeletedPals: Set<String> = emptySet()) {
         android.util.Log.d("PalsDataDebug", "RefreshPals called - HashCode: ${this.hashCode()}")
         if (currentUserId.isEmpty()) return
         val onlyHasPlaceholder = _createdPals.value.size <= 1 && _createdPals.value.firstOrNull()?.code == "vlog"
@@ -96,7 +96,7 @@ class HomeViewModel @Inject constructor(
         val result = dashboardRepository.getCleanHomescreenDashboard(currentUserId)
         result.getOrNull()?.let { remoteList ->
             val vlogItem = PalItem(name = "vlog", size = "12", code = "vlog", isVlog = true, isCreator = false)
-            val combinedList = (listOf(vlogItem) + remoteList.filter { it.code != "vlog" })
+            val combinedList = (listOf(vlogItem) + remoteList.filter { it.code != "vlog" && !permanentlyDeletedPals.contains(it.code) })
                 .filter { it.code.isNotBlank() }
             android.util.Log.d("PalsDebug", "Remote list size: ${remoteList.size}")
             android.util.Log.d("PalsDataDebug", "Remote list size: ${remoteList.size}")
