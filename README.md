@@ -2,13 +2,16 @@
 
 # PALZEE
 
-### The next generation of private social networking.
+### Next-generation private social platform
 
-Built for meaningful relationships—not endless scrolling.
+**Privacy-first • Native Android • Local-first • Realtime**
 
-[Website](https://palzee.fun) • Android • Kotlin • Jetpack Compose • Supabase
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)
+![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)
+![Android](https://img.shields.io/badge/Android-Native-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
 
-<img src="./assets/banner-dark.svg" width="100%" alt="PALZEE"/>
+> **Building meaningful relationships—not endless scrolling.**
 
 </div>
 
@@ -16,32 +19,79 @@ Built for meaningful relationships—not endless scrolling.
 
 ## Why PALZEE?
 
-Most social platforms optimize for attention.
-
-PALZEE is built to optimize for people.
-
-Designed around **privacy**, **trusted communities**, and **user control**, PALZEE helps friends capture, share, and relive moments without algorithms, public metrics, or unnecessary distractions.
+PALZEE is an Android-first social platform focused on **privacy**, **trusted communities**, and **user control**. Instead of maximizing engagement through algorithms, it prioritizes authentic sharing, native performance, and a distraction-free experience.
 
 ---
 
-## Experience
+## Architecture
 
-- 📹 Capture moments with a native CameraX experience.
-- 🎞 Automatically transform clips into beautiful daily memories.
-- 👥 Share privately with invite-only groups.
-- 💬 Chat in real time with media, reactions, and conversations.
-- ⚡ Enjoy a fast, local-first experience designed for instant interactions.
-- 🔒 Own your content with privacy-first architecture and permanent deletion.
+```mermaid
+flowchart LR
 
-<p align="center">
-<img src="./assets/showcase/hero-preview.png" width="100%" alt="PALZEE Preview"/>
-</p>
+UI["Compose UI"]
+VM["ViewModels"]
+REPO["Repositories"]
+
+ROOM[(Room)]
+DATA[(DataStore)]
+SUPA[(Supabase)]
+PG[(PostgreSQL)]
+STORE[(Storage)]
+REAL["Realtime"]
+
+UI --> VM
+VM --> REPO
+
+REPO --> ROOM
+REPO --> DATA
+REPO --> SUPA
+
+SUPA --> PG
+SUPA --> STORE
+SUPA --> REAL
+```
 
 ---
 
-## Engineering
+## Media Flow
 
-Built natively with **Kotlin**, **Jetpack Compose**, **Media3**, **CameraX**, **OpenGL ES**, and **Supabase**, PALZEE combines a local-first media pipeline, realtime infrastructure, and modular architecture to deliver a responsive, scalable, and production-ready Android experience.
+```mermaid
+flowchart LR
+
+CameraX --> Processing
+Processing --> Media3
+Media3 --> Cache
+Cache --> Upload
+Upload --> Supabase
+```
+
+---
+
+## Tech Stack
+
+| Android | Backend | Tools |
+|----------|---------|-------|
+| Kotlin | Supabase | Gradle |
+| Jetpack Compose | PostgreSQL | Git |
+| CameraX | Storage | Android Studio |
+| Media3 | Realtime | Firebase |
+
+---
+
+## Project Structure
+
+```text
+app
+├── core
+├── feature
+│   ├── auth
+│   ├── camera
+│   ├── chat
+│   ├── home
+│   └── pals
+├── services
+└── utils
+```
 
 ---
 
@@ -53,14 +103,14 @@ cd PALZEE
 ./gradlew assembleDebug
 ```
 
-See the **/docs** directory for setup, architecture, and backend documentation.
+For architecture, backend, deployment and release details, see the **/docs** directory.
 
 ---
 
 <div align="center">
 
-**Building software people trust—not software they need to escape from.**
+⭐ **Star the repository if you like the project.**
 
-⭐ If you enjoy the project, consider giving it a star.
+Building the future of **private social networking**.
 
 </div>
