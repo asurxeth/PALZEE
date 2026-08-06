@@ -6,10 +6,9 @@
 
 **Privacy-first • Native Android • Local-first • Realtime**
 
-![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)
-![Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white)
-![Android](https://img.shields.io/badge/Android-Native-3DDC84?style=for-the-badge&logo=android&logoColor=white)
-![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
+<p align="center">
+  <img src="https://skillicons.dev/icons?i=kotlin,androidstudio,supabase,postgres,firebase" alt="Palzee Tech Stack" />
+</p>
 
 > **Building meaningful relationships—not endless scrolling.**
 
