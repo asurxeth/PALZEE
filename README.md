@@ -136,41 +136,10 @@ app
 
 ---
 
-## 🚀 Getting Started
-
-### Prerequisites
+## 🚀 Prerequisites
 - **Android Studio:** Ladybug (2024.2.1+) or newer
 - **JDK:** Java Development Kit 17+
 - **Android SDK:** API 24+ (Android 7.0) minimum, API 35 target
-
-### Installation & Build
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/prathamxeth/PALZEE-ANDROID.git
-   cd PALZEE-ANDROID
-   ```
-
-2. **Setup environment variables:**
-   Ensure `.env` or `local.properties` contains your Supabase credentials:
-   ```properties
-   SUPABASE_URL=https://your-supabase-project.supabase.co
-   SUPABASE_ANON_KEY=your-supabase-anon-key
-   ```
-
-3. **Build Debug APK:**
-   ```bash
-   ./gradlew assembleDebug
-   ```
-
-4. **Run ADB Logcat Diagnostics (Custom Gradle Tasks):**
-   ```bash
-   # Extract application crash logs
-   ./gradlew readCrash
-
-   # Stream real-time logcat output to logcat_real.txt
-   ./gradlew readLogcat
-   ```
 
 ---
 
