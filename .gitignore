@@ -1,5 +1,9 @@
-# Env & Properties files
+# Env, Secrets & Properties files (NEVER COMMIT TO GITHUB)
 .env
+.env*
+*.env
+Secrets.plist
+**/Secrets.plist
 local.properties
 keystore.properties
 *.properties
@@ -7,6 +11,8 @@ keystore.properties
 # Google Services & Credentials
 google-services.json
 **/google-services.json
+GoogleService-Info.plist
+**/GoogleService-Info.plist
 
 # Keystores & Certificates
 Palls.jks
@@ -16,12 +22,22 @@ Palls.jks
 *.pem
 *.crt
 
+# Xcode & Swift Build Artifacts
+build/
+DerivedData/
+.build/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+*.dSYM/
+.swiftpm/
+
 # Python Virtual Environments
 .venv/
 
 # Gradle layers
 .gradle/
-build/
 app/build/
 gradle-home/
 
@@ -47,7 +63,7 @@ logcat_real.txt
 crash_log_real.txt
 *.log
 
-# Customizations
+# Agent & Skill Customizations
 .agent/
+.agents/
 .kotlin/
-
