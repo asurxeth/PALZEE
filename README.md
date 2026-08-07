@@ -18,22 +18,22 @@
     <i>Native Android application delivering authentic, zero-algorithm daily moment sharing for your inner circle.</i>
   </p>
 
-  <!-- Badges Grid -->
+  <!-- Badges Grid (Square Icons Only) -->
   <p align="center">
-    <a href="https://palzee.fun/">
-      <img src="https://img.shields.io/badge/Live_Site-palzee.fun-6366f1?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Live Website">
+    <a href="https://palzee.fun/" title="Live Website">
+      <img src="https://img.shields.io/badge/-6366f1?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Live Website">
     </a>
-    <a href="https://github.com/asurxeth/PALZEE-ANDROID">
-      <img src="https://img.shields.io/badge/GitHub-PALZEE--ANDROID-000000?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Repository">
+    <a href="https://github.com/asurxeth/PALZEE-ANDROID" title="GitHub Repository">
+      <img src="https://img.shields.io/badge/-000000?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Repository">
     </a>
-    <a href="https://developer.android.com/kotlin">
-      <img src="https://img.shields.io/badge/Kotlin-2.0+-7f52ff?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin 2.0+">
+    <a href="https://developer.android.com/kotlin" title="Kotlin">
+      <img src="https://img.shields.io/badge/-7f52ff?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin">
     </a>
-    <a href="https://developer.android.com/jetpack/compose">
-      <img src="https://img.shields.io/badge/Jetpack-Compose-4285f4?style=for-the-badge&logo=android&logoColor=white" alt="Jetpack Compose">
+    <a href="https://developer.android.com/jetpack/compose" title="Jetpack Compose">
+      <img src="https://img.shields.io/badge/-4285f4?style=for-the-badge&logo=android&logoColor=white" alt="Jetpack Compose">
     </a>
-    <a href="https://palzee.fun/csampolicy.html">
-      <img src="https://img.shields.io/badge/Security-CSAM_Zero_Tolerance-emerald?style=for-the-badge&logo=shieldsdotio&logoColor=white" alt="CSAM Zero Tolerance">
+    <a href="https://palzee.fun/csampolicy.html" title="CSAM Zero Tolerance Policy">
+      <img src="https://img.shields.io/badge/-10b981?style=for-the-badge&logo=shieldsdotio&logoColor=white" alt="CSAM Zero Tolerance">
     </a>
   </p>
 
