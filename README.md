@@ -21,7 +21,7 @@
   <!-- Badges Grid (Square Icons Only) -->
   <p align="center">
     <a href="https://palzee.fun/" title="Live Website" style="text-decoration: none;"><img src="https://img.shields.io/badge/-6366f1?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Live Website"></a>
-    <a href="https://github.com/asurxeth/PALZEE-ANDROID" title="GitHub Repository" style="text-decoration: none;"><img src="https://img.shields.io/badge/-000000?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Repository"></a>
+    <a href="https://github.com/prathamxeth/PALZEE-ANDROID" title="GitHub Repository" style="text-decoration: none;"><img src="https://img.shields.io/badge/-000000?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Repository"></a>
     <a href="https://developer.android.com/kotlin" title="Kotlin" style="text-decoration: none;"><img src="https://img.shields.io/badge/-7f52ff?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin"></a>
     <a href="https://developer.android.com/jetpack/compose" title="Jetpack Compose" style="text-decoration: none;"><img src="https://img.shields.io/badge/-4285f4?style=for-the-badge&logo=android&logoColor=white" alt="Jetpack Compose"></a>
     <a href="https://palzee.fun/csampolicy.html" title="CSAM Zero Tolerance Policy" style="text-decoration: none;"><img src="https://img.shields.io/badge/-10b981?style=for-the-badge&logo=shieldsdotio&logoColor=white" alt="CSAM Zero Tolerance"></a>
@@ -147,7 +147,7 @@ app
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/asurxeth/PALZEE-ANDROID.git
+   git clone https://github.com/prathamxeth/PALZEE-ANDROID.git
    cd PALZEE-ANDROID
    ```
 
