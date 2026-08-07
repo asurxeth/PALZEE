@@ -94,17 +94,6 @@ app
 
 ---
 
-## Getting Started
-
-```bash
-git clone https://github.com/asurxeth/PALZEE.git
-cd PALZEE
-./gradlew assembleDebug
-```
-
-For architecture, backend, deployment and release details, see the **/docs** directory.
-
----
 
 <div align="center">
 
